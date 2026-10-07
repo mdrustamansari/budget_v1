@@ -1,6 +1,6 @@
 // Rustam's Budget Manager: offline service worker.
 // Bump CACHE_VERSION whenever you replace index.html so phones pick up the update.
-const CACHE_VERSION = 'rustams-budget-manager-v8';
+const CACHE_VERSION = 'rustams-budget-manager-v9';
 const ASSETS = [
   './',
   './index.html',
