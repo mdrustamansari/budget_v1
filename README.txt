@@ -22,3 +22,15 @@ Version 2.4 (new Circle Companion)
 - Its eyes follow your finger when you are near it. A tap makes it squash and bounce a little.
 - New poses: waving, typing on a laptop, a coffee break.
 - Replace companion.js (and sw.js) and open the app twice.
+
+Version 2.5 (the living Circle Companion)
+- IMPORTANT: upload ALL files, including three new ones: companion-art.js, companion-lines.js and the new companion.js. Then open the app twice.
+- The Companion is now a cute fluid spectre. It rests as a circle (or a ghost with a wavy tail) and often molds into 33 shapes: cube, notepad, calculator, laptop, sign board, question mark, tick, danger mark, wait mark, cross mark, notice mark, heart, star, coin, wallet, savings jar, bar chart, calendar, clock, idea bulb, bell, lock, shield, magnifier, book, gift, trophy, flag, rocket, cloud, moon, umbrella and speech bubble.
+- It uses real-looking props: notebook, pen, calculator, laptop, chart and pointer stick, coffee cup, pillow, chair, bed, platform, ball, music notes, confetti.
+- About 90 actions and combinations: wave, bow, nod, laugh, jump, hop, spin, dance, peek, knock, peekaboo, think, idea, work, nap, coffee break, play, celebrate, rocket launch and more.
+- Poke it for fun reactions. Poke it many times and it gets dizzy, then hides.
+- It does things on its own now and then, like a living thing. Night time makes it sleepier.
+- It speaks proverbs, tips and your own budget notes, about 19 lines a day (you choose).
+- It reacts to real moments: a tick after saving an expense, a calculator while you type an amount, a wait mark when a purchase is blocked, a danger mark when you pass the pool, a trophy when you close the day.
+- Settings > Circle Companion has its own section: where it lives (fixed in the header, floating and snapping to the side, floating free, or hidden), resting form, Movement, Activity, lines a day, proverbs on or off, and buttons to show you things. It is always on top of every screen.
+- Reduced motion and Lite mode keep it still.

@@ -149,7 +149,7 @@
         if (onMount) onMount(box);
         const first = box.querySelector('[autofocus]'); if (first && !(opts && opts.noFocus)) setTimeout(() => { try { first.focus(); } catch (e) {} }, 60);
     }
-    function closeSheet() { if (GC && GC.state().poseName === 'notes') GC.pose('none'); $('sheet-bg').classList.remove('show'); const f = sheetCloser; sheetCloser = null; if (f) f(); }
+    function closeSheet() { if (GC) GC.pose('none'); $('sheet-bg').classList.remove('show'); const f = sheetCloser; sheetCloser = null; if (f) f(); }
     function confirmSheet(o) {
         return new Promise(res => {
             sheet(`<h2>${esc(o.title)}</h2><p>${esc(o.sub || '')}</p><div class="modal-actions"><button class="btn-secondary" data-r="0">${esc(o.cancel || 'Cancel')}</button><button class="${o.danger ? 'btn-danger' : 'btn-primary'}" data-r="1">${esc(o.ok || 'OK')}</button></div>`, box => {
@@ -540,23 +540,22 @@
         if (avg !== null && T.spent > 0 && T.spent <= avg) return 'A light day so far. Nicely done.';
         return 'I am here. Nothing needs your attention right now.';
     }
+    // a data-based tip for the Companion to say when poked or when it chooses to speak (null = it uses a proverb or tip instead)
+    function orbTip() { const m = orbMessage(); return m.indexOf('I am here') === 0 ? null : m; }
+    const SCREEN_ACT = { ins: 'present', month: 'read', mind: 'think', set: 'stand' };
     function renderCompanion() {
-        const host = $('orb'); if (!host || !window.GCompanion) return;
-        if (!GC) GC = window.GCompanion.create(host, { pos: 'header', onTap: c => { c.pose('point', 3200); c.say(orbMessage(), 4600); } });
-        const mode = prefs.orbMode || 'header';
-        GC.show(mode !== 'off'); GC.setPos(mode === 'float' ? 'float' : 'header');
-        if (mode === 'off') return;
+        if (!window.GCompanion || !$('orb')) return;
+        if (!GC) GC = window.GCompanion.create($('orb'), { legacyPlace: prefs.orbMode, tip: orbTip, busy: () => $('sheet-bg').classList.contains('show') });
         GC.mood(budgetMood());
-        // small, purposeful reactions
-        if (screen !== lastScreen) { if (screen === 'ins' && lastScreen) GC.pose('insight', 5200); lastScreen = screen; }
+        if (screen !== lastScreen) { if (lastScreen && SCREEN_ACT[screen] && !GC.state().action) GC.do(SCREEN_ACT[screen]); lastScreen = screen; }
         const left = D.P ? D.P - D.cur.spent : null;
-        if (left !== null && prevLeft !== null && prevLeft >= 0 && left < 0) { GC.sayQuiet('You have gone past this month\'s pool. No blame. Let us look at what can ease.', 6000); }
+        if (left !== null && prevLeft !== null && prevLeft >= 0 && left < 0) { GC.pose('none'); GC.do('warn', { force: true }); setTimeout(() => GC.say('You have gone past this month\'s pool. No blame. Let us look at what can ease.', 6000), 900); }
         prevLeft = left;
     }
     function companionReturns() {
         try {
             const last = +localStorage.getItem('gc_last') || 0; localStorage.setItem('gc_last', String(Date.now()));
-            if (last && Date.now() - last > 6 * 3600e3 && GC && (prefs.orbMode || 'header') !== 'off') { GC.wake(); setTimeout(() => GC.say('Welcome back.', 3200), 900); }
+            if (last && Date.now() - last > 6 * 3600e3 && GC && GCompanion.prefs.get().place !== 'off') { GC.wake(); setTimeout(() => GC.say('Welcome back.', 3200), 900); }
         } catch (e) {}
     }
 
@@ -599,7 +598,7 @@
     }
     function dataCard() {
         let kb = 0; try { kb = Math.round((localStorage.getItem(K_EV) || '').length / 1024); } catch (e) {}
-        return `<div class="card"><h3>Your data</h3><p class="hint">Every entry is saved on this phone only: ${events.length} entries, about ${kb} KB. The app learns from them here. Nothing is sent anywhere. Use Backup to keep a safe copy.</p>${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}<div class="sw-row"><div><div>Companion</div><div class="set-meta">Where the Circle Companion lives.</div></div><select class="set-select" data-pref="orbMode">${[['header', 'Header corner'], ['float', 'Floating, bottom right'], ['off', 'Off']].map(([v, t]) => `<option value="${v}" ${(prefs.orbMode || 'header') === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div></div>`;
+        return `<div class="card"><h3>Your data</h3><p class="hint">Every entry is saved on this phone only: ${events.length} entries, about ${kb} KB. The app learns from them here. Nothing is sent anywhere. Use Backup to keep a safe copy.</p>${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}</div>`;
     }
     function renderIns() {
         const days = [0, 0, 0, 0, 0, 0, 0], cnt = [0, 0, 0, 0, 0, 0, 0], cutoff = Date.now() - 56 * DAY, seen = {};
@@ -626,6 +625,7 @@
             ${sw('lite', 'Lite mode', 'No blur or motion. Faster on older phones.')}${sw('privacy', 'Privacy mode', 'Blur amounts. Hold a number to peek.')}
             <button class="btn-line btn-accent" data-act="pick-bg">${hasBg ? 'Change' : 'Choose'} wallpaper photo</button>${hasBg ? '<button class="btn-line" data-act="clear-bg">Use default sky</button>' + slider('bg-blur', 'Wallpaper blur', 40, Math.min(40, prefs.bgBlur)) : ''}${slider('glass-blur', 'Glass frosting', 30, Math.min(30, prefs.glassBlur))}</div>`;
         h += dataCard();
+        if (window.GCompanion) h += window.GCompanion.settingsHTML();
         h += `<div class="card"><h3>Experience</h3>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Daily line', 'Proverbs and tips.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}${sw('remindOn', 'Backup reminder', 'A banner in the app. A web app cannot ring while closed.')}</div>`;
         h += `<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`;
         const pin = pinOn();
@@ -718,14 +718,15 @@
     function dayCloseSheet() {
         const T = D.today;
         sheet(`<h2>Close today</h2><p>You spent ${mh(T.spent)} today and have ${mh(D.P - D.cur.spent)} left this month. Is everything recorded, cash included?</p><div class="modal-actions"><button class="btn-secondary" data-act="close">Not yet</button><button class="btn-primary" id="dc">All recorded</button></div>`, box => {
-            box.querySelector('#dc').onclick = () => { add({ t: 'dayclose', day: T.key }); closeSheet(); render(); toast('Day closed'); if (GC) { GC.pose('cheer', 2600); GC.say('Day closed. Well done.', 3200); } };
+            box.querySelector('#dc').onclick = () => { add({ t: 'dayclose', day: T.key }); closeSheet(); render(); toast('Day closed'); if (GC) GC.do('celebrate', { force: true }); };
         });
     }
 
     /* expense entry */
     function entrySheet(catId, preset) {
         const c = D.catsById[catId]; if (!c) return;
-        if (GC) GC.pose('notes');
+        if (GC) GC.pose('calc');
+        let waitShown = false;
         let amt = preset ? String(preset) : '', acct = c.lastAcct || 'bank', need = 'want';
         sheet(`<h2>${esc(c.icon)} ${esc(c.name)}</h2><div class="amt-disp priv" id="e-amt"></div><div class="qchips" id="e-q"></div><div id="e-pv"></div>
             <div class="seg" id="e-acct"><button data-a="bank">Bank (UPI)</button><button data-a="cash">Cash</button></div>
@@ -767,7 +768,7 @@
                 const cnt = a > 0 ? buildPur(a) : (purBox.innerHTML = '', purBox.dataset.cnt = '', 0);
                 if (cnt && prefs.purchOn) {
                     const as = E.assess(D, c, cnt), emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked, rs = (val(box, '#e-reason') || '').trim();
-                    if (as.blocked && !emg) ok = false;
+                    if (as.blocked && !emg) { ok = false; if (!waitShown && GC) { waitShown = true; GC.pose('none'); GC.do('wait', { force: true }); } }
                     if (rs.length < 5) ok = false;
                     if (as.blocked && !emg) label = 'Blocked';
                 }
@@ -791,6 +792,7 @@
                 const cnt = prefs.purchOn ? E.counted(D, c, a) : 0;
                 if (cnt) { const emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked; e.pur = { c: cnt, need, reason: (val(box, '#e-reason') || '').trim(), emg: !!emg }; }
                 const ev = add(e); closeSheet(); render(); vibrate(20);
+                if (GC) GC.do(D.P && D.P - D.cur.spent < 0 ? 'warn' : 'yes', { force: true });
                                 toast(`${money(a)} added to ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); });
                 if (D.P && D.P - D.cur.spent < 0 && prefs.warnOn) setTimeout(() => toast(`Over the monthly budget by ${money(D.cur.spent - D.P)}.`), 6200);
             };
@@ -802,7 +804,7 @@
         const p = E.preview(D, c.id, c.price);
         if (E.counted(D, c, c.price) > 0 || p.level === 'broken' || p.level === 'risk') { entrySheet(catId, c.price); return; }
         const ev = add({ t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: c.price, acct: c.lastAcct || 'bank', note: '', kind: 'add' });
-        render(); vibrate(15);
+        render(); vibrate(15); if (GC) GC.do('yes', { force: true });
         toast(`${money(c.price)} · ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); });
     }
 
@@ -926,7 +928,7 @@
         initStore();
         refresh(); applyTheme();
         const locked = pinOn() && hasCrypto() ? showLock() : Promise.resolve();
-        render(); companionReturns(); locked.then(showSplash);
+        render(); companionReturns(); locked.then(() => { showSplash(); setTimeout(() => { if (GC && !GC.state().action) GC.do('hello', { force: true }); }, 3600); });
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     }
     window.__bm = { quickAmounts, learnInsights, setPin, showSplash, get D() { return D; }, E, add, render, get events() { return events; }, setScreen: s => { screen = s; render(); } };
