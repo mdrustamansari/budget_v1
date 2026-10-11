@@ -34,3 +34,10 @@ Version 2.5 (the living Circle Companion)
 - It reacts to real moments: a tick after saving an expense, a calculator while you type an amount, a wait mark when a purchase is blocked, a danger mark when you pass the pool, a trophy when you close the day.
 - Settings > Circle Companion has its own section: where it lives (fixed in the header, floating and snapping to the side, floating free, or hidden), resting form, Movement, Activity, lines a day, proverbs on or off, and buttons to show you things. It is always on top of every screen.
 - Reduced motion and Lite mode keep it still.
+
+v2.7 - (v2.6 glass edge light was dropped; this builds on v2.5)
+  Circle Companion settings: new "Character" choice. Spectre (molds into many shapes) or Glass orb
+  (always a perfect sphere; still speaks, gestures and uses props).
+  The shadow under it is now soft and blurred, like diffused light.
+  New "Cosmic aura" switch: glow, two orbit rings, a lens flare on the highlight, star sparkles and tiny twinkling stars.
+  Service-worker cache v18.

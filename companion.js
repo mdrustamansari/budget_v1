@@ -17,7 +17,7 @@
     const ease = u => u * u * (3 - 2 * u);
 
     // ================= settings (the character's own)
-    const PKEY = 'gc_prefs', DEF = { place: 'header', rest: 'circle', move: 60, act: 55, talk: 19, wise: true };
+    const PKEY = 'gc_prefs', DEF = { place: 'header', rest: 'circle', move: 60, act: 55, talk: 19, wise: true, look: 'spectre', aura: true };
     let PR = null; const watchers = [];
     function loadPrefs(legacy) {
         if (PR) return PR;
@@ -171,19 +171,30 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
         grad('linearGradient', 'o', { x1: '0', y1: '0', x2: '1', y2: '0' }, [['0', '#7fe0e8'], ['.5', '#ffffff'], ['1', '#f5d29a']]);
         grad('radialGradient', 'ht', { cx: '50%', cy: '50%', r: '50%' }, [['.45', '#7fe0e8', 0.5], ['1', '#7fe0e8', 0]]);
         grad('radialGradient', 'hg', { cx: '50%', cy: '50%', r: '50%' }, [['.45', '#ffd98a', 0.4], ['1', '#ffd98a', 0]]);
+        grad('radialGradient', 'oh', { cx: '31%', cy: '22%', r: '42%' }, [['0', '#ffffff', 0.85], ['.35', '#ffffff', 0.28], ['1', '#ffffff', 0]]);
+        grad('radialGradient', 'oc', { cx: '73%', cy: '80%', r: '40%' }, [['0', '#ffe3a6', 0.55], ['1', '#ffe3a6', 0]]);
+        grad('radialGradient', 'nb', { cx: '50%', cy: '50%', r: '50%' }, [['.3', '#b79bff', 0.34], ['.7', '#ff9fd0', 0.12], ['1', '#ff9fd0', 0]]);
+        grad('linearGradient', 'fl', { x1: '0', y1: '0', x2: '1', y2: '0' }, [['0', '#ffffff', 0], ['.5', '#ffffff', 0.95], ['1', '#ffffff', 0]]);
+        grad('linearGradient', 'fv', { x1: '0', y1: '0', x2: '0', y2: '1' }, [['0', '#bff6ff', 0], ['.5', '#ffffff', 0.9], ['1', '#bff6ff', 0]]);
+        const blurF = mk('filter', { id: uid + 'bl', x: '-60%', y: '-300%', width: '220%', height: '700%' }, defs); mk('feGaussianBlur', { stdDeviation: 3.4 }, blurF);
         const G = ART.grads(defs, uid), U = id => `url(#${uid}${id})`;
 
         // ---- layers, back to front
-        const shadow = mk('ellipse', { cx: 0, cy: 41, rx: 18, ry: 2.6, fill: 'currentColor', opacity: 0.1 }, svg);
+        const shadow = mk('ellipse', { cx: 0, cy: 41, rx: 20, ry: 4.6, fill: '#2a2f6e', opacity: 0.2, filter: `url(#${uid}bl)` }, svg);
         const auraT = mk('circle', { cx: -5, cy: -3, r: 48, fill: U('ht') }, svg), auraG = mk('circle', { cx: 8, cy: 9, r: 42, fill: U('hg') }, svg);
         const ring = (rx, ry) => { const g = mk('g', {}, svg); mk('ellipse', { cx: 0, cy: 0, rx, ry, fill: 'none', stroke: 'currentColor', 'stroke-width': 0.5, opacity: 0.28 }, g); mk('ellipse', { cx: 0, cy: 0, rx, ry, fill: 'none', stroke: U('o'), 'stroke-width': 0.8, opacity: 0.75 }, g); return g; };
         const orb1 = ring(47, 17), orb2 = ring(43, 24), sp1 = mk('circle', { r: 1.3, fill: '#fff' }, svg), sp2 = mk('circle', { r: 1, fill: '#ffe2a8' }, svg);
+        const auraV = mk('circle', { cx: 6, cy: -6, r: 50, fill: U('nb') }, svg);
+        const st4 = (fill) => mk('path', { d: 'M0 -4.2Q.5 -.5 4.2 0Q.5 .5 0 4.2Q-.5 .5 -4.2 0Q-.5 -.5 0 -4.2Z', fill }, svg), star1 = st4('#ffffff'), star2 = st4('#ffe2a8');
+        const twink = [[-46, -20], [44, -30], [50, 14], [-38, 30], [22, -48], [-18, 46]].map(([x, y], i) => ({ e: mk('circle', { cx: x, cy: y, r: i % 2 ? 0.7 : 0.9, fill: i % 3 ? '#fff' : '#cfeeff' }, svg), i }));
         const scene_ = mk('g', {}, svg), backL = mk('g', {}, scene_), bodyG = mk('g', {}, scene_), frontL = mk('g', {}, scene_), limbs = mk('g', {}, scene_), feet = mk('g', {}, scene_);
         // body
         const bodyPaths = [mk('path', { fill: U('g') }, bodyG), mk('path', { fill: U('c') }, bodyG), mk('path', { fill: U('w') }, bodyG), mk('path', { fill: U('s') }, bodyG)];
         const tintP = mk('path', { fill: '#fff', opacity: 0 }, bodyG); bodyPaths.push(tintP);
+        const orbHi = mk('path', { fill: U('oh'), opacity: 0 }, bodyG), orbCa = mk('path', { fill: U('oc'), opacity: 0 }, bodyG); bodyPaths.push(orbHi, orbCa);
         bodyPaths.push(mk('path', { fill: 'none', stroke: U('r'), 'stroke-width': 1.6, opacity: 0.9 }, bodyG), mk('path', { fill: 'none', stroke: INK, 'stroke-width': 0.55, opacity: 0.6 }, bodyG));
         const glyphL = mk('g', {}, bodyG), spec = mk('ellipse', { rx: 11, ry: 5.5, fill: U('sp') }, bodyG);
+        const flare = mk('g', {}, bodyG), flH = mk('ellipse', { rx: 27, ry: 0.9, fill: U('fl') }, flare), flV = mk('ellipse', { rx: 0.8, ry: 13, fill: U('fv') }, flare), flD = mk('ellipse', { rx: 15, ry: 0.6, fill: U('fl'), transform: 'rotate(40)' }, flare);
         const face = mk('g', {}, bodyG);
         const st = (a) => Object.assign({ fill: 'none', stroke: INK, 'stroke-linecap': 'round' }, a);
         const browL = mk('path', st({ 'stroke-width': 1.5 }), face), browR = mk('path', st({ 'stroke-width': 1.5 }), face);
@@ -219,7 +230,7 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
         const rest = (f) => f ? f : null;
 
         function setTargetShape(id, instant) {
-            if (id === '?' || id === 'rest') id = id === 'rest' ? restId() : pickOne(ORDER);
+            if (PR.look === 'orb') id = 'circle'; else if (id === '?' || id === 'rest') id = id === 'rest' ? restId() : pickOne(ORDER);
             const sh = SHAPES[id] || SHAPES.circle; shapeId = id; const o = ART.outline(sh);
             for (let i = 0; i < N; i++) { tgt[i * 2] = o[i][0]; tgt[i * 2 + 1] = o[i][1]; }
             const f = sh.face || { o: 1, x: 0, y: 0, s: 1 }; T.fo = f.o; T.fx = f.x; T.fy = f.y; T.fs = f.s;
@@ -320,7 +331,7 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
             const s = time / 1000, mv = st_ ? 0 : PR.move / 100 * 1.6, pose = POSES[poseOver || scene.pose || 'none'] || POSES.none;
             const breath = (Math.sin(s * 1.5) * 0.018 + Math.sin(s * 0.63 + 1) * 0.008) * mv, flt = (Math.sin(s * 0.7) * 1.4 + Math.sin(s * 1.13 + 2) * 0.7) * mv, drift = (Math.sin(s * 0.41 + 3) * 1.6 + Math.sin(s * 0.97) * 0.8) * mv;
             // body: points + a little jelly
-            const J = 0.42 * mv, sk = P.sk, pts = new Array(N);
+            const J = 0.42 * mv * (PR.look === 'orb' ? 0.1 : 1), sk = P.sk, pts = new Array(N);
             let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
             for (let i = 0; i < N; i++) {
                 let x = cur[i * 2], y = cur[i * 2 + 1]; const l = Math.hypot(x, y) || 1, nz = (Math.sin(s * 1.3 + i * 0.9) * 0.5 + Math.sin(s * 0.7 - i * 1.7) * 0.5) * J;
@@ -340,10 +351,14 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
             const tr = `translate(${dx.toFixed(2)} ${(dy + by).toFixed(2)}) rotate(${rot.toFixed(2)}) scale(${sx.toFixed(4)} ${sy.toFixed(4)}) translate(0 ${(-by).toFixed(2)})`;
             bodyG.setAttribute('transform', tr); limbs.setAttribute('transform', tr); feet.setAttribute('transform', tr);
             const pt = `translate(${dx.toFixed(2)} ${dy.toFixed(2)})`; backL.setAttribute('transform', `translate(${dx.toFixed(2)} ${(m.dy * 0.4).toFixed(2)})`); frontL.setAttribute('transform', `translate(${dx.toFixed(2)} ${(m.dy * 0.4).toFixed(2)})`);
-            shadow.setAttribute('rx', ((18 + (x1 - x0 - 60) * 0.2) * (1 - (dy - 5) * 0.012)).toFixed(1)); shadow.setAttribute('opacity', clamp(0.12 - (dy - 5) * 0.003, 0.03, 0.14).toFixed(3)); shadow.setAttribute('cx', dx.toFixed(1)); shadow.setAttribute('cy', Math.max(41, by + 11).toFixed(1));
+            shadow.setAttribute('rx', ((20 + (x1 - x0 - 60) * 0.2) * (1 - (dy - 5) * 0.012)).toFixed(1)); shadow.setAttribute('opacity', clamp(0.24 - (dy - 5) * 0.006, 0.06, 0.28).toFixed(3)); shadow.setAttribute('cx', dx.toFixed(1)); shadow.setAttribute('cy', Math.max(41, by + 11).toFixed(1));
             const gl = P.glow * (0.8 + 0.2 * Math.sin(s * 1.1)); auraT.setAttribute('opacity', gl.toFixed(2)); auraG.setAttribute('opacity', (gl * 0.85).toFixed(2));
             auraT.setAttribute('r', (44 + P.glow * 6).toFixed(1)); auraG.setAttribute('r', (38 + P.glow * 6).toFixed(1));
             const ox = dx * 0.8, oy = dy * 0.8; orb1.setAttribute('transform', `translate(${ox.toFixed(1)} ${oy.toFixed(1)}) rotate(${(-28 + s * 8 * mv).toFixed(2)})`); orb2.setAttribute('transform', `translate(${ox.toFixed(1)} ${oy.toFixed(1)}) rotate(${(52 - s * 5.5 * mv).toFixed(2)})`);
+            auraV.setAttribute('opacity', (gl * 0.9).toFixed(2)); auraV.setAttribute('cx', (6 + dx * 0.8 + Math.sin(s * 0.5) * 3).toFixed(1)); auraV.setAttribute('cy', (-6 + dy * 0.8 + Math.cos(s * 0.4) * 3).toFixed(1));
+            const fp = 0.45 + 0.4 * Math.sin(s * 1.2 + 1), fcx = x0 + bw * 0.3, fcy = y0 + bh * 0.2; flare.setAttribute('transform', `translate(${fcx.toFixed(1)} ${fcy.toFixed(1)}) rotate(${(Math.sin(s * 0.5) * 8).toFixed(1)})`); flare.setAttribute('opacity', (fp * (0.5 + P.glow * 0.5)).toFixed(2)); flare.setAttribute('transform', flare.getAttribute('transform'));
+            twink.forEach(t => t.e.setAttribute('opacity', (0.15 + 0.85 * Math.max(0, Math.sin(s * (0.9 + t.i * 0.23) * Math.max(0.35, mv) + t.i * 1.9))).toFixed(2)));
+            star1.setAttribute('transform', `translate(${sp1.getAttribute('cx') || 0} ${sp1.getAttribute('cy') || 0}) scale(${(0.6 + 0.6 * Math.abs(Math.sin(s * 1.3))).toFixed(2)})`); star2.setAttribute('transform', `translate(${sp2.getAttribute('cx') || 0} ${sp2.getAttribute('cy') || 0}) scale(${(0.5 + 0.6 * Math.abs(Math.sin(s * 0.9 + 1.7))).toFixed(2)})`);
             rimG.setAttribute('gradientTransform', `rotate(${((s * 12 * mv) % 360).toFixed(1)} .5 .5)`);
             const a1 = s * 0.6 * mv, a2 = s * 0.43 * mv + 2; sp1.setAttribute('cx', (ox + Math.cos(a1) * 40).toFixed(1)); sp1.setAttribute('cy', (oy + Math.sin(a1) * 15 - 8).toFixed(1)); sp1.setAttribute('opacity', (0.35 + 0.6 * Math.max(0, Math.sin(s * 1.3 * Math.max(0.3, mv)))).toFixed(2));
             sp2.setAttribute('cx', (ox + Math.cos(a2) * 36).toFixed(1)); sp2.setAttribute('cy', (oy + Math.sin(a2) * 20 + 10).toFixed(1)); sp2.setAttribute('opacity', (0.3 + 0.6 * Math.max(0, Math.sin(s * 0.9 * Math.max(0.3, mv) + 1.7))).toFixed(2));
@@ -454,7 +469,20 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
             reset() { cancelAction(); poseOver = null; finish(); }, get moodName() { return base; },
             tour() { runAction('tour', { force: true }); }, showSomething() { runAction(pickOne(Object.keys(ACTIONS).filter(k => k !== 'tour' && k !== 'sleep' && k !== 'nap' && k !== 'bedtime' && k !== 'blink')), { force: true }); }
         };
-        watchers.push(() => { applyPlace(); });
+        const cosmic = [auraT, auraG, auraV, orb1, orb2, sp1, sp2, star1, star2, flare].concat(twink.map(t => t.e));
+        let lkLook = PR.look, lkRest = PR.rest;
+        function applyLook() {
+            const orbMode = PR.look === 'orb'; orbHi.setAttribute('opacity', orbMode ? 1 : 0); orbCa.setAttribute('opacity', orbMode ? 1 : 0);
+            cosmic.forEach(e => { e.style.display = PR.aura === false ? 'none' : ''; });
+            shell.classList.toggle('gc-orb', orbMode);
+        }
+        applyLook();
+        if (PR.look === 'orb') setTargetShape('circle', true);
+        watchers.push(() => {
+            applyPlace(); applyLook();
+            if (PR.look !== lkLook) { lkLook = PR.look; lkRest = PR.rest; setTargetShape('rest'); }
+            else if (PR.rest !== lkRest) { lkRest = PR.rest; if (shapeId === 'circle' || shapeId === 'ghost') setTargetShape('rest'); }
+        });
         current = api; root.CircleCompanion = api;
         applyScene(true); applyPlace(); start();
         setTimeout(() => { if (!act) { syncHeaderOnce(); } }, 300); function syncHeaderOnce() { if (PR.place === 'header') syncHeader(); }
@@ -464,9 +492,11 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
     // ================= the character's own Settings card (any app can drop this in)
     function settingsHTML() {
         const p = loadPrefs(), opt = (v, t, cur) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${t}</option>`;
-        return `<div class="card gc-set"><h3>Circle Companion</h3><p class="hint">Your small spectre. It rests as a circle or a ghost, and often molds into other shapes. All of this stays on this phone.</p>
+        return `<div class="card gc-set"><h3>Circle Companion</h3><p class="hint">Your small companion. All of this stays on this phone.</p>
+<div class="gc-row"><div>Character</div><select class="set-select" data-gc="look">${opt('spectre', 'Spectre: molds into many shapes', p.look)}${opt('orb', 'Glass orb: always a perfect sphere', p.look)}</select><div class="hint">The orb keeps its round body and still gestures, speaks and uses props.</div></div>
+<div class="gc-row"><div class="sw-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Cosmic aura<span class="hint" style="display:block">Glow, rings, flare and tiny stars around it.</span></span><label class="switch"><input type="checkbox" data-gc="aura" ${p.aura !== false ? 'checked' : ''}><i></i></label></div></div>
 <div class="gc-row"><div>Where it lives</div><select class="set-select" data-gc="place">${opt('header', 'Fixed in the header corner', p.place)}${opt('snap', 'Floating, snaps to the nearest side', p.place)}${opt('free', 'Floating, free anywhere', p.place)}${opt('off', 'Hidden', p.place)}</select><div class="hint">It always stays on top. In the floating modes, drag it where you like.</div></div>
-<div class="gc-row"><div>Resting form</div><select class="set-select" data-gc="rest">${opt('circle', 'Circle', p.rest)}${opt('ghost', 'Ghost with a wavy tail', p.rest)}</select></div>
+<div class="gc-row"><div>Resting form (Spectre)</div><select class="set-select" data-gc="rest">${opt('circle', 'Circle', p.rest)}${opt('ghost', 'Ghost with a wavy tail', p.rest)}</select></div>
 <div class="gc-row"><div>Movement</div><input type="range" min="0" max="100" value="${p.move}" data-gc="move"><div class="gc-lbl"><span>Still</span><span>Lively</span></div></div>
 <div class="gc-row"><div>Activity</div><input type="range" min="0" max="100" value="${p.act}" data-gc="act"><div class="gc-lbl"><span>Rarely</span><span>Often</span></div><div class="hint">How often it changes shape, plays, rests or does something on its own.</div></div>
 <div class="gc-row"><div>Talking: <b data-gc-out="talk">${p.talk}</b> lines a day</div><input type="range" min="0" max="40" value="${p.talk}" data-gc="talk"><div class="gc-lbl"><span>Silent</span><span>Chatty</span></div></div>
