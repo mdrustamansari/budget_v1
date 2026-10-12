@@ -14,6 +14,7 @@
     const fmtDay = ts => new Date(ts).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
     const fmtDT = ts => new Date(ts).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
     const reduced = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    const fx = n => { try { if (window.GFeel) GFeel.moment(n); } catch (e) {} };
     const vibrate = p => { try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} };
     const load = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
     const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } };
@@ -21,7 +22,7 @@
     /* ---------- Storage: one event log + preferences ---------- */
     const K_EV = 'bm2_events', K_PREF = 'bm2_prefs', K_PIN = 'bm2_pin', K_BG = 'budgetApp_bg';
     const PREF_DEFAULT = () => ({
-        theme: 'auto', bgBlur: 24, glassBlur: 20,
+        theme: 'auto', look: 'aurora', p: {}, acc: [], bgBlur: 24, glassBlur: 20,
         introOn: true, greetOn: true, lineOn: true, forecastOn: true, stripOn: true, animOn: true,
         remindOn: true, remindHour: 23, remindSnooze: null, lastBackup: null,
         lite: false, privacy: false, warnOn: true, dayCloseOn: true, waitOn: true, reviewOn: true, purchOn: true,
@@ -74,6 +75,7 @@
     const THEMES = {
         sky: { label: 'Sky', part: 'Morning', mL: '#e3f5ff', mD: '#0a1322' },
         marigold: { label: 'Marigold', part: 'Afternoon', mL: '#fff6d6', mD: '#1a1305' },
+        sunflower: { label: 'Sunflower', part: '', mL: '#fffbd0', mD: '#161305' },
         dusk: { label: 'Dusk', part: 'Evening', mL: '#efeafd', mD: '#0f0b22' },
         forest: { label: 'Parrot', part: '', mL: '#f1f8d8', mD: '#0c1405' }
     };
@@ -90,6 +92,7 @@
         root.classList.toggle('pm', !!prefs.privacy);
         root.style.setProperty('--glass-blur', prefs.glassBlur + 'px');
         applyBackground();
+        try { GLook.apply(prefs, { dark: !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches), hasBg: root.classList.contains('has-bg'), lite: !!prefs.lite }); } catch (e) {}
     }
     const hex2rgb = h => { h = h.trim().replace('#', ''); if (h.length === 3) h = h.split('').map(x => x + x).join(''); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
     const mixRGB = (x, y, t) => x.map((v, i) => Math.round(v + (y[i] - v) * t));
@@ -619,13 +622,36 @@
 
     const sw = (k, t, d) => `<div class="sw-row"><div><div>${t}</div>${d ? `<div class="set-meta">${d}</div>` : ''}</div><label class="switch"><input type="checkbox" data-pref="${k}" ${prefs[k] ? 'checked' : ''}><i></i></label></div>`;
     const slider = (id, l, max, v) => `<div class="bg-row"><span>${l}</span><input type="range" id="${id}" min="0" max="${max}" value="${v}"><b class="bg-val" id="${id}-v">${v}</b></div>`;
+    const LOOKS = () => [['paper', 'Paper', '#f4efe0'], ['aurora', 'Aurora', 'linear-gradient(135deg,#7fd6ff,#b9a6ff 60%,#ffd9a8)']].concat(Object.keys(GLook.NATURE).map(k => { const n = GLook.NATURE[k]; return [k, n.label, `linear-gradient(160deg,${n.L[0]},${n.L[1]})`]; }));
+    const accOpen = k => (prefs.acc || []).indexOf(k) >= 0 ? 'open' : '';
+    const pv = k => (prefs.p && prefs.p[k] !== undefined) ? prefs.p[k] : GLook.PAPER_DEFAULTS[k];
+    const prSlider = (k, l, min, max, step, unit) => `<div class="bg-row"><span>${l}</span><input type="range" data-pr="${k}" min="${min}" max="${max}" step="${step}" value="${pv(k)}"><b class="bg-val" id="pr-${k}">${pv(k)}${unit || ''}</b></div>`;
+    const prSelect = (k, l, opts) => `<div class="sw-row"><span>${l}</span><select class="set-select" data-prs="${k}">${opts.map(([v, t]) => `<option value="${v}" ${pv(k) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div>`;
+    const prSwitch = (k, t) => `<div class="sw-row"><span>${t}</span><label class="switch"><input type="checkbox" data-prc="${k}" ${pv(k) ? 'checked' : ''}><i></i></label></div>`;
+    function lookCard() {
+        const look = prefs.look || 'paper', dark = !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+        let hasBg = false; try { hasBg = !!localStorage.getItem(K_BG); } catch (e) {}
+        let h = `<div class="card"><h3>Look</h3><div class="look-grid">${LOOKS().map(([k, l, c]) => `<button class="lk ${look === k ? 'on' : ''}" data-act="look" data-v="${k}" style="--sw:${c}">${l}</button>`).join('')}</div>`;
+        h += `<details class="acc" data-acc="aur" ${accOpen('aur')}><summary>Aurora colours</summary><div class="acc-body"><div class="sw-row"><span>Palette</span><select class="set-select" data-pref="theme">${[['auto', 'Automatic (by time of day)']].concat(Object.keys(THEMES).map(k => [k, THEMES[k].label + (THEMES[k].part ? ' · ' + THEMES[k].part : '')])).map(([k, l]) => `<option value="${k}" ${prefs.theme === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div><p class="hint">Sets the accent colours for Aurora and Paper.</p></div></details>`;
+        if (look === 'paper') {
+            const cur = pv('paperColor'), custom = pv('paperCustom');
+            h += `<details class="acc" data-acc="pcol" ${accOpen('pcol')}><summary>Page colour</summary><div class="acc-body"><div class="sw-grid">${GLook.PAPERS.map(([k, l, lc, dc]) => `<button class="swatch ${cur === k ? 'on' : ''}" data-act="pr-set" data-k="paperColor" data-v="${k}" style="--sw:${dark ? dc : lc}">${l}</button>`).join('')}<button class="swatch ${cur === 'custom' ? 'on' : ''}" data-act="pr-set" data-k="paperColor" data-v="custom" style="--sw:${custom}">Custom</button></div>
+                <label class="field"><span>Your own colour${dark ? ' (darkened automatically at night)' : ''}</span><input type="color" class="cpick" data-prcol="paperCustom" value="${custom}"></label>${prSwitch('texture', 'Paper texture (grain; fibres on Parched paper)')}</div></details>`;
+            h += `<details class="acc" data-acc="ppat" ${accOpen('ppat')}><summary>Pattern: dots, graph or ruled</summary><div class="acc-body">${prSelect('pattern', 'Pattern', [['dots', 'Dot grid'], ['graph', 'Graph boxes'], ['ruled', 'Ruled lines (single rule)'], ['plain', 'Plain']])}
+                ${pv('pattern') === 'plain' ? '' : prSlider('dotGap', 'Spacing', 10, 44, 1, ' px') + (pv('pattern') === 'dots' ? prSlider('dotSize', 'Dot size', 0.4, 3, 0.1, ' px') : '') + prSlider('dotAlpha', 'Opacity', 3, 70, 1, '%') + prSelect('ink', 'Ink', GLook.INKS.map(([k, l]) => [k, l]))}</div></details>`;
+            h += `<details class="acc" data-acc="pmar" ${accOpen('pmar')}><summary>Margins</summary><div class="acc-body">${prSelect('mStyle', 'Margin lines', [['none', 'None'], ['single', 'Single line'], ['double', 'Double line']])}
+                ${pv('mStyle') === 'none' ? '' : `<div class="sw-grid">${GLook.MARGINS.map(([k, l, c]) => `<button class="swatch dotm ${pv('mColor') === k ? 'on' : ''}" title="${l}" data-act="pr-set" data-k="mColor" data-v="${k}" style="--sw:rgb(${c.join(',')})"></button>`).join('')}</div>${prSwitch('mTop', 'Top margin')}${prSlider('mTopIn', 'Top margin depth', 0.6, 2, 0.1, ' in')}${prSwitch('mSide', 'Side margin')}`}</div></details>`;
+        } else h += `<p class="hint">Choose Paper above to customise the page colour, dots, margins and texture.</p>`;
+        h += `<details class="acc" data-acc="blur" ${accOpen('blur')}><summary>Blur and glass</summary><div class="acc-body">${slider('bg-blur', 'Background blur', 40, Math.min(40, prefs.bgBlur))}${slider('glass-blur', 'Glass frosting (cards and panels)', 30, Math.min(30, prefs.glassBlur))}<p class="hint">Background blur affects only the page behind everything. Glass frosting affects the cards, sheets and menu bar.</p></div></details>`;
+        h += `<details class="acc" data-acc="bgp" ${accOpen('bgp')}><summary>Wallpaper photo and speed</summary><div class="acc-body"><button class="btn-line btn-accent" data-act="pick-bg">${hasBg ? 'Change' : 'Choose'} wallpaper photo</button>${hasBg ? '<button class="btn-line" data-act="clear-bg">Remove wallpaper</button>' : ''}${sw('lite', 'Lite mode', 'No blur or motion. Faster on older phones.')}${sw('privacy', 'Privacy mode', 'Blur amounts. Hold a number to peek.')}</div></details></div>`;
+        return h;
+    }
     function renderSet() {
         let hasBg = false; try { hasBg = !!localStorage.getItem(K_BG); } catch (e) {}
-        let h = `<div class="card"><h3>Look</h3><div class="sw-row"><span>Theme</span><select class="set-select" data-pref="theme">${[['auto', 'Automatic (by time of day)']].concat(Object.keys(THEMES).map(k => [k, THEMES[k].label + (THEMES[k].part ? ' · ' + THEMES[k].part : '')])).map(([k, l]) => `<option value="${k}" ${prefs.theme === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-            ${sw('lite', 'Lite mode', 'No blur or motion. Faster on older phones.')}${sw('privacy', 'Privacy mode', 'Blur amounts. Hold a number to peek.')}
-            <button class="btn-line btn-accent" data-act="pick-bg">${hasBg ? 'Change' : 'Choose'} wallpaper photo</button>${hasBg ? '<button class="btn-line" data-act="clear-bg">Use default sky</button>' + slider('bg-blur', 'Wallpaper blur', 40, Math.min(40, prefs.bgBlur)) : ''}${slider('glass-blur', 'Glass frosting', 30, Math.min(30, prefs.glassBlur))}</div>`;
+        let h = lookCard();
         h += dataCard();
         if (window.GCompanion) h += window.GCompanion.settingsHTML();
+        if (window.GFeel) h += window.GFeel.settingsHTML();
         h += `<div class="card"><h3>Experience</h3>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Daily line', 'Proverbs and tips.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}${sw('remindOn', 'Backup reminder', 'A banner in the app. A web app cannot ring while closed.')}</div>`;
         h += `<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`;
         const pin = pinOn();
@@ -633,7 +659,7 @@
         h += `<div class="card"><h3>Backup</h3><p class="hint">${prefs.lastBackup ? 'Last backup ' + fmtDT(prefs.lastBackup) : 'Not backed up yet.'} Share opens your phone's share sheet: choose Google Drive or Proton Drive.</p><button class="btn-line btn-accent" data-act="backup" data-m="share">Back up now (share)</button><button class="btn-line" data-act="backup" data-m="download">Save to Downloads</button><button class="btn-line" data-act="backup" data-m="plain">Share unencrypted copy</button><button class="btn-line" data-act="restore">Restore from a file</button>${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}<button class="btn-line" data-act="erase" style="color:var(--warning)">Erase everything</button></div>`;
         $('s-set').innerHTML = h;
         const bb = $('bg-blur'), gb = $('glass-blur');
-        if (bb) bb.oninput = () => { prefs.bgBlur = +bb.value; $('bg-blur-v').textContent = bb.value; applyBackground(); persist(); };
+        if (bb) bb.oninput = () => { prefs.bgBlur = +bb.value; $('bg-blur-v').textContent = bb.value; applyBackground(); applyTheme(); persist(); };
         if (gb) gb.oninput = () => { prefs.glassBlur = +gb.value; $('glass-blur-v').textContent = gb.value; document.documentElement.style.setProperty('--glass-blur', gb.value + 'px'); persist(); };
     }
 
@@ -791,9 +817,9 @@
                 const e = { t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: a, acct, note: val(box, '#e-note'), kind: 'add' };
                 const cnt = prefs.purchOn ? E.counted(D, c, a) : 0;
                 if (cnt) { const emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked; e.pur = { c: cnt, need, reason: (val(box, '#e-reason') || '').trim(), emg: !!emg }; }
-                const ev = add(e); closeSheet(); render(); vibrate(20);
+                const ev = add(e); closeSheet(); render(); fx('up');
                 if (GC) GC.do(D.P && D.P - D.cur.spent < 0 ? 'warn' : 'yes', { force: true });
-                                toast(`${money(a)} added to ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); });
+                                toast(`${money(a)} added to ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
                 if (D.P && D.P - D.cur.spent < 0 && prefs.warnOn) setTimeout(() => toast(`Over the monthly budget by ${money(D.cur.spent - D.P)}.`), 6200);
             };
         });
@@ -804,8 +830,8 @@
         const p = E.preview(D, c.id, c.price);
         if (E.counted(D, c, c.price) > 0 || p.level === 'broken' || p.level === 'risk') { entrySheet(catId, c.price); return; }
         const ev = add({ t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: c.price, acct: c.lastAcct || 'bank', note: '', kind: 'add' });
-        render(); vibrate(15); if (GC) GC.do('yes', { force: true });
-        toast(`${money(c.price)} · ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); });
+        render(); fx('up'); if (GC) GC.do('yes', { force: true });
+        toast(`${money(c.price)} · ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
     }
 
     function wantSheet() {
@@ -875,7 +901,7 @@
             case 'line': lineBump++; renderToday(); break;
             case 'entry': if (!D.P) planSheet(); else entrySheet(+id); break;
             case 'quick': quickAdd(+id); break;
-            case 'void': add({ t: 'void', target: +id }); render(); toast('Entry undone'); break;
+            case 'void': add({ t: 'void', target: +id }); render(); fx('down'); toast('Entry undone'); break;
             case 'toast-undo': { const f = $('toast')._undo; $('toast').classList.remove('show'); if (f) f(); break; }
             case 'b-later': prefs.remindSnooze = Date.now() + 3600e3; persist(); renderBanner(); break;
             case 'b-now': backupSheet('share'); break;
@@ -884,6 +910,8 @@
             case 'want-buy': { const w = D.wants.find(x => x.wid === id); if (w) { add({ t: 'want', op: 'buy', wid: id }); screen = 'today'; render(); entrySheet(w.cat, w.price); } break; }
             case 'rev': add({ t: 'rev', pid: +id, v: el.dataset.v }); render(); break;
             case 'pick-bg': $('file-bg').click(); break;
+            case 'look': prefs.look = el.dataset.v; persist(); render(); break;
+            case 'pr-set': prefs.p = Object.assign({}, prefs.p, { [el.dataset.k]: el.dataset.v }); persist(); render(); break;
             case 'clear-bg': try { localStorage.removeItem(K_BG); } catch (e) {} render(); toast('Default sky restored'); break;
             case 'cat-edit': catSheet(+id); break;
             case 'cat-add': catSheet(0); break;
@@ -903,6 +931,23 @@
         if (k === 'rememberPass' && !el.checked) { prefs.pass = ''; persist(); }
         render();
     });
+    document.addEventListener('input', ev => {
+        if (!ev.target || !ev.target.closest) return;
+        const r = ev.target.closest('[data-pr]'); if (!r) return;
+        const k = r.dataset.pr, v = parseFloat(r.value); prefs.p = Object.assign({}, prefs.p, { [k]: v });
+        const lab = $('pr-' + k); if (lab) lab.textContent = v + (k === 'dotAlpha' ? '%' : k === 'mTopIn' ? ' in' : ' px'); applyTheme(); persist();
+    });
+    document.addEventListener('change', ev => {
+        const t = ev.target;
+        if (t.matches && t.matches('[data-prs]')) { prefs.p = Object.assign({}, prefs.p, { [t.dataset.prs]: t.value }); persist(); render(); }
+        else if (t.matches && t.matches('[data-prc]')) { prefs.p = Object.assign({}, prefs.p, { [t.dataset.prc]: t.checked }); persist(); render(); }
+        else if (t.matches && t.matches('[data-prcol]')) { prefs.p = Object.assign({}, prefs.p, { [t.dataset.prcol]: t.value, paperColor: 'custom' }); persist(); render(); }
+    });
+    document.addEventListener('toggle', ev => {
+        const d = ev.target; if (!d || !d.matches || !d.matches('details[data-acc]')) return;
+        const k = d.dataset.acc, a = (prefs.acc || []).filter(x => x !== k); if (d.open) a.push(k); prefs.acc = a; persist();
+    }, true);
+    try { const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', () => applyTheme()) : mq.addListener(() => applyTheme())); } catch (e) {}
     $('file-bg').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) processWallpaper(f); };
     $('file-restore').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) restoreFile(f); };
 
@@ -928,7 +973,9 @@
         initStore();
         refresh(); applyTheme();
         const locked = pinOn() && hasCrypto() ? showLock() : Promise.resolve();
-        render(); companionReturns(); locked.then(() => { showSplash(); setTimeout(() => { if (GC && !GC.state().action) GC.do('hello', { force: true }); }, 3600); });
+        render(); companionReturns();
+        if (window.GFeel) GFeel.saveButton({ save: () => { persist(); try { return !events.length || localStorage.getItem(K_EV) !== null; } catch (e) { return false; } }, backup: () => backupSheet('share') });
+        locked.then(() => { showSplash(); setTimeout(() => { if (GC && !GC.state().action) GC.do('hello', { force: true }); }, 3600); });
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     }
     window.__bm = { quickAmounts, learnInsights, setPin, showSplash, get D() { return D; }, E, add, render, get events() { return events; }, setScreen: s => { screen = s; render(); } };

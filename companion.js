@@ -17,8 +17,8 @@
     const ease = u => u * u * (3 - 2 * u);
 
     // ================= settings (the character's own)
-    const PKEY = 'gc_prefs', DEF = { place: 'header', rest: 'circle', move: 60, act: 55, talk: 19, wise: true, look: 'spectre', aura: true };
-    let PR = null; const watchers = [];
+    const PKEY = 'gc_prefs', DEF = { place: 'header', rest: 'circle', move: 60, act: 55, talk: 19, wise: true, look: 'spectre', aura: true, avoid: 'off' };
+    let PR = null; const watchers = [], RESERVE = [];
     function loadPrefs(legacy) {
         if (PR) return PR;
         let o = null; try { o = JSON.parse(localStorage.getItem(PKEY) || 'null'); } catch (e) {}
@@ -141,11 +141,15 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
 .gc .gc-hit:focus-visible { outline: 2px solid var(--blue-a, #1fb8f5); outline-offset: 3px; }
 .gc.settle { transition: left .34s cubic-bezier(.2,.9,.3,1), top .34s cubic-bezier(.2,.9,.3,1); }
 .gc-bubble { position: absolute; max-width: 230px; width: max-content; padding: 9px 13px; border-radius: 16px; font-size: .95rem; line-height: 1.4; color: var(--text-main); background: var(--glass-hi, rgba(255,255,255,.85)); border: 1px solid var(--glass-line, rgba(255,255,255,.6)); -webkit-backdrop-filter: blur(var(--glass-blur, 20px)); backdrop-filter: blur(var(--glass-blur, 20px)); box-shadow: 0 8px 24px rgba(30,20,60,.18); opacity: 0; pointer-events: none; transform: scale(.92); transition: opacity .35s ease, transform .35s cubic-bezier(.2,.9,.3,1.2); z-index: 5; }
+.gc.glide { transition: left 1.9s ease-in-out, top 1.9s ease-in-out; }
+.gc-card { position: fixed; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(10px); max-width: min(86%, 340px); padding: 10px 15px; border-radius: 16px; font-size: .95rem; line-height: 1.4; color: var(--text-main); background: var(--glass-hi, rgba(255,255,255,.88)); border: 1px solid var(--glass-line, rgba(255,255,255,.6)); box-shadow: 0 8px 24px rgba(30,20,60,.2); opacity: 0; pointer-events: none; transition: opacity .3s, transform .3s; z-index: 399; text-align: center; }
+.gc-card.on { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
+html.lite .gc-card, body.still .gc-card { transition: none; }
 .gc-bubble.on { opacity: 1; transform: none; pointer-events: auto; }
 .gc-set input[type=range] { width: 100%; accent-color: var(--blue-b, #4a6cf7); margin: 4px 0 2px; }
 .gc-set .gc-lbl { display: flex; justify-content: space-between; font-size: .85rem; color: var(--text-muted); }
 .gc-set .gc-row { margin-top: 12px; }
-.gc-set .set-select { width: 100%; margin-top: 4px; }
+.gc-set .set-select { width: 100%; max-width: 100%; margin-top: 4px; }
 @media (prefers-reduced-motion: reduce) { .gc.settle { transition: none; } .gc-bubble { transition: none; } }
 `;
         document.head.appendChild(s);
@@ -423,9 +427,12 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
         const POSK = 'gc_pos';
         function syncHeader() { const r = host.getBoundingClientRect(); if (r.width > 0 && r.bottom > -100) { shell.style.left = (r.left + r.width / 2 - 28) + 'px'; shell.style.top = (r.top + r.height / 2 - 28) + 'px'; hdrOk = true; } }
         const lim = () => ({ minX: 2, maxX: innerWidth - 56 - 2, minY: 8 + (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sat')) || 0), maxY: innerHeight - 56 - 8 });
+        function clearOf(x, y) { for (const f of RESERVE) { let rs = []; try { rs = f() || []; } catch (e) {} for (const b of rs) { if (x + 56 > b.left + 2 && x < b.right - 2 && y + 56 > b.top + 2 && y < b.bottom - 2) y = Math.max(8, b.top - 56 - 6); } } return y; }
         function put(x, y) { const L = lim(); shell.style.left = clamp(x, L.minX, L.maxX) + 'px'; shell.style.top = clamp(y, L.minY, L.maxY) + 'px'; }
         function savePos(x, y) { const L = lim(); try { localStorage.setItem(POSK, JSON.stringify({ fx: (x - L.minX) / (L.maxX - L.minX), fy: (y - L.minY) / (L.maxY - L.minY) })); } catch (e) {} }
-        function restorePos() { let o = null; try { o = JSON.parse(localStorage.getItem(POSK) || 'null'); } catch (e) {} const L = lim(); if (o && isFinite(o.fx) && isFinite(o.fy)) put(L.minX + clamp(o.fx, 0, 1) * (L.maxX - L.minX), L.minY + clamp(o.fy, 0, 1) * (L.maxY - L.minY)); else put(L.maxX, innerHeight * 0.72); if (PR.place === 'snap') { const r = shell.getBoundingClientRect(); put(r.left + 28 < innerWidth / 2 ? L.minX : L.maxX, r.top); } }
+        function restorePos() { if (gliding) return; let o = null; const _r = restorePos0; _r();
+            const r = shell.getBoundingClientRect(); const y = clearOf(r.left, r.top); if (y !== r.top) put(r.left, y); }
+        function restorePos0() { let o = null; try { o = JSON.parse(localStorage.getItem(POSK) || 'null'); } catch (e) {} const L = lim(); if (o && isFinite(o.fx) && isFinite(o.fy)) put(L.minX + clamp(o.fx, 0, 1) * (L.maxX - L.minX), L.minY + clamp(o.fy, 0, 1) * (L.maxY - L.minY)); else put(L.maxX, innerHeight * 0.72); if (PR.place === 'snap') { const r = shell.getBoundingClientRect(); put(r.left + 28 < innerWidth / 2 ? L.minX : L.maxX, r.top); } }
         function applyPlace() {
             const p = PR.place; shell.style.display = (p === 'off' || !shown) ? 'none' : ''; shell.classList.toggle('movable', p === 'snap' || p === 'free');
             if (p === 'header') { hdrOk = false; syncHeader(); } else if (p !== 'off') restorePos();
@@ -433,7 +440,7 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
             scheduleIdle(); setScene();
         }
         function setScene() { if (!act) { scene.shape = 'rest'; applyScene(); } }
-        let ds = null, dragged = false;
+        let ds = null, dragged = false, gliding = false;
         hit.addEventListener('pointerdown', e => { if (e.button !== undefined && e.button !== 0) return; const r = shell.getBoundingClientRect(); ds = { x: e.clientX, y: e.clientY, l: r.left, t: r.top, id: e.pointerId }; dragged = false; try { hit.setPointerCapture(e.pointerId); } catch (_) {} });
         hit.addEventListener('pointermove', e => {
             if (!ds || ds.id !== e.pointerId) return; const dx = e.clientX - ds.x, dy = e.clientY - ds.y;
@@ -443,7 +450,7 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
         });
         const end = e => {
             if (!ds || (e && ds.id !== e.pointerId)) return; ds = null; shell.classList.remove('drag'); lastTouch = performance.now();
-            if (dragged) { dragging = false; const r = shell.getBoundingClientRect(), L = lim(); let tx = r.left, ty = clamp(r.top, L.minY, L.maxY); if (PR.place === 'snap') { tx = r.left + 28 < innerWidth / 2 ? L.minX : L.maxX; shell.classList.add('settle'); setTimeout(() => shell.classList.remove('settle'), 420); } put(tx, ty); savePos(clamp(tx, L.minX, L.maxX), ty); setTimeout(() => { dragged = false; finish(); runAction('hop', { force: true }); }, 60); }
+            if (dragged) { dragging = false; const r = shell.getBoundingClientRect(), L = lim(); let tx = r.left, ty = clamp(r.top, L.minY, L.maxY); if (PR.place === 'snap') { tx = r.left + 28 < innerWidth / 2 ? L.minX : L.maxX; shell.classList.add('settle'); setTimeout(() => shell.classList.remove('settle'), 420); } ty = clearOf(tx, ty); put(tx, ty); savePos(clamp(tx, L.minX, L.maxX), ty); setTimeout(() => { dragged = false; finish(); runAction('hop', { force: true }); }, 60); }
             else poke();
         };
         hit.addEventListener('pointerup', end); hit.addEventListener('pointercancel', e => { if (ds) { ds = null; dragging = false; shell.classList.remove('drag'); } });
@@ -469,6 +476,48 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
             reset() { cancelAction(); poseOver = null; finish(); }, get moodName() { return base; },
             tour() { runAction('tour', { force: true }); }, showSomething() { runAction(pickOne(Object.keys(ACTIONS).filter(k => k !== 'tour' && k !== 'sleep' && k !== 'nap' && k !== 'bedtime' && k !== 'blink')), { force: true }); }
         };
+
+        // ---- tell: speak a detail when the user taps a graphic (does not count towards the daily lines)
+        const card = document.createElement('div'); card.className = 'gc-card'; document.body.appendChild(card); let cardT = null;
+        card.addEventListener('click', () => card.classList.remove('on'));
+        function tell(text, tone) {
+            if (!text) return false; lastTouch = performance.now();
+            if (PR.place !== 'off' && PR.talk > 0 && shown) { say(text, Math.max(4200, text.length * 80), true); card.classList.remove('on'); }
+            else { card.textContent = text; card.classList.add('on'); clearTimeout(cardT); cardT = setTimeout(() => card.classList.remove('on'), Math.max(4200, text.length * 80)); }
+            if (PR.place !== 'off' && shown && !dragging) { try { runAction(tone === 'bad' ? 'shrug' : 'nod', { force: true }); } catch (e) {} }
+            return true;
+        }
+        api.tell = tell;
+
+        // ---- avoid text: when it sits over words for a moment, it glides to the nearest clear spot and stays there
+        let lastScroll = 0, overSince = 0, quietUntil = 0, avTimer = null;
+        addEventListener('scroll', () => { lastScroll = performance.now(); }, { passive: true, capture: true });
+        function textRects() {
+            const out = [], vw = innerWidth, vh = innerHeight, tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode(n) { if (!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT; const p = n.parentElement; if (!p || p.closest('.gc, .gc-card, script, style, svg, #splash, .lock')) return NodeFilter.FILTER_REJECT; return NodeFilter.FILTER_ACCEPT; } });
+            const rg = document.createRange(); let n, c = 0;
+            while ((n = tw.nextNode()) && c < 1500) { rg.selectNodeContents(n); const rs = rg.getClientRects(); for (let i = 0; i < rs.length; i++) { const r = rs[i]; if (r.width < 2 || r.height < 4 || r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) continue; out.push(r); c++; } }
+            return out;
+        }
+        const hits = (x, y, rs) => { for (let i = 0; i < rs.length; i++) { const r = rs[i]; if (x + 58 > r.left + 1 && x - 2 < r.right - 1 && y + 58 > r.top + 2 && y - 2 < r.bottom - 2) return true; } return false; };
+        function avoidStep() {
+            const mode = PR.avoid; if (!mode || mode === 'off' || (PR.place !== 'snap' && PR.place !== 'free') || !shown || document.hidden || dragging || act) { overSince = 0; return; }
+            const now = performance.now(); if (now < quietUntil || now - lastTouch < 4000 || now - lastScroll < 500 || (opts.busy && opts.busy())) { overSince = 0; return; }
+            const r = shell.getBoundingClientRect(), rs = textRects(); if (!hits(r.left, r.top, rs)) { overSince = 0; return; }
+            if (!overSince) { overSince = now; return; } if (now - overSince < (mode === 'eager' ? 300 : 1000)) return;
+            overSince = 0; const L = lim(), cand = [];
+            if (PR.place === 'snap') { [L.minX, L.maxX].forEach(x => { for (let y = L.minY; y <= L.maxY; y += 20) cand.push([x, y, Math.abs(x - r.left) * 0.4 + Math.abs(y - r.top)]); }); }
+            else { for (let y = L.minY; y <= L.maxY; y += 20) { cand.push([r.left, y, Math.abs(y - r.top)]); [L.minX, L.maxX].forEach(x => cand.push([x, y, Math.abs(x - r.left) * 0.7 + Math.abs(y - r.top)])); } for (let x = L.minX; x <= L.maxX; x += 20) cand.push([x, r.top, Math.abs(x - r.left)]); }
+            cand.sort((a, b) => a[2] - b[2]);
+            for (const c of cand) { const y = clearOf(c[0], c[1]); if (y !== c[1]) continue; if (!hits(c[0], c[1], rs)) { glideTo(c[0], c[1]); quietUntil = now + 3500; return; } }
+            quietUntil = now + 6000;
+        }
+        function glideTo(x, y) {
+            const L = lim(); x = clamp(x, L.minX, L.maxX); y = clamp(y, L.minY, L.maxY);
+            if (still()) { put(x, y); } else { gliding = true; shell.classList.add('glide'); void shell.offsetWidth; requestAnimationFrame(() => { put(x, y); }); setTimeout(() => { shell.classList.remove('glide'); gliding = false; }, 2200); }
+            savePos(x, y);
+        }
+        function avoidRestart() { clearInterval(avTimer); avTimer = null; overSince = 0; if (PR.avoid && PR.avoid !== 'off') avTimer = setInterval(avoidStep, 350); }
+        avoidRestart(); watchers.push(avoidRestart);
         const cosmic = [auraT, auraG, auraV, orb1, orb2, sp1, sp2, star1, star2, flare].concat(twink.map(t => t.e));
         let lkLook = PR.look, lkRest = PR.rest;
         function applyLook() {
@@ -478,8 +527,9 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
         }
         applyLook();
         if (PR.look === 'orb') setTargetShape('circle', true);
+        let lkPlace = PR.place;
         watchers.push(() => {
-            applyPlace(); applyLook();
+            if (PR.place !== lkPlace) { lkPlace = PR.place; applyPlace(); } applyLook();
             if (PR.look !== lkLook) { lkLook = PR.look; lkRest = PR.rest; setTargetShape('rest'); }
             else if (PR.rest !== lkRest) { lkRest = PR.rest; if (shapeId === 'circle' || shapeId === 'ghost') setTargetShape('rest'); }
         });
@@ -496,16 +546,17 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
 <div class="gc-row"><div>Character</div><select class="set-select" data-gc="look">${opt('spectre', 'Spectre: molds into many shapes', p.look)}${opt('orb', 'Glass orb: always a perfect sphere', p.look)}</select><div class="hint">The orb keeps its round body and still gestures, speaks and uses props.</div></div>
 <div class="gc-row"><div class="sw-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Cosmic aura<span class="hint" style="display:block">Glow, rings, flare and tiny stars around it.</span></span><label class="switch"><input type="checkbox" data-gc="aura" ${p.aura !== false ? 'checked' : ''}><i></i></label></div></div>
 <div class="gc-row"><div>Where it lives</div><select class="set-select" data-gc="place">${opt('header', 'Fixed in the header corner', p.place)}${opt('snap', 'Floating, snaps to the nearest side', p.place)}${opt('free', 'Floating, free anywhere', p.place)}${opt('off', 'Hidden', p.place)}</select><div class="hint">It always stays on top. In the floating modes, drag it where you like.</div></div>
+<div class="gc-row"><div>Avoid text</div><select class="set-select" data-gc="avoid">${opt('off', 'Off: stays where I put it', p.avoid)}${opt('gentle', 'Gentle: slides beside text after about 1 second', p.avoid)}${opt('eager', 'Eager: slides after a moment', p.avoid)}</select><div class="hint">Only in the floating modes. It slides slowly to a clear spot and stays there. It never moves while you drag it.</div></div>
 <div class="gc-row"><div>Resting form (Spectre)</div><select class="set-select" data-gc="rest">${opt('circle', 'Circle', p.rest)}${opt('ghost', 'Ghost with a wavy tail', p.rest)}</select></div>
 <div class="gc-row"><div>Movement</div><input type="range" min="0" max="100" value="${p.move}" data-gc="move"><div class="gc-lbl"><span>Still</span><span>Lively</span></div></div>
 <div class="gc-row"><div>Activity</div><input type="range" min="0" max="100" value="${p.act}" data-gc="act"><div class="gc-lbl"><span>Rarely</span><span>Often</span></div><div class="hint">How often it changes shape, plays, rests or does something on its own.</div></div>
 <div class="gc-row"><div>Talking: <b data-gc-out="talk">${p.talk}</b> lines a day</div><input type="range" min="0" max="40" value="${p.talk}" data-gc="talk"><div class="gc-lbl"><span>Silent</span><span>Chatty</span></div></div>
-<div class="gc-row"><div class="sw-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Proverbs and tips<span class="hint" style="display:block">Wisdom lines when it speaks.</span></span><label class="switch"><input type="checkbox" data-gc="wise" ${p.wise ? 'checked' : ''}><span class="slider"></span></label></div></div>
+<div class="gc-row"><div class="sw-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Proverbs and tips<span class="hint" style="display:block">Wisdom lines when it speaks.</span></span><label class="switch"><input type="checkbox" data-gc="wise" ${p.wise ? 'checked' : ''}><i></i></label></div></div>
 <button class="btn-line" data-gc-act="show">Show me something</button><button class="btn-line" data-gc-act="tour">Show me some shapes</button><button class="btn-line" data-gc-act="reset">Put it back in its corner</button></div>`;
     }
     document.addEventListener('input', e => { const el = e.target && e.target.closest && e.target.closest('[data-gc]'); if (!el || el.type !== 'range') return; const k = el.dataset.gc, v = +el.value; const out = document.querySelector(`[data-gc-out="${k}"]`); if (out) out.textContent = v; setPrefs({ [k]: v }); });
     document.addEventListener('change', e => { const el = e.target && e.target.closest && e.target.closest('[data-gc]'); if (!el || el.type === 'range') return; setPrefs({ [el.dataset.gc]: el.type === 'checkbox' ? el.checked : el.value }); });
     document.addEventListener('click', e => { const el = e.target && e.target.closest && e.target.closest('[data-gc-act]'); if (!el || !current) return; const a = el.dataset.gcAct; if (a === 'show') current.showSomething(); else if (a === 'tour') current.tour(); else if (a === 'reset') { setPrefs({ place: 'header' }); current.resetPos(); const s = document.querySelector('select[data-gc="place"]'); if (s) s.value = 'header'; } });
 
-    root.GCompanion = { create, settingsHTML, prefs: { get: () => loadPrefs(), set: setPrefs, onChange: f => watchers.push(f) }, ACTIONS: () => Object.keys(ACTIONS), SHAPES: () => ORDER.slice() };
+    root.GCompanion = { create, settingsHTML, reserve: f => { if (typeof f === 'function') RESERVE.push(f); }, prefs: { get: () => loadPrefs(), set: setPrefs, onChange: f => watchers.push(f) }, ACTIONS: () => Object.keys(ACTIONS), SHAPES: () => ORDER.slice() };
 })(typeof window !== 'undefined' ? window : this);

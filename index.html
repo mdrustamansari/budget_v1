@@ -16,6 +16,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2355a3f3'/%3E%3Cstop offset='1' stop-color='%231668f0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='48' height='48' rx='13' fill='url(%23g)'/%3E%3Ccircle cx='24' cy='24' r='13' fill='none' stroke='%23e6f1ff' stroke-width='6' stroke-dasharray='38 81.7' transform='rotate(-90 24 24)'/%3E%3Ccircle cx='24' cy='24' r='13' fill='none' stroke='%23f6dc9b' stroke-width='6' stroke-dasharray='16 81.7' stroke-dashoffset='-44' transform='rotate(-90 24 24)'/%3E%3C/svg%3E">
 </head>
 <body>
+<div id="scene" aria-hidden="true"></div><div id="scene-fx" aria-hidden="true"></div>
+<div id="paper" aria-hidden="true"><i class="pm-pat"></i><i class="pm-top"></i><i class="pm-left"></i></div>
 <div id="bg-layer" aria-hidden="true"></div>
 <div id="splash" aria-hidden="true">
   <svg class="s-logo" width="96" height="96" viewBox="0 0 48 48" aria-hidden="true">
@@ -49,9 +51,11 @@
 <input type="file" id="file-bg" accept="image/*" hidden>
 <input type="file" id="file-restore" accept=".json,.txt,.bmb,application/json,text/plain" hidden>
 <script src="engine.js"></script>
+<script src="look.js"></script>
 <script src="companion-art.js"></script>
 <script src="companion-lines.js"></script>
 <script src="companion.js"></script>
+<script src="feel.js"></script>
 <script src="app.js"></script>
 <script>
 if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {

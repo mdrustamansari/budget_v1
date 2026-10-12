@@ -41,3 +41,11 @@ v2.7 - (v2.6 glass edge light was dropped; this builds on v2.5)
   The shadow under it is now soft and blurred, like diffused light.
   New "Cosmic aura" switch: glow, two orbit rings, a lens flare on the highlight, star sparkles and tiny twinkling stars.
   Service-worker cache v18.
+
+v2.7.1 - The Companion settings drop-downs now use the full card width. Cache v19.
+
+v2.8 - Sounds and vibration (with settings), a round save button at the bottom left (tap to confirm "Saved on this phone", with Back up now), and the Companion's "Avoid text" setting plus tap-to-speak support. Cache v20.
+
+v2.9 - All Goal Manager looks are now in the Budget Manager: Paper (page colour, dots/graph/ruled, margins, texture), Aurora and 11 nature themes (Settings, Look), plus the new Sunflower accent. Aurora stays the default, so nothing changes until you choose. Also carries the v5.9/v5.10 fixes: sound and vibration react when your finger lifts, "Quiet at night" off by default, original gentle vibration pulses, and the Companion no longer jumps mid-slide. Cache v21.
+
+v2.10 - The Look card is tidier: the theme tiles are smaller, four to a row. Cache v22.
