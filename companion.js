@@ -17,7 +17,7 @@
     const ease = u => u * u * (3 - 2 * u);
 
     // ================= settings (the character's own)
-    const PKEY = 'gc_prefs', DEF = { place: 'header', rest: 'circle', move: 60, act: 55, talk: 19, wise: true, look: 'spectre', aura: true, avoid: 'off', hue: 'classic', huespeed: 'calm', huen: 2 };
+    const PKEY = 'gc_prefs', DEF = { place: 'header', rest: 'circle', move: 60, act: 55, talk: 19, wise: true, look: 'spectre', aura: true, avoid: 'off', hue: 'classic', huespeed: 'calm', huen: 2, fx: 'rich', flare: 'soft', catchlight: true, evade: 'spring', evspeed: 'normal' };
     let PR = null; const watchers = [], RESERVE = [];
     function loadPrefs(legacy) {
         if (PR) return PR;
@@ -191,6 +191,10 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         grad('linearGradient', 'fv', { x1: '0', y1: '0', x2: '0', y2: '1' }, [['0', '#bff6ff', 0], ['.5', '#ffffff', 0.9], ['1', '#bff6ff', 0]]);
         const blurF = mk('filter', { id: uid + 'bl', x: '-60%', y: '-300%', width: '220%', height: '700%' }, defs); mk('feGaussianBlur', { stdDeviation: 3.4 }, blurF);
         const G = ART.grads(defs, uid), U = id => `url(#${uid}${id})`;
+        // shifting invisibility: soft dark blobs drift across a mask over the body fill (never the face)
+        grad('radialGradient', 'fb', { cx: '50%', cy: '50%', r: '50%' }, [['0', '#000', 0.95], ['.55', '#000', 0.5], ['1', '#000', 0]]);
+        const fmask = mk('mask', { id: uid + 'fm', maskUnits: 'userSpaceOnUse', x: -90, y: -90, width: 180, height: 180 }, defs); mk('rect', { x: -90, y: -90, width: 180, height: 180, fill: '#fff' }, fmask);
+        const fblobs = [0, 1, 2].map(() => mk('circle', { r: 20, fill: U('fb') }, fmask));
 
         // ---- layers, back to front
         const shadow = mk('ellipse', { cx: 0, cy: 41, rx: 20, ry: 4.6, fill: '#2a2f6e', opacity: 0.2, filter: `url(#${uid}bl)` }, svg);
@@ -202,10 +206,15 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         const twink = [[-46, -20], [44, -30], [50, 14], [-38, 30], [22, -48], [-18, 46]].map(([x, y], i) => ({ e: mk('circle', { cx: x, cy: y, r: i % 2 ? 0.7 : 0.9, fill: i % 3 ? '#fff' : '#cfeeff' }, svg), i }));
         const scene_ = mk('g', {}, svg), backL = mk('g', {}, scene_), bodyG = mk('g', {}, scene_), frontL = mk('g', {}, scene_), limbs = mk('g', {}, scene_), feet = mk('g', {}, scene_);
         // body
-        const bodyPaths = [mk('path', { fill: U('g') }, bodyG), mk('path', { fill: U('c') }, bodyG), mk('path', { fill: U('w') }, bodyG), mk('path', { fill: U('s') }, bodyG)];
-        const tintP = mk('path', { fill: '#fff', opacity: 0 }, bodyG); bodyPaths.push(tintP);
-        const orbHi = mk('path', { fill: U('oh'), opacity: 0 }, bodyG), orbCa = mk('path', { fill: U('oc'), opacity: 0 }, bodyG); bodyPaths.push(orbHi, orbCa);
-        bodyPaths.push(mk('path', { fill: 'none', stroke: U('r'), 'stroke-width': 1.6, opacity: 0.9 }, bodyG), mk('path', { fill: 'none', stroke: INK, 'stroke-width': 0.55, opacity: 0.6 }, bodyG));
+        const fillG = mk('g', {}, bodyG);
+        const bodyPaths = [mk('path', { fill: U('g') }, fillG), mk('path', { fill: U('c') }, fillG), mk('path', { fill: U('w') }, fillG), mk('path', { fill: U('s') }, fillG)];
+        const tintP = mk('path', { fill: '#fff', opacity: 0 }, fillG); bodyPaths.push(tintP);
+        const orbHi = mk('path', { fill: U('oh'), opacity: 0 }, fillG), orbCa = mk('path', { fill: U('oc'), opacity: 0 }, fillG); bodyPaths.push(orbHi, orbCa);
+        const rimP = mk('path', { fill: 'none', stroke: U('r'), 'stroke-width': 1.6, opacity: 0.9, pathLength: 100 }, bodyG), inkP = mk('path', { fill: 'none', stroke: INK, 'stroke-width': 0.55, opacity: 0.6, pathLength: 100 }, bodyG);
+        bodyPaths.push(rimP, inkP);
+        // outline light: a soft white band and a soft dark band travel round the edge (layers of different length make the ends fade)
+        const edgeL = [[34, 0.2, 2.0], [22, 0.38, 1.7], [11, 0.85, 1.4]].map(([w, o, sw]) => ({ w, o, W: mk('path', { fill: 'none', stroke: '#fff', 'stroke-width': sw, 'stroke-linecap': 'round', pathLength: 100, opacity: o }, bodyG), B: mk('path', { fill: 'none', stroke: '#0b1020', 'stroke-width': sw * 0.8, 'stroke-linecap': 'round', pathLength: 100, opacity: o * 0.55 }, bodyG) }));
+        edgeL.forEach(l => { bodyPaths.push(l.W, l.B); });
         const glyphL = mk('g', {}, bodyG), spec = mk('ellipse', { rx: 11, ry: 5.5, fill: U('sp') }, bodyG);
         const flare = mk('g', {}, bodyG), FT = root.GFlareTex || null, flTint = [], flImg = [];
         if (FT) {
@@ -216,6 +225,11 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             [[1.1, 15, 0.5, fb], [2.1, 9, 0.38, fa], [3.2, 22, 0.22, fb]].forEach(([t, sz, op, f]) => flImg.push({ e: mk('image', { href: FT.ghost, x: -sz / 2, y: -sz / 2, width: sz, height: sz, filter: f, opacity: op, preserveAspectRatio: 'none' }, flare), k: 'ghost', t, op }));
         }
         flare.style.mixBlendMode = 'screen';
+        // "catch the light": every so often the whitest part of the outline blooms for a moment
+        const catchG = mk('g', { opacity: 0 }, bodyG); catchG.style.mixBlendMode = 'screen'; let catchPh = null, catchSoft = null, flC = null;
+        if (FT) { const f = mk('filter', { id: uid + 'ftc', x: '0', y: '0', width: '1', height: '1', 'color-interpolation-filters': 'sRGB' }, defs); flC = mk('feFlood', { 'flood-color': '#ffe9c2', result: 'c' }, f); mk('feComposite', { in: 'c', in2: 'SourceGraphic', operator: 'in' }, f); flTint.push(flC);
+            catchPh = mk('image', { href: FT.photo || FT.glow, x: -30, y: -30, width: 60, height: 60, filter: U('ftc'), preserveAspectRatio: 'none' }, catchG); catchSoft = mk('image', { href: FT.glow, x: -22, y: -22, width: 44, height: 44, filter: U('ftc'), preserveAspectRatio: 'none' }, catchG); }
+        const ct = { next: performance.now() + 5000 + Math.random() * 6000, t0: 0, dur: 2200 };
         const face = mk('g', {}, bodyG);
         const st = (a) => Object.assign({ fill: 'none', stroke: INK, 'stroke-linecap': 'round' }, a);
         const browL = mk('path', st({ 'stroke-width': 1.5 }), face), browR = mk('path', st({ 'stroke-width': 1.5 }), face);
@@ -349,6 +363,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
 
         // ---- frame
         const cx0 = (a, b) => (a + b) / 2, cy0 = cx0;
+        let frameN = 0;
         function draw(time, st_) {
             const s = time / 1000, mv = st_ ? 0 : PR.move / 100 * 1.6, pose = POSES[poseOver || scene.pose || 'none'] || POSES.none;
             const breath = (Math.sin(s * 1.5) * 0.018 + Math.sin(s * 0.63 + 1) * 0.008) * mv, flt = (Math.sin(s * 0.7) * 1.4 + Math.sin(s * 1.13 + 2) * 0.7) * mv, drift = (Math.sin(s * 0.41 + 3) * 1.6 + Math.sin(s * 0.97) * 0.8) * mv;
@@ -364,6 +379,20 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             bx = { x0, x1, y0, y1 };
             let d = ''; for (let i = 0; i < N; i++) { const p0 = pts[(i + N - 1) % N], p1 = pts[i], p2 = pts[(i + 1) % N], p3 = pts[(i + 2) % N]; if (i === 0) d += `M${p1[0].toFixed(1)} ${p1[1].toFixed(1)}`; d += `C${(p1[0] + (p2[0] - p0[0]) / 6).toFixed(1)} ${(p1[1] + (p2[1] - p0[1]) / 6).toFixed(1)} ${(p2[0] - (p3[0] - p1[0]) / 6).toFixed(1)} ${(p2[1] - (p3[1] - p1[1]) / 6).toFixed(1)} ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`; }
             d += 'Z'; bodyPaths.forEach(p => p.setAttribute('d', d));
+            const fxOn = PR.fx !== 'off' && !st_ && !still(), richOn = PR.fx === 'rich' && fxOn && PR.look !== 'orb';
+            let wpt = null;
+            if (fxOn) {
+                const f1 = (s * 0.03) % 1, f2 = ((0.5 - s * 0.021) % 1 + 1) % 1, wrap = v => ((v % 100) + 100) % 100;
+                edgeL.forEach(l => { l.W.style.display = ''; l.B.style.display = ''; l.W.setAttribute('stroke-dasharray', `${l.w} ${100 - l.w}`); l.W.setAttribute('stroke-dashoffset', wrap(l.w / 2 - f1 * 100).toFixed(2)); l.B.setAttribute('stroke-dasharray', `${l.w} ${100 - l.w}`); l.B.setAttribute('stroke-dashoffset', wrap(l.w / 2 - f2 * 100).toFixed(2)); });
+                const g1 = 20, g2 = 26, c1 = ((f1 + 0.3) % 1) * 100, c2 = ((f2 + 0.45) % 1) * 100;
+                inkP.setAttribute('stroke-dasharray', `${100 - g1} ${g1}`); inkP.setAttribute('stroke-dashoffset', wrap(100 - g1 / 2 - c1).toFixed(2));
+                rimP.setAttribute('stroke-dasharray', `${100 - g2} ${g2}`); rimP.setAttribute('stroke-dashoffset', wrap(100 - g2 / 2 - c2).toFixed(2));
+                try { wpt = inkP.getPointAtLength(f1 * inkP.getTotalLength()); } catch (e) { wpt = null; }
+            } else { edgeL.forEach(l => { l.W.style.display = 'none'; l.B.style.display = 'none'; }); inkP.removeAttribute('stroke-dasharray'); rimP.removeAttribute('stroke-dasharray'); }
+            if (richOn && (frameN++ & 1) === 0) {
+                fillG.setAttribute('mask', U('fm'));
+                fblobs.forEach((b, i) => { const w = 0.11 + i * 0.047, r = 17 + i * 5 + Math.sin(s * 0.23 + i) * 4; b.setAttribute('cx', (Math.sin(s * w + i * 2.1) * 26).toFixed(1)); b.setAttribute('cy', (Math.cos(s * (w * 0.8) + i * 1.3) * 26 + 4).toFixed(1)); b.setAttribute('r', r.toFixed(1)); b.setAttribute('opacity', (0.55 + 0.4 * Math.sin(s * 0.17 + i * 1.9)).toFixed(2)); });
+            } else if (!richOn && fillG.hasAttribute('mask')) fillG.removeAttribute('mask');
             tintP.setAttribute('fill', `rgb(${P.tr | 0},${P.tg | 0},${P.tb | 0})`); tintP.setAttribute('opacity', P.ta.toFixed(2));
             const bw = x1 - x0, bh = y1 - y0; spec.setAttribute('cx', (x0 + bw * 0.3).toFixed(1)); spec.setAttribute('cy', (y0 + bh * 0.2).toFixed(1)); spec.setAttribute('rx', Math.max(4, bw * 0.19).toFixed(1)); spec.setAttribute('ry', Math.max(2.4, bh * 0.09).toFixed(1)); spec.setAttribute('transform', `rotate(-28 ${(x0 + bw * 0.3).toFixed(1)} ${(y0 + bh * 0.2).toFixed(1)})`);
             // whole-body transform: float, form, motion, squash around the ground
@@ -380,6 +409,12 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             auraV.setAttribute('opacity', (gl * 0.9).toFixed(2)); auraV.setAttribute('cx', (6 + dx * 0.8 + Math.sin(s * 0.5) * 3).toFixed(1)); auraV.setAttribute('cy', (-6 + dy * 0.8 + Math.cos(s * 0.4) * 3).toFixed(1));
             const fp = 0.45 + 0.4 * Math.sin(s * 1.2 + 1), fcx = x0 + bw * 0.3, fcy = y0 + bh * 0.2; flare.setAttribute('transform', `translate(${fcx.toFixed(1)} ${fcy.toFixed(1)})`); flare.setAttribute('opacity', (fp * (0.5 + P.glow * 0.5)).toFixed(2));
             flImg.forEach(o => { if (o.k === 'ghost') { const gx = (cx0(x0, x1) - fcx) * o.t * 0.5, gy = (cy0(y0, y1) - fcy) * o.t * 0.5; o.e.setAttribute('transform', `translate(${gx.toFixed(1)} ${gy.toFixed(1)})`); } else o.e.setAttribute('transform', `rotate(${(Math.sin(s * 0.5) * 8).toFixed(1)})`); });
+            { const nowT = performance.now(); let env = 0;
+              if (!ct.t0 && PR.catchlight !== false && fxOn && nowT > ct.next) { ct.t0 = nowT; ct.dur = PR.flare === 'photo' ? 2400 : 1800; }
+              if (ct.t0) { const k = (nowT - ct.t0) / ct.dur; if (k >= 1) { ct.t0 = 0; ct.next = nowT + 10000 + Math.random() * 10000; } else env = Math.pow(Math.sin(Math.PI * k), 2); }
+              if (catchPh) { const px = wpt ? wpt.x : fcx, py = wpt ? wpt.y : fcy, photo = PR.flare === 'photo';
+                catchG.setAttribute('transform', `translate(${px.toFixed(1)} ${py.toFixed(1)}) rotate(${(s * 6).toFixed(1)}) scale(${(0.7 + env * 0.9).toFixed(2)})`);
+                catchG.setAttribute('opacity', Math.min(1, env * 1.15).toFixed(2)); catchPh.style.display = photo ? '' : 'none'; catchSoft.style.display = photo ? 'none' : ''; } }
             twink.forEach(t => t.e.setAttribute('opacity', (0.15 + 0.85 * Math.max(0, Math.sin(s * (0.9 + t.i * 0.23) * Math.max(0.35, mv) + t.i * 1.9))).toFixed(2)));
             star1.setAttribute('transform', `translate(${sp1.getAttribute('cx') || 0} ${sp1.getAttribute('cy') || 0}) scale(${(0.6 + 0.6 * Math.abs(Math.sin(s * 1.3))).toFixed(2)})`); star2.setAttribute('transform', `translate(${sp2.getAttribute('cx') || 0} ${sp2.getAttribute('cy') || 0}) scale(${(0.5 + 0.6 * Math.abs(Math.sin(s * 0.9 + 1.7))).toFixed(2)})`);
             rimG.setAttribute('gradientTransform', `rotate(${((s * 12 * mv) % 360).toFixed(1)} .5 .5)`);
@@ -561,32 +596,48 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             const r0 = shell.getBoundingClientRect(), x0 = r0.left, y0 = r0.top, dist = Math.hypot(x - x0, y - y0);
             if (still() || dist < 2) { cancelSpring(); put(x, y); return; }
             cancelSpring(); gliding = true;
-            const k = o.fast ? 150 : 82, c = 2 * 0.42 * Math.sqrt(k), cap = Math.min(26, 8 + dist * 0.06), ux = (x - x0) / dist, uy = (y - y0) / dist, ang = Math.atan2(uy, ux) * 180 / Math.PI;
-            let u = 0, v = 0, last = performance.now(), hit1 = false, sq = 0, sqv = 0, calm = 0;
+            const style = o.style || 'spring', spd = { slow: 0.62, normal: 1, fast: 1.7 }[o.spd] || 1;
+            // [stiffness, damping ratio, overshoot cap factor, stretch strength, sway, hops]
+            const ST = { spring: [82, 0.42, 1, 1, 0, 0], glide: [46, 1.0, 0, 0.35, 0, 0], float: [13, 0.8, 0.3, 0, 1, 0], dart: [250, 0.62, 0.7, 1.5, 0, 0], hop: [0, 0, 0, 0, 0, 1] }[style] || [82, 0.42, 1, 1, 0, 0];
+            const fast = o.fast, k = fast ? 150 : ST[0], zeta = fast ? 0.42 : ST[1], c = 2 * zeta * Math.sqrt(k || 1), cap = (Math.min(26, 8 + dist * 0.06)) * (fast ? 1 : ST[2]), ux = (x - x0) / dist, uy = (y - y0) / dist, ang = Math.atan2(uy, ux) * 180 / Math.PI, stretchK = fast ? 1 : ST[3], sway = ST[4];
+            const hops = ST[5] ? Math.max(1, Math.round(dist / 120)) : 0, hopDur = hops ? (0.45 + hops * 0.34) / spd : 0, hopH = Math.min(46, 18 + dist * 0.08);
+            let u = 0, v = 0, last = performance.now(), hit1 = false, sq = 0, sqv = 0, calm = 0, lastHop = -1;
             const W = innerWidth, H = innerHeight;
             const step = now => {
-                let dt = Math.min(0.05, (now - last) / 1000); last = now;
-                const n = Math.ceil(dt / 0.008), h = dt / n;
-                for (let i = 0; i < n; i++) { const a = -k * (u - 1) - c * v; v += a * h; u += v * h; const sa = -230 * sq - 17 * sqv; sqv += sa * h; sq += sqv * h; }
-                if (!hit1 && u >= 1) { hit1 = true; sqv += Math.min(2.4, Math.abs(v) * dist / 420); }
-                const off = (u - 1) * dist, extra = u > 1 ? cap * Math.tanh(off / cap) : off;
-                let px = x + ux * (u > 1 ? extra : off), py = y + uy * (u > 1 ? extra : off);
+                const dt0 = Math.min(0.05, (now - last) / 1000); last = now;
+                let px, py, st = 0, q = 0;
+                if (hops) {
+                    const t = Math.min(1, (now - spr.t0) / 1000 / hopDur), e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2, ph = e * hops, hi = Math.min(hops - 1, Math.floor(ph)), fr = ph - hi;
+                    if (hi !== lastHop) { if (lastHop >= 0) sqv += 1.6; lastHop = hi; }
+                    px = x0 + (x - x0) * e; py = y0 + (y - y0) * e - Math.sin(Math.PI * fr) * hopH;
+                    for (let i = 0, n = Math.ceil(dt0 / 0.008) || 1; i < n; i++) { const h = dt0 / n, sa = -230 * sq - 17 * sqv; sqv += sa * h; sq += sqv * h; }
+                    st = Math.sin(Math.PI * fr) * 0.1; q = clamp(sq, -0.14, 0.2);
+                    if (t >= 1 && Math.abs(sq) < 0.01) { shell.style.left = x + 'px'; shell.style.top = y + 'px'; svg.style.transform = ''; spr = null; gliding = false; return; }
+                    if (t >= 1) { px = x; py = y; }
+                } else {
+                    const dt = dt0 * spd, n = Math.ceil(dt / 0.008) || 1, h = dt / n;
+                    for (let i = 0; i < n; i++) { const a = -k * (u - 1) - c * v; v += a * h; u += v * h; const sa = -230 * sq - 17 * sqv; sqv += sa * h; sq += sqv * h; }
+                    if (!hit1 && u >= 1) { hit1 = true; sqv += Math.min(2.4, Math.abs(v) * dist / 420) * (stretchK > 0.5 ? 1 : 0.3); }
+                    const off = (u - 1) * dist, extra = u > 1 ? (cap > 0 ? cap * Math.tanh(off / cap) : 0) : off;
+                    px = x + ux * extra; py = y + uy * extra;
+                    if (sway) { const sw = Math.sin(clamp(u, 0, 1) * Math.PI * 2) * 14 * Math.min(1, dist / 200) * (1 - clamp(u, 0, 1)); px += -uy * sw; py += ux * sw; }
+                    st = clamp(Math.abs(v) * dist * spd / 5200, 0, 0.16) * stretchK; q = clamp(sq, -0.14, 0.2) * (stretchK > 0.5 ? 1 : 0.4);
+                    if (Math.abs(u - 1) < 0.0015 && Math.abs(v) < 0.02 && Math.abs(sq) < 0.004) calm++; else calm = 0;
+                    if (calm > 6 || now - spr.t0 > 6500) { shell.style.left = x + 'px'; shell.style.top = y + 'px'; svg.style.transform = ''; spr = null; gliding = false; return; }
+                }
                 px = clamp(px, -6, W - 50); py = clamp(py, L.minY - 4, H - 50);
                 shell.style.left = px + 'px'; shell.style.top = py + 'px';
-                const sp = Math.abs(v) * dist, st = clamp(sp / 5200, 0, 0.16), q = clamp(sq, -0.14, 0.2);
-                svg.style.transform = `rotate(${ang.toFixed(1)}deg) scale(${(1 + st - q * 0.7).toFixed(3)}, ${(1 - st * 0.55 + q).toFixed(3)}) rotate(${(-ang).toFixed(1)}deg)`;
-                if (Math.abs(u - 1) < 0.0015 && Math.abs(v) < 0.02 && Math.abs(sq) < 0.004) calm++; else calm = 0;
-                if (calm > 6 || now - spr.t0 > 3200) { shell.style.left = x + 'px'; shell.style.top = y + 'px'; svg.style.transform = ''; spr = null; gliding = false; return; }
+                svg.style.transform = hops ? `scale(${(1 - q * 0.7 + st * 0.2).toFixed(3)}, ${(1 + q + st * 0.4).toFixed(3)})` : `rotate(${ang.toFixed(1)}deg) scale(${(1 + st - q * 0.7).toFixed(3)}, ${(1 - st * 0.55 + q).toFixed(3)}) rotate(${(-ang).toFixed(1)}deg)`;
                 spr.raf = requestAnimationFrame(step);
             };
             spr = { t0: performance.now(), raf: 0 }; spr.raf = requestAnimationFrame(step);
         }
-        function glideTo(x, y) { springTo(x, y); }
+        function glideTo(x, y) { springTo(x, y, { style: PR.evade, spd: PR.evspeed }); }
         function avoidRestart() { clearInterval(avTimer); avTimer = null; overSince = 0; if (PR.avoid && PR.avoid !== 'off') avTimer = setInterval(avoidStep, 350); }
         avoidRestart(); watchers.push(avoidRestart);
         const cosmic = [auraT, auraG, auraV, orb1, orb2, sp1, sp2, star1, star2, flare].concat(twink.map(t => t.e));
         // ---- shifting spectrum colour: two or three soft colours of the spectrum at a time, slowly drifting (one colour a day when still or Lite)
-        const ORIG = {}; Object.keys(SS).forEach(k => { ORIG[k] = SS[k].map(e => e.getAttribute('stop-color')); }); const FLO = ['#ffe2a8', '#ffe2a8'];
+        const ORIG = {}; Object.keys(SS).forEach(k => { ORIG[k] = SS[k].map(e => e.getAttribute('stop-color')); }); const FLO = ['#ffe2a8', '#ffe2a8', '#ffe9c2'];
         const hsl = (h, sa, l) => `hsl(${Math.round(((h % 360) + 360) % 360)} ${sa}% ${l}%)`;
         const setStops = (id, cols) => { const a = SS[id]; if (a) cols.forEach((c, i) => { if (c && a[i]) a[i].setAttribute('stop-color', c); }); };
         let hueKey = '';
@@ -599,7 +650,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             setStops('g', [null, hsl(A, 55, 90), hsl(B, 55, 83), null]); setStops('c', [hsl(A, 62, 70), hsl(A, 62, 70)]); setStops('w', [hsl(B, 68, 74), hsl(B, 68, 74)]);
             setStops('ht', [hsl(A, 62, 72), hsl(A, 62, 72)]); setStops('hg', [hsl(B, 68, 78), hsl(B, 68, 78)]); setStops('nb', [hsl(C, 60, 76), hsl(B, 60, 80), hsl(B, 60, 80)]);
             setStops('r', [hsl(B, 70, 78), hsl(A, 65, 72), hsl(B, 70, 78)]); setStops('o', [hsl(A, 70, 78), null, hsl(B, 70, 80)]); setStops('oc', [hsl(B, 75, 82), hsl(B, 75, 82)]);
-            if (flTint[0]) flTint[0].setAttribute('flood-color', hsl(B, 80, 84)); if (flTint[1]) flTint[1].setAttribute('flood-color', hsl(A, 80, 82));
+            if (flTint[0]) flTint[0].setAttribute('flood-color', hsl(B, 80, 84)); if (flTint[1]) flTint[1].setAttribute('flood-color', hsl(A, 80, 82)); if (flTint[2]) flTint[2].setAttribute('flood-color', hsl(B, 70, 90));
         }
         applyHue(); setInterval(applyHue, 250); watchers.push(() => { hueKey = ''; applyHue(); });
         let lkLook = PR.look, lkRest = PR.rest;
@@ -631,9 +682,14 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         const look = sel('look', 'Character', opt('spectre', 'Spectre: molds into many shapes', p.look) + opt('orb', 'Glass orb: always a perfect sphere', p.look), 'The orb keeps its round body and still gestures, speaks and uses props.')
             + sw('aura', 'Cosmic aura', 'Glow, rings, soft lens flare and tiny stars around it.', p.aura !== false)
             + sel('hue', 'Colour', opt('classic', 'Classic: teal and gold', p.hue) + opt('shift', 'Shifting spectrum: slow drifting colours', p.hue), 'Shifting uses soft colours that drift. In Lite mode or with reduced motion it keeps one colour a day.')
+            + sel('fx', 'Glass effects', opt('rich', 'Rich: fading glass, travelling outline light', p.fx) + opt('light', 'Light: outline light only', p.fx) + opt('off', 'Off: plain and steady', p.fx), 'Parts of the body fade softly and a band of light and shadow runs round the edge. Rich uses more battery. Lite mode turns it all off.')
+            + sel('flare', 'Lens flare style', opt('soft', 'Soft: a gentle bloom', p.flare) + opt('photo', 'Photographic: a real starburst', p.flare), 'Used when the outline catches the light.')
+            + sw('catchlight', 'Catch the light', 'Every 10 to 20 seconds the brightest part of the outline blooms for a moment.', p.catchlight !== false)
             + `<div class="gc-shift" style="display:${p.hue === 'shift' ? '' : 'none'}">` + sel('huespeed', 'Colour speed', opt('slow', 'Slow: about 10 minutes a round', p.huespeed) + opt('calm', 'Calm: about 4 minutes', p.huespeed) + opt('lively', 'Lively: about 1.5 minutes', p.huespeed)) + sel('huen', 'Colours at a time', opt('2', 'Two', String(p.huen)) + opt('3', 'Three', String(p.huen))) + '</div>';
         const where = sel('place', 'Where it lives', opt('header', 'Fixed in the header corner', p.place) + opt('snap', 'Floating, snaps to the nearest side', p.place) + opt('free', 'Floating, free anywhere', p.place) + opt('off', 'Hidden', p.place), 'It always stays on top. In the floating modes, drag it where you like.')
-            + sel('avoid', 'Avoid text', opt('off', 'Off: stays where I put it', p.avoid) + opt('gentle', 'Gentle: slides beside text after about 1 second', p.avoid) + opt('eager', 'Eager: slides after a moment', p.avoid), 'Only in the floating modes. It slides to a clear spot, runs a little past it, rebounds and settles. It never moves while you drag it.');
+            + sel('avoid', 'Avoid text', opt('off', 'Off: stays where I put it', p.avoid) + opt('gentle', 'Gentle: slides beside text after about 1 second', p.avoid) + opt('eager', 'Eager: slides after a moment', p.avoid), 'Only in the floating modes. It never moves while you drag it.')
+            + sel('evade', 'Movement style when it avoids text', opt('spring', 'Springy: runs past, rebounds, settles', p.evade) + opt('glide', 'Glide: smooth and calm', p.evade) + opt('float', 'Float: slow, like a bubble', p.evade) + opt('hop', 'Hop: small jumps', p.evade) + opt('dart', 'Dart: quick and sharp', p.evade))
+            + sel('evspeed', 'Speed of that movement', opt('slow', 'Slow', p.evspeed) + opt('normal', 'Normal', p.evspeed) + opt('fast', 'Fast', p.evspeed));
         const beh = sel('rest', 'Resting form (Spectre)', opt('circle', 'Circle', p.rest) + opt('ghost', 'Ghost with a wavy tail', p.rest))
             + `<div class="gc-row"><div>Movement</div><input type="range" min="0" max="100" value="${p.move}" data-gc="move"><div class="gc-lbl"><span>Still</span><span>Lively</span></div></div>
 <div class="gc-row"><div>Activity</div><input type="range" min="0" max="100" value="${p.act}" data-gc="act"><div class="gc-lbl"><span>Rarely</span><span>Often</span></div><div class="hint">How often it changes shape, plays, rests or does something on its own.</div></div>
