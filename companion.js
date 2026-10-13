@@ -17,7 +17,7 @@
     const ease = u => u * u * (3 - 2 * u);
 
     // ================= settings (the character's own)
-    const PKEY = 'gc_prefs', DEF = { place: 'header', rest: 'circle', move: 60, act: 55, talk: 19, wise: true, look: 'spectre', aura: true, avoid: 'off' };
+    const PKEY = 'gc_prefs', DEF = { place: 'header', rest: 'circle', move: 60, act: 55, talk: 19, wise: true, look: 'spectre', aura: true, avoid: 'off', hue: 'classic', huespeed: 'calm', huen: 2 };
     let PR = null; const watchers = [], RESERVE = [];
     function loadPrefs(legacy) {
         if (PR) return PR;
@@ -143,6 +143,15 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
 .gc-bubble { position: absolute; max-width: 230px; width: max-content; padding: 9px 13px; border-radius: 16px; font-size: .95rem; line-height: 1.4; color: var(--text-main); background: var(--glass-hi, rgba(255,255,255,.85)); border: 1px solid var(--glass-line, rgba(255,255,255,.6)); -webkit-backdrop-filter: blur(var(--glass-blur, 20px)); backdrop-filter: blur(var(--glass-blur, 20px)); box-shadow: 0 8px 24px rgba(30,20,60,.18); opacity: 0; pointer-events: none; transform: scale(.92); transition: opacity .35s ease, transform .35s cubic-bezier(.2,.9,.3,1.2); z-index: 5; }
 .gc.glide { transition: left 1.9s ease-in-out, top 1.9s ease-in-out; }
 .gc-card { position: fixed; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(10px); max-width: min(86%, 340px); padding: 10px 15px; border-radius: 16px; font-size: .95rem; line-height: 1.4; color: var(--text-main); background: var(--glass-hi, rgba(255,255,255,.88)); border: 1px solid var(--glass-line, rgba(255,255,255,.6)); box-shadow: 0 8px 24px rgba(30,20,60,.2); opacity: 0; pointer-events: none; transition: opacity .3s, transform .3s; z-index: 399; text-align: center; }
+.gc-card { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.gc-card .gc-undo { background: color-mix(in srgb, var(--blue-b, #4a6cf7) 16%, transparent); color: var(--text-main); border: 1px solid var(--glass-line, rgba(0,0,0,.15)); border-radius: 12px; padding: 5px 12px; font-size: .9rem; }
+.gc-ask { position: fixed; left: 50%; bottom: calc(150px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(10px); width: min(88%, 360px); padding: 14px 16px; border-radius: 18px; color: var(--text-main); background: var(--glass-hi, rgba(255,255,255,.92)); -webkit-backdrop-filter: blur(var(--glass-blur, 20px)); backdrop-filter: blur(var(--glass-blur, 20px)); border: 1px solid var(--glass-line, rgba(255,255,255,.6)); box-shadow: 0 10px 30px rgba(30,20,60,.25); opacity: 0; pointer-events: none; transition: opacity .3s, transform .3s; z-index: 401; }
+.gc-ask.on { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
+.gc-ask .q { font-size: 1rem; line-height: 1.4; margin-bottom: 10px; } .gc-ask .r { display: flex; gap: 8px; align-items: center; }
+.gc-ask input { flex: 1; min-width: 0; font-size: 1.1rem; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--glass-line, rgba(0,0,0,.15)); background: var(--input-bg, #fff); color: var(--text-main); }
+.gc-ask button { border-radius: 12px; padding: 9px 14px; font-size: .95rem; border: 1px solid var(--glass-line, rgba(0,0,0,.15)); background: transparent; color: var(--text-main); } .gc-ask button.ok { background: linear-gradient(135deg, var(--blue-a, #7aa7ff), var(--blue-b, #4a6cf7)); color: var(--on-accent, #fff); border: none; font-weight: 600; }
+.gc-ask .err { color: var(--warning, #d63a34); font-size: .85rem; margin-top: 6px; min-height: 1em; }
+html.lite .gc-ask, body.still .gc-ask { transition: none; }
 .gc-card.on { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
 html.lite .gc-card, body.still .gc-card { transition: none; }
 .gc-bubble.on { opacity: 1; transform: none; pointer-events: auto; }
@@ -165,7 +174,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         const shell = document.createElement('div'); shell.className = 'gc'; document.body.appendChild(shell);
         host.style.width = '56px'; host.style.height = '56px'; host.style.flexShrink = '0'; host.innerHTML = '';
         const svg = mk('svg', { viewBox: '-60 -60 120 120', 'aria-hidden': 'true' }, shell), defs = mk('defs', {}, svg), uid = 'gc' + Math.floor(Math.random() * 1e6);
-        const grad = (tag, id, at, st) => { const g = mk(tag, Object.assign({ id: uid + id }, at), defs); st.forEach(([o, c, a]) => mk('stop', { offset: o, 'stop-color': c, 'stop-opacity': a === undefined ? 1 : a }, g)); return g; };
+        const SS = {}, grad = (tag, id, at, st) => { const g = mk(tag, Object.assign({ id: uid + id }, at), defs); SS[id] = st.map(([o, c, a]) => mk('stop', { offset: o, 'stop-color': c, 'stop-opacity': a === undefined ? 1 : a }, g)); return g; };
         grad('radialGradient', 'g', { cx: '50%', cy: '50%', r: '55%' }, [['0', '#ffffff', 0.05], ['.55', '#bff3ee', 0.1], ['.86', '#9fe4ea', 0.22], ['1', '#ffffff', 0.34]]);
         grad('radialGradient', 's', { cx: '40%', cy: '38%', r: '66%' }, [['.6', '#0b3a5c', 0], ['1', '#0b3a5c', 0.22]]);
         grad('radialGradient', 'w', { cx: '72%', cy: '84%', r: '50%' }, [['0', '#ffd27a', 0.36], ['1', '#ffd27a', 0]]);
@@ -198,7 +207,15 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         const orbHi = mk('path', { fill: U('oh'), opacity: 0 }, bodyG), orbCa = mk('path', { fill: U('oc'), opacity: 0 }, bodyG); bodyPaths.push(orbHi, orbCa);
         bodyPaths.push(mk('path', { fill: 'none', stroke: U('r'), 'stroke-width': 1.6, opacity: 0.9 }, bodyG), mk('path', { fill: 'none', stroke: INK, 'stroke-width': 0.55, opacity: 0.6 }, bodyG));
         const glyphL = mk('g', {}, bodyG), spec = mk('ellipse', { rx: 11, ry: 5.5, fill: U('sp') }, bodyG);
-        const flare = mk('g', {}, bodyG), flH = mk('ellipse', { rx: 27, ry: 0.9, fill: U('fl') }, flare), flV = mk('ellipse', { rx: 0.8, ry: 13, fill: U('fv') }, flare), flD = mk('ellipse', { rx: 15, ry: 0.6, fill: U('fl'), transform: 'rotate(40)' }, flare);
+        const flare = mk('g', {}, bodyG), FT = root.GFlareTex || null, flTint = [], flImg = [];
+        if (FT) {
+            const mkF = id => { const f = mk('filter', { id: uid + id, x: '0', y: '0', width: '1', height: '1', 'color-interpolation-filters': 'sRGB' }, defs); const fl = mk('feFlood', { 'flood-color': '#ffe2a8', result: 'c' }, f); mk('feComposite', { in: 'c', in2: 'SourceGraphic', operator: 'in' }, f); flTint.push(fl); return U(id); };
+            const fa = mkF('fta'), fb = mkF('ftb');
+            // main bloom (soft, no spikes: softened texture), plus faint ghosts along the line through the body
+            flImg.push({ e: mk('image', { href: FT.glow, x: -31, y: -31, width: 62, height: 62, filter: fa, preserveAspectRatio: 'none' }, flare), k: 'glow' });
+            [[1.1, 15, 0.5, fb], [2.1, 9, 0.38, fa], [3.2, 22, 0.22, fb]].forEach(([t, sz, op, f]) => flImg.push({ e: mk('image', { href: FT.ghost, x: -sz / 2, y: -sz / 2, width: sz, height: sz, filter: f, opacity: op, preserveAspectRatio: 'none' }, flare), k: 'ghost', t, op }));
+        }
+        flare.style.mixBlendMode = 'screen';
         const face = mk('g', {}, bodyG);
         const st = (a) => Object.assign({ fill: 'none', stroke: INK, 'stroke-linecap': 'round' }, a);
         const browL = mk('path', st({ 'stroke-width': 1.5 }), face), browR = mk('path', st({ 'stroke-width': 1.5 }), face);
@@ -331,6 +348,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         }
 
         // ---- frame
+        const cx0 = (a, b) => (a + b) / 2, cy0 = cx0;
         function draw(time, st_) {
             const s = time / 1000, mv = st_ ? 0 : PR.move / 100 * 1.6, pose = POSES[poseOver || scene.pose || 'none'] || POSES.none;
             const breath = (Math.sin(s * 1.5) * 0.018 + Math.sin(s * 0.63 + 1) * 0.008) * mv, flt = (Math.sin(s * 0.7) * 1.4 + Math.sin(s * 1.13 + 2) * 0.7) * mv, drift = (Math.sin(s * 0.41 + 3) * 1.6 + Math.sin(s * 0.97) * 0.8) * mv;
@@ -360,7 +378,8 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             auraT.setAttribute('r', (44 + P.glow * 6).toFixed(1)); auraG.setAttribute('r', (38 + P.glow * 6).toFixed(1));
             const ox = dx * 0.8, oy = dy * 0.8; orb1.setAttribute('transform', `translate(${ox.toFixed(1)} ${oy.toFixed(1)}) rotate(${(-28 + s * 8 * mv).toFixed(2)})`); orb2.setAttribute('transform', `translate(${ox.toFixed(1)} ${oy.toFixed(1)}) rotate(${(52 - s * 5.5 * mv).toFixed(2)})`);
             auraV.setAttribute('opacity', (gl * 0.9).toFixed(2)); auraV.setAttribute('cx', (6 + dx * 0.8 + Math.sin(s * 0.5) * 3).toFixed(1)); auraV.setAttribute('cy', (-6 + dy * 0.8 + Math.cos(s * 0.4) * 3).toFixed(1));
-            const fp = 0.45 + 0.4 * Math.sin(s * 1.2 + 1), fcx = x0 + bw * 0.3, fcy = y0 + bh * 0.2; flare.setAttribute('transform', `translate(${fcx.toFixed(1)} ${fcy.toFixed(1)}) rotate(${(Math.sin(s * 0.5) * 8).toFixed(1)})`); flare.setAttribute('opacity', (fp * (0.5 + P.glow * 0.5)).toFixed(2)); flare.setAttribute('transform', flare.getAttribute('transform'));
+            const fp = 0.45 + 0.4 * Math.sin(s * 1.2 + 1), fcx = x0 + bw * 0.3, fcy = y0 + bh * 0.2; flare.setAttribute('transform', `translate(${fcx.toFixed(1)} ${fcy.toFixed(1)})`); flare.setAttribute('opacity', (fp * (0.5 + P.glow * 0.5)).toFixed(2));
+            flImg.forEach(o => { if (o.k === 'ghost') { const gx = (cx0(x0, x1) - fcx) * o.t * 0.5, gy = (cy0(y0, y1) - fcy) * o.t * 0.5; o.e.setAttribute('transform', `translate(${gx.toFixed(1)} ${gy.toFixed(1)})`); } else o.e.setAttribute('transform', `rotate(${(Math.sin(s * 0.5) * 8).toFixed(1)})`); });
             twink.forEach(t => t.e.setAttribute('opacity', (0.15 + 0.85 * Math.max(0, Math.sin(s * (0.9 + t.i * 0.23) * Math.max(0.35, mv) + t.i * 1.9))).toFixed(2)));
             star1.setAttribute('transform', `translate(${sp1.getAttribute('cx') || 0} ${sp1.getAttribute('cy') || 0}) scale(${(0.6 + 0.6 * Math.abs(Math.sin(s * 1.3))).toFixed(2)})`); star2.setAttribute('transform', `translate(${sp2.getAttribute('cx') || 0} ${sp2.getAttribute('cy') || 0}) scale(${(0.5 + 0.6 * Math.abs(Math.sin(s * 0.9 + 1.7))).toFixed(2)})`);
             rimG.setAttribute('gradientTransform', `rotate(${((s * 12 * mv) % 360).toFixed(1)} .5 .5)`);
@@ -441,7 +460,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         }
         function setScene() { if (!act) { scene.shape = 'rest'; applyScene(); } }
         let ds = null, dragged = false, gliding = false;
-        hit.addEventListener('pointerdown', e => { if (e.button !== undefined && e.button !== 0) return; const r = shell.getBoundingClientRect(); ds = { x: e.clientX, y: e.clientY, l: r.left, t: r.top, id: e.pointerId }; dragged = false; try { hit.setPointerCapture(e.pointerId); } catch (_) {} });
+        hit.addEventListener('pointerdown', e => { if (e.button !== undefined && e.button !== 0) return; cancelSpring(); const r = shell.getBoundingClientRect(); ds = { x: e.clientX, y: e.clientY, l: r.left, t: r.top, id: e.pointerId }; dragged = false; try { hit.setPointerCapture(e.pointerId); } catch (_) {} });
         hit.addEventListener('pointermove', e => {
             if (!ds || ds.id !== e.pointerId) return; const dx = e.clientX - ds.x, dy = e.clientY - ds.y;
             if (PR.place === 'header' || Math.hypot(dx, dy) < 7 && !dragged) return;
@@ -450,7 +469,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         });
         const end = e => {
             if (!ds || (e && ds.id !== e.pointerId)) return; ds = null; shell.classList.remove('drag'); lastTouch = performance.now();
-            if (dragged) { dragging = false; const r = shell.getBoundingClientRect(), L = lim(); let tx = r.left, ty = clamp(r.top, L.minY, L.maxY); if (PR.place === 'snap') { tx = r.left + 28 < innerWidth / 2 ? L.minX : L.maxX; shell.classList.add('settle'); setTimeout(() => shell.classList.remove('settle'), 420); } ty = clearOf(tx, ty); put(tx, ty); savePos(clamp(tx, L.minX, L.maxX), ty); setTimeout(() => { dragged = false; finish(); runAction('hop', { force: true }); }, 60); }
+            if (dragged) { dragging = false; const r = shell.getBoundingClientRect(), L = lim(); let tx = r.left, ty = clamp(r.top, L.minY, L.maxY); if (PR.place === 'snap') { tx = r.left + 28 < innerWidth / 2 ? L.minX : L.maxX; } ty = clearOf(tx, ty); if (PR.place === 'snap') springTo(tx, ty, { fast: true }); else { put(tx, ty); savePos(clamp(tx, L.minX, L.maxX), ty); } setTimeout(() => { dragged = false; finish(); runAction('hop', { force: true }); }, 60); }
             else poke();
         };
         hit.addEventListener('pointerup', end); hit.addEventListener('pointercancel', e => { if (ds) { ds = null; dragging = false; shell.classList.remove('drag'); } });
@@ -488,6 +507,28 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             return true;
         }
         api.tell = tell;
+        // respond: the character delivers an app response (a confirmation, a warning). Short text card always shows, so nothing is voice-only.
+        function respond(text, o) {
+            o = o || {}; if (!text) return false; lastTouch = performance.now();
+            card.innerHTML = ''; const sp = document.createElement('span'); sp.textContent = text; card.appendChild(sp);
+            if (o.undo) { const b = document.createElement('button'); b.type = 'button'; b.className = 'gc-undo'; b.textContent = 'Undo'; b.onclick = e => { e.stopPropagation(); card.classList.remove('on'); clearTimeout(cardT); try { o.undo(); } catch (x) {} }; card.appendChild(b); }
+            card.classList.add('on'); clearTimeout(cardT); cardT = setTimeout(() => card.classList.remove('on'), o.undo ? 6500 : Math.max(3200, text.length * 70));
+            if (PR.place !== 'off' && shown && !dragging) { try { runAction(o.tone === 'bad' ? 'shrug' : 'nod', { force: true }); } catch (e) {} }
+            return true;
+        }
+        api.respond = respond;
+        // ask: the character asks one short question with a number box (used only when the app is unsure)
+        const askEl = document.createElement('div'); askEl.className = 'gc-ask'; askEl.innerHTML = '<div class="q"></div><div class="r"><input type="number" inputmode="numeric" min="0"><button type="button" class="ok">Save</button><button type="button" class="no">Later</button></div><div class="err"></div>'; document.body.appendChild(askEl);
+        function ask(q, o) {
+            o = o || {}; const inp = askEl.querySelector('input'), err = askEl.querySelector('.err'); askEl.querySelector('.q').textContent = q; inp.value = o.value !== undefined ? o.value : ''; err.textContent = '';
+            const close = () => askEl.classList.remove('on');
+            askEl.querySelector('.ok').onclick = () => { const v = parseFloat(inp.value); if (!(v >= 0) || (o.max !== undefined && v > o.max)) { err.textContent = o.max !== undefined ? `Enter a number from 0 to ${o.max}` : 'Enter a number'; return; } close(); if (o.onSave) o.onSave(v); };
+            askEl.querySelector('.no').onclick = () => { close(); if (o.onLater) o.onLater(); };
+            askEl.classList.add('on'); if (PR.place !== 'off' && shown && PR.talk > 0) say(q, 4200, true);
+            if (PR.place !== 'off' && shown && !dragging) { try { runAction('shrug', { force: true }); } catch (e) {} }
+            return true;
+        }
+        api.ask = ask; api.asking = () => askEl.classList.contains('on');
 
         // ---- avoid text: when it sits over words for a moment, it glides to the nearest clear spot and stays there
         let lastScroll = 0, overSince = 0, quietUntil = 0, avTimer = null;
@@ -511,14 +552,56 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             for (const c of cand) { const y = clearOf(c[0], c[1]); if (y !== c[1]) continue; if (!hits(c[0], c[1], rs)) { glideTo(c[0], c[1]); quietUntil = now + 3500; return; } }
             quietUntil = now + 6000;
         }
-        function glideTo(x, y) {
-            const L = lim(); x = clamp(x, L.minX, L.maxX); y = clamp(y, L.minY, L.maxY);
-            if (still()) { put(x, y); } else { gliding = true; shell.classList.add('glide'); void shell.offsetWidth; requestAnimationFrame(() => { put(x, y); }); setTimeout(() => { shell.classList.remove('glide'); gliding = false; }, 2200); }
+        // ---- physics stop: a damped spring. It leans into the move, runs a little past the spot, rebounds, takes a small second bounce and settles.
+        let spr = null;
+        function cancelSpring() { if (spr) { cancelAnimationFrame(spr.raf); spr = null; } gliding = false; shell.classList.remove('glide', 'settle'); svg.style.transform = ''; }
+        function springTo(x, y, o) {
+            o = o || {}; const L = lim(); x = clamp(x, L.minX, L.maxX); y = clamp(y, L.minY, L.maxY);
             savePos(x, y);
+            const r0 = shell.getBoundingClientRect(), x0 = r0.left, y0 = r0.top, dist = Math.hypot(x - x0, y - y0);
+            if (still() || dist < 2) { cancelSpring(); put(x, y); return; }
+            cancelSpring(); gliding = true;
+            const k = o.fast ? 150 : 82, c = 2 * 0.42 * Math.sqrt(k), cap = Math.min(26, 8 + dist * 0.06), ux = (x - x0) / dist, uy = (y - y0) / dist, ang = Math.atan2(uy, ux) * 180 / Math.PI;
+            let u = 0, v = 0, last = performance.now(), hit1 = false, sq = 0, sqv = 0, calm = 0;
+            const W = innerWidth, H = innerHeight;
+            const step = now => {
+                let dt = Math.min(0.05, (now - last) / 1000); last = now;
+                const n = Math.ceil(dt / 0.008), h = dt / n;
+                for (let i = 0; i < n; i++) { const a = -k * (u - 1) - c * v; v += a * h; u += v * h; const sa = -230 * sq - 17 * sqv; sqv += sa * h; sq += sqv * h; }
+                if (!hit1 && u >= 1) { hit1 = true; sqv += Math.min(2.4, Math.abs(v) * dist / 420); }
+                const off = (u - 1) * dist, extra = u > 1 ? cap * Math.tanh(off / cap) : off;
+                let px = x + ux * (u > 1 ? extra : off), py = y + uy * (u > 1 ? extra : off);
+                px = clamp(px, -6, W - 50); py = clamp(py, L.minY - 4, H - 50);
+                shell.style.left = px + 'px'; shell.style.top = py + 'px';
+                const sp = Math.abs(v) * dist, st = clamp(sp / 5200, 0, 0.16), q = clamp(sq, -0.14, 0.2);
+                svg.style.transform = `rotate(${ang.toFixed(1)}deg) scale(${(1 + st - q * 0.7).toFixed(3)}, ${(1 - st * 0.55 + q).toFixed(3)}) rotate(${(-ang).toFixed(1)}deg)`;
+                if (Math.abs(u - 1) < 0.0015 && Math.abs(v) < 0.02 && Math.abs(sq) < 0.004) calm++; else calm = 0;
+                if (calm > 6 || now - spr.t0 > 3200) { shell.style.left = x + 'px'; shell.style.top = y + 'px'; svg.style.transform = ''; spr = null; gliding = false; return; }
+                spr.raf = requestAnimationFrame(step);
+            };
+            spr = { t0: performance.now(), raf: 0 }; spr.raf = requestAnimationFrame(step);
         }
+        function glideTo(x, y) { springTo(x, y); }
         function avoidRestart() { clearInterval(avTimer); avTimer = null; overSince = 0; if (PR.avoid && PR.avoid !== 'off') avTimer = setInterval(avoidStep, 350); }
         avoidRestart(); watchers.push(avoidRestart);
         const cosmic = [auraT, auraG, auraV, orb1, orb2, sp1, sp2, star1, star2, flare].concat(twink.map(t => t.e));
+        // ---- shifting spectrum colour: two or three soft colours of the spectrum at a time, slowly drifting (one colour a day when still or Lite)
+        const ORIG = {}; Object.keys(SS).forEach(k => { ORIG[k] = SS[k].map(e => e.getAttribute('stop-color')); }); const FLO = ['#ffe2a8', '#ffe2a8'];
+        const hsl = (h, sa, l) => `hsl(${Math.round(((h % 360) + 360) % 360)} ${sa}% ${l}%)`;
+        const setStops = (id, cols) => { const a = SS[id]; if (a) cols.forEach((c, i) => { if (c && a[i]) a[i].setAttribute('stop-color', c); }); };
+        let hueKey = '';
+        function applyHue() {
+            if (PR.hue !== 'shift') { if (hueKey !== 'classic') { Object.keys(ORIG).forEach(k => setStops(k, ORIG[k])); flTint.forEach((f, i) => f.setAttribute('flood-color', FLO[i])); hueKey = 'classic'; } return; }
+            const n = PR.huen === 3 ? 3 : 2, calm = still(), sp = { slow: 0.6, calm: 1.6, lively: 4.2 }[PR.huespeed] || 1.6;
+            const H = calm ? (Math.floor(Date.now() / 864e5) * 47) % 360 : Math.floor((Date.now() / 1000 * sp) % 360);
+            const key = H + '/' + n + '/' + PR.look; if (key === hueKey) return; hueKey = key;
+            const A = H, B = H + (n === 3 ? 50 : 75), C = n === 3 ? H + 105 : H + 75;
+            setStops('g', [null, hsl(A, 55, 90), hsl(B, 55, 83), null]); setStops('c', [hsl(A, 62, 70), hsl(A, 62, 70)]); setStops('w', [hsl(B, 68, 74), hsl(B, 68, 74)]);
+            setStops('ht', [hsl(A, 62, 72), hsl(A, 62, 72)]); setStops('hg', [hsl(B, 68, 78), hsl(B, 68, 78)]); setStops('nb', [hsl(C, 60, 76), hsl(B, 60, 80), hsl(B, 60, 80)]);
+            setStops('r', [hsl(B, 70, 78), hsl(A, 65, 72), hsl(B, 70, 78)]); setStops('o', [hsl(A, 70, 78), null, hsl(B, 70, 80)]); setStops('oc', [hsl(B, 75, 82), hsl(B, 75, 82)]);
+            if (flTint[0]) flTint[0].setAttribute('flood-color', hsl(B, 80, 84)); if (flTint[1]) flTint[1].setAttribute('flood-color', hsl(A, 80, 82));
+        }
+        applyHue(); setInterval(applyHue, 250); watchers.push(() => { hueKey = ''; applyHue(); });
         let lkLook = PR.look, lkRest = PR.rest;
         function applyLook() {
             const orbMode = PR.look === 'orb'; orbHi.setAttribute('opacity', orbMode ? 1 : 0); orbCa.setAttribute('opacity', orbMode ? 1 : 0);
@@ -542,20 +625,26 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
     // ================= the character's own Settings card (any app can drop this in)
     function settingsHTML() {
         const p = loadPrefs(), opt = (v, t, cur) => `<option value="${v}" ${cur === v ? 'selected' : ''}>${t}</option>`;
-        return `<div class="card gc-set"><h3>Circle Companion</h3><p class="hint">Your small companion. All of this stays on this phone.</p>
-<div class="gc-row"><div>Character</div><select class="set-select" data-gc="look">${opt('spectre', 'Spectre: molds into many shapes', p.look)}${opt('orb', 'Glass orb: always a perfect sphere', p.look)}</select><div class="hint">The orb keeps its round body and still gestures, speaks and uses props.</div></div>
-<div class="gc-row"><div class="sw-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Cosmic aura<span class="hint" style="display:block">Glow, rings, flare and tiny stars around it.</span></span><label class="switch"><input type="checkbox" data-gc="aura" ${p.aura !== false ? 'checked' : ''}><i></i></label></div></div>
-<div class="gc-row"><div>Where it lives</div><select class="set-select" data-gc="place">${opt('header', 'Fixed in the header corner', p.place)}${opt('snap', 'Floating, snaps to the nearest side', p.place)}${opt('free', 'Floating, free anywhere', p.place)}${opt('off', 'Hidden', p.place)}</select><div class="hint">It always stays on top. In the floating modes, drag it where you like.</div></div>
-<div class="gc-row"><div>Avoid text</div><select class="set-select" data-gc="avoid">${opt('off', 'Off: stays where I put it', p.avoid)}${opt('gentle', 'Gentle: slides beside text after about 1 second', p.avoid)}${opt('eager', 'Eager: slides after a moment', p.avoid)}</select><div class="hint">Only in the floating modes. It slides slowly to a clear spot and stays there. It never moves while you drag it.</div></div>
-<div class="gc-row"><div>Resting form (Spectre)</div><select class="set-select" data-gc="rest">${opt('circle', 'Circle', p.rest)}${opt('ghost', 'Ghost with a wavy tail', p.rest)}</select></div>
-<div class="gc-row"><div>Movement</div><input type="range" min="0" max="100" value="${p.move}" data-gc="move"><div class="gc-lbl"><span>Still</span><span>Lively</span></div></div>
+        const A = root.GAcc ? root.GAcc.sec : (k, t, bd) => bd;
+        const sw = (k, t, d, on) => `<div class="gc-row"><div class="sw-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>${t}<span class="hint" style="display:block">${d}</span></span><label class="switch"><input type="checkbox" data-gc="${k}" ${on ? 'checked' : ''}><i></i></label></div></div>`;
+        const sel = (k, t, o, h) => `<div class="gc-row"><div>${t}</div><select class="set-select" data-gc="${k}">${o}</select>${h ? `<div class="hint">${h}</div>` : ''}</div>`;
+        const look = sel('look', 'Character', opt('spectre', 'Spectre: molds into many shapes', p.look) + opt('orb', 'Glass orb: always a perfect sphere', p.look), 'The orb keeps its round body and still gestures, speaks and uses props.')
+            + sw('aura', 'Cosmic aura', 'Glow, rings, soft lens flare and tiny stars around it.', p.aura !== false)
+            + sel('hue', 'Colour', opt('classic', 'Classic: teal and gold', p.hue) + opt('shift', 'Shifting spectrum: slow drifting colours', p.hue), 'Shifting uses soft colours that drift. In Lite mode or with reduced motion it keeps one colour a day.')
+            + `<div class="gc-shift" style="display:${p.hue === 'shift' ? '' : 'none'}">` + sel('huespeed', 'Colour speed', opt('slow', 'Slow: about 10 minutes a round', p.huespeed) + opt('calm', 'Calm: about 4 minutes', p.huespeed) + opt('lively', 'Lively: about 1.5 minutes', p.huespeed)) + sel('huen', 'Colours at a time', opt('2', 'Two', String(p.huen)) + opt('3', 'Three', String(p.huen))) + '</div>';
+        const where = sel('place', 'Where it lives', opt('header', 'Fixed in the header corner', p.place) + opt('snap', 'Floating, snaps to the nearest side', p.place) + opt('free', 'Floating, free anywhere', p.place) + opt('off', 'Hidden', p.place), 'It always stays on top. In the floating modes, drag it where you like.')
+            + sel('avoid', 'Avoid text', opt('off', 'Off: stays where I put it', p.avoid) + opt('gentle', 'Gentle: slides beside text after about 1 second', p.avoid) + opt('eager', 'Eager: slides after a moment', p.avoid), 'Only in the floating modes. It slides to a clear spot, runs a little past it, rebounds and settles. It never moves while you drag it.');
+        const beh = sel('rest', 'Resting form (Spectre)', opt('circle', 'Circle', p.rest) + opt('ghost', 'Ghost with a wavy tail', p.rest))
+            + `<div class="gc-row"><div>Movement</div><input type="range" min="0" max="100" value="${p.move}" data-gc="move"><div class="gc-lbl"><span>Still</span><span>Lively</span></div></div>
 <div class="gc-row"><div>Activity</div><input type="range" min="0" max="100" value="${p.act}" data-gc="act"><div class="gc-lbl"><span>Rarely</span><span>Often</span></div><div class="hint">How often it changes shape, plays, rests or does something on its own.</div></div>
-<div class="gc-row"><div>Talking: <b data-gc-out="talk">${p.talk}</b> lines a day</div><input type="range" min="0" max="40" value="${p.talk}" data-gc="talk"><div class="gc-lbl"><span>Silent</span><span>Chatty</span></div></div>
-<div class="gc-row"><div class="sw-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>Proverbs and tips<span class="hint" style="display:block">Wisdom lines when it speaks.</span></span><label class="switch"><input type="checkbox" data-gc="wise" ${p.wise ? 'checked' : ''}><i></i></label></div></div>
+<div class="gc-row"><div>Talking: <b data-gc-out="talk">${p.talk}</b> lines a day</div><input type="range" min="0" max="40" value="${p.talk}" data-gc="talk"><div class="gc-lbl"><span>Silent</span><span>Chatty</span></div></div>`
+            + sw('wise', 'Proverbs and tips', 'Wisdom lines when it speaks.', p.wise);
+        return `<div class="card gc-set"><h3>Circle Companion</h3><p class="hint">Your small companion. All of this stays on this phone.</p>
+${A('gc-char', 'Character and colour', look, true)}${A('gc-where', 'Where it lives', where, true)}${A('gc-beh', 'How it behaves', beh, false)}
 <button class="btn-line" data-gc-act="show">Show me something</button><button class="btn-line" data-gc-act="tour">Show me some shapes</button><button class="btn-line" data-gc-act="reset">Put it back in its corner</button></div>`;
     }
     document.addEventListener('input', e => { const el = e.target && e.target.closest && e.target.closest('[data-gc]'); if (!el || el.type !== 'range') return; const k = el.dataset.gc, v = +el.value; const out = document.querySelector(`[data-gc-out="${k}"]`); if (out) out.textContent = v; setPrefs({ [k]: v }); });
-    document.addEventListener('change', e => { const el = e.target && e.target.closest && e.target.closest('[data-gc]'); if (!el || el.type === 'range') return; setPrefs({ [el.dataset.gc]: el.type === 'checkbox' ? el.checked : el.value }); });
+    document.addEventListener('change', e => { const el = e.target && e.target.closest && e.target.closest('[data-gc]'); if (!el || el.type === 'range') return; const k = el.dataset.gc; let v = el.type === 'checkbox' ? el.checked : el.value; if (k === 'huen') v = +v; setPrefs({ [k]: v }); if (k === 'hue') { const w = document.querySelector('.gc-shift'); if (w) w.style.display = v === 'shift' ? '' : 'none'; } });
     document.addEventListener('click', e => { const el = e.target && e.target.closest && e.target.closest('[data-gc-act]'); if (!el || !current) return; const a = el.dataset.gcAct; if (a === 'show') current.showSomething(); else if (a === 'tour') current.tour(); else if (a === 'reset') { setPrefs({ place: 'header' }); current.resetPos(); const s = document.querySelector('select[data-gc="place"]'); if (s) s.value = 'header'; } });
 
     root.GCompanion = { create, settingsHTML, reserve: f => { if (typeof f === 'function') RESERVE.push(f); }, prefs: { get: () => loadPrefs(), set: setPrefs, onChange: f => watchers.push(f) }, ACTIONS: () => Object.keys(ACTIONS), SHAPES: () => ORDER.slice() };

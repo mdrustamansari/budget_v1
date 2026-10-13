@@ -134,6 +134,7 @@
 
     /* ---------- Toast and sheets ---------- */
     function toast(msg, undo) {
+        if (window.GCompanion && typeof GC !== 'undefined' && GC && GC.respond && GCompanion.prefs.get().place !== 'off') { GC.respond(msg, { undo, tone: /^(Over|Blocked|Wrong|Enter|Could not|Too many|That is|More than|Encryption|A PIN|Open this)/i.test(msg) ? 'bad' : '' }); return; }
         const t = $('toast');
         t.innerHTML = `<span>${esc(msg)}</span>` + (undo ? '<button class="mini-btn" data-act="toast-undo">Undo</button>' : '');
         t.classList.toggle('act', !!undo);
@@ -401,17 +402,21 @@
         if (due) out.push(`<div class="banner"><span>🌙 It's late. Back up today's entries?</span><span class="b-act"><button data-act="b-later">Later</button><button class="on" data-act="b-now">Back up</button></span></div>`);
         el.innerHTML = out.join('');
     }
+    // spoken details: tap a graphic and the Companion explains it in a sentence or two (no amounts when privacy mode is on)
+    const tl = (text, tone) => ` data-tell="${esc(text)}"${tone ? ` data-tone="${tone}"` : ''}`;
+    const mTell = v => prefs.privacy ? 'an amount you have hidden' : money(v);
     function ringSvg(ratio) {
         const r = Math.max(0, Math.min(1, ratio)), g = statusGrad(ratio);
         return `<div class="ring"><svg viewBox="0 0 80 80"><circle class="ring-track" cx="40" cy="40" r="36" fill="none" stroke-width="7"/><circle class="ring-arc" cx="40" cy="40" r="36" fill="none" stroke-width="7" stroke-linecap="round" stroke="${rgb(g.mid)}" stroke-dasharray="${(r * 226.2).toFixed(1)} 226.2"/></svg><div class="ring-center"><div class="ring-pct">${Math.round(ratio * 100)}%</div><div class="ring-cap">used</div></div></div>`;
     }
+    const catTell = (c, ratio) => c.limit > 0 ? (prefs.privacy ? `${c.name} has used ${Math.round(ratio * 100)}% of its limit.` : `${c.name}: ${money(c.spent)} of ${money(c.limit)} used. ${c.spent > c.limit ? money(c.spent - c.limit) + ' over.' : money(c.limit - c.spent) + ' left.'}`) : `${c.name} has no limit set.`;
     function catCard(c, i) {
         const ratio = c.limit > 0 ? c.spent / c.limit : (c.spent > 0 ? 1 : 0), g = statusGrad(ratio), over = c.spent > c.limit && c.limit > 0;
         const left = c.limit - c.spent;
         const wait = prefs.purchOn && c.bucket.cool > 0 ? `<span class="cd-chip">wait ${cd(c.bucket.cool)}</span>` : '';
         return `<div class="cat-item2" data-id="${c.id}" data-act="entry" style="--i:${i};--g1:${rgb(g.g1)};--g2:${rgb(g.g2)};--glow:${rgb(g.mid, 0.35)}">
             <div class="cat-meta" style="min-width:0"><div class="cat-name"><span class="cat-ico">${esc(c.icon)}</span>${esc(c.name)}${wait}</div>
-            <div class="cat-bar"><div style="width:${Math.min(100, ratio * 100)}%"></div></div></div>
+            <div class="cat-bar" data-tell-first="1"${tl(catTell(c, ratio), over ? 'bad' : '')}><div style="width:${Math.min(100, ratio * 100)}%"></div></div></div>
             <div class="cat-spent priv" style="${over ? 'color:var(--warning)' : ''}">${money(c.spent)}</div>
             <div class="cat-nums ${over ? 'over' : ''}"><span class="priv">${over ? money(-left) + ' over' : money(left) + ' left'} · ${money(c.limit)}</span></div>
             <button class="add-btn sm" data-act="${c.type === 'fixed' && c.price > 0 ? 'quick' : 'entry'}" data-id="${c.id}" aria-label="Add">+</button></div>`;
@@ -425,6 +430,14 @@
         D.cats.forEach(c => { if (c.type === 'fixed' && c.limit > 0 && c.price >= 0.5 * c.limit) lump += c.spent; else rest += c.spent; });
         const diff = P - (lump + rest / d * T.dm), r = Math.round(Math.abs(diff) / 10) * 10;
         return diff >= 0 ? `At this pace you'll finish with about ${mh(r)} to spare.` : `At this pace you'll overshoot the pool by about ${mh(r)}.`;
+    }
+    function ringTell(P, spent, left, pct, daysLeft) {
+        if (left < 0) return prefs.privacy ? 'You have used more than this month\'s pool. No blame. Slow down for now.' : `You have gone ${money(-left)} past this month's pool. No blame. Slow down for now.`;
+        return prefs.privacy ? `You have used ${Math.round(pct)}% of this month's pool, with ${plural(daysLeft, 'day')} to go.` : `You have used ${Math.round(pct)}% of the pool. ${money(left)} is left for ${plural(daysLeft, 'day')}.`;
+    }
+    function paceTell(pct, elapsed) {
+        const d = pct - elapsed;
+        return d > 8 ? 'The bar is your spending and the tick is the calendar. Spending is ahead, so slow down a little.' : d < -8 ? 'The bar is your spending and the tick is the calendar. You are well behind it, which is good.' : 'The bar is your spending and the tick is the calendar. They are close: a steady pace.';
     }
     function dashCard() {
         const T = D.today, P = D.P, spent = D.cur.spent, left = P - spent, ratio = P > 0 ? spent / P : 1, g = statusGrad(ratio);
@@ -440,11 +453,11 @@
         }
         return `<div class="card panel"><div class="panel-top"><div class="label">Pool ${mh(P)}</div><div class="pill">${plural(daysLeft, 'day')} left</div></div>
             <div class="hero-row"><div><div class="total-remaining priv ${left < 0 ? 'bad' : ''}" id="safe-val">${left < 0 ? '-' : ''}${money(Math.abs(left))}</div><div class="hint">left this month</div></div>
-            <div class="ring"><svg viewBox="0 0 84 84" aria-hidden="true"><defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${rgb(g.g1)}"/><stop offset="1" stop-color="${rgb(g.g2)}"/></linearGradient></defs><circle class="ring-track" cx="42" cy="42" r="36" fill="none" stroke-width="8"/><circle class="ring-arc" cx="42" cy="42" r="36" fill="none" stroke="url(#ringGrad)" stroke-width="8" stroke-linecap="${pct > 0 ? 'round' : 'butt'}" stroke-dasharray="${(pct / 100) * C} ${C}"/></svg><div class="ring-center"><div class="ring-pct">${Math.round(pct)}%</div><div class="ring-cap">used</div></div></div></div>
-            <div class="pace"><div class="progress-container"><div class="progress-bar" style="width:${pct}%;background:linear-gradient(90deg,${rgb(g.g1)},${rgb(g.g2)})"></div></div><div class="pace-tick" style="left:${elapsed}%"></div></div>
-            <div class="hint" style="margin-top:8px">Day ${T.day} of ${T.dm}</div>
+            <div class="ring"${tl(ringTell(P, spent, left, pct, daysLeft))}><svg viewBox="0 0 84 84" aria-hidden="true"><defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${rgb(g.g1)}"/><stop offset="1" stop-color="${rgb(g.g2)}"/></linearGradient></defs><circle class="ring-track" cx="42" cy="42" r="36" fill="none" stroke-width="8"/><circle class="ring-arc" cx="42" cy="42" r="36" fill="none" stroke="url(#ringGrad)" stroke-width="8" stroke-linecap="${pct > 0 ? 'round' : 'butt'}" stroke-dasharray="${(pct / 100) * C} ${C}"/></svg><div class="ring-center"><div class="ring-pct">${Math.round(pct)}%</div><div class="ring-cap">used</div></div></div></div>
+            <div class="pace"${tl(paceTell(pct, elapsed))}><div class="progress-container"><div class="progress-bar" style="width:${pct}%;background:linear-gradient(90deg,${rgb(g.g1)},${rgb(g.g2)})"></div></div><div class="pace-tick" style="left:${elapsed}%"></div></div>
+            <div class="hint" style="margin-top:8px"${tl(`Today is day ${T.day} of ${T.dm}. ${plural(T.dm - T.day, 'day')} after today.`)}>Day ${T.day} of ${T.dm}</div>
             ${prefs.forecastOn ? `<div class="pace-note">${paceLine()}</div>` : ''}
-            <div class="tiles"><div class="tile t1"><div class="t-label">Spent</div><div class="t-val priv">${money(spent)}</div></div><div class="tile t2"><div class="t-label">Per day</div><div class="t-val priv">${money(avgPerDay())}</div></div><div class="tile t3${over > 0 ? ' bad' : ''}"><div class="t-label">Overdrawn</div><div class="t-val priv">${money(over)}</div></div></div>
+            <div class="tiles"><div class="tile t1"${tl(`Spent is everything you have paid out this month: ${mTell(spent)}.`)}><div class="t-label">Spent</div><div class="t-val priv">${money(spent)}</div></div><div class="tile t2"${tl(`Per day is your average so far: ${mTell(avgPerDay())} a day.`)}><div class="t-label">Per day</div><div class="t-val priv">${money(avgPerDay())}</div></div><div class="tile t3${over > 0 ? ' bad' : ''}"${tl(over > 0 ? `Overdrawn adds up how far envelopes went past their limits: ${mTell(over)}.` : 'Overdrawn is zero. No envelope has gone past its limit.', over > 0 ? 'bad' : '')}><div class="t-label">Overdrawn</div><div class="t-val priv">${money(over)}</div></div></div>
             ${todayGauge()}
             <div class="freq">${chips}</div>${pch}</div>`;
     }
@@ -488,7 +501,7 @@
         h += `</div><div class="card"><h3>Money moves</h3><p class="hint">Record cash you withdraw or deposit so Bank and Cash stay true.</p><div class="grid2"><button class="btn-line" data-act="xfer" data-dir="b2c">Bank → Cash</button><button class="btn-line" data-act="xfer" data-dir="c2b">Cash → Bank</button></div></div>`;
         h += `<div class="card"><h3>Savings</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(D.savings)}</b><span class="hint">stays in your bank</span></div><div class="grid2 mt"><button class="btn-line" data-act="sav" data-dir="in">Add</button><button class="btn-line" data-act="sav" data-dir="out">Withdraw</button></div>
             ${D.savLog.slice(-4).reverse().map(s => `<div class="ledger-row"><span class="meta">${fmtDay(s.ts)} · ${esc(s.note || (s.amt > 0 ? 'Deposit' : 'Withdrawal'))}</span><b class="priv">${money(s.amt)}</b></div>`).join('')}</div>`;
-        h += `<div class="card"><h3>Envelopes</h3>${D.cats.map(k => { const r = k.limit > 0 ? k.spent / k.limit : 0, g = statusGrad(r); return `<div class="env"><div class="top"><span>${esc(k.icon)} ${esc(k.name)}</span><span class="priv ${k.spent > k.limit ? 'bad' : ''}">${money(k.spent)} / ${money(k.limit)}</span></div><div class="cat-bar"><div style="width:${Math.min(100, r * 100)}%;background:linear-gradient(90deg,${rgb(g.g1)},${rgb(g.g2)})"></div></div></div>`; }).join('')}</div>`;
+        h += `<div class="card"><h3>Envelopes</h3>${D.cats.map(k => { const r = k.limit > 0 ? k.spent / k.limit : 0, g = statusGrad(r); return `<div class="env"${tl(catTell(k, r), k.spent > k.limit ? 'bad' : '')}><div class="top"><span>${esc(k.icon)} ${esc(k.name)}</span><span class="priv ${k.spent > k.limit ? 'bad' : ''}">${money(k.spent)} / ${money(k.limit)}</span></div><div class="cat-bar"><div style="width:${Math.min(100, r * 100)}%;background:linear-gradient(90deg,${rgb(g.g1)},${rgb(g.g2)})"></div></div></div>`; }).join('')}</div>`;
         h += `<div class="card"><h3>Ledger</h3>${monthLedger()}</div>`;
         $('s-month').innerHTML = h;
     }
@@ -517,11 +530,12 @@
     function dayAvg() { const T = D.today; if (!D.P || T.day < 3) return null; return Math.max(0, (D.cur.spent - T.spent) / (T.day - 1)); }
     function todayGauge() {
         const T = D.today, avg = dayAvg(), spent = T.spent;
-        if (avg === null || avg < 1) return `<div class="tg"><div class="row"><span class="label">Today so far</span><span class="priv"><b>${money(spent)}</b></span></div><div class="hint">Your daily average appears after day 3.</div></div>`;
+        if (avg === null || avg < 1) return `<div class="tg"${tl('This shows today against your average day. The average appears after day 3.')}><div class="row"><span class="label">Today so far</span><span class="priv"><b>${money(spent)}</b></span></div><div class="hint">Your daily average appears after day 3.</div></div>`;
         const r = spent / avg, diff = Math.abs(spent - avg), pct = Math.min(100, spent / (2 * avg) * 100);
         const kind = r <= 1 ? 'down' : r <= 1.5 ? 'up' : 'high';
         const note = spent === 0 ? 'Nothing spent yet today.' : r <= 1 ? `▼ ${money(diff)} below your average` : `▲ ${money(diff)} above your average`;
-        return `<div class="tg ${kind}"><div class="row"><span class="label">Today so far</span><span class="tg-note">${esc(note)}</span></div>
+        const say = spent === 0 ? 'You have spent nothing today.' : r <= 1 ? (prefs.privacy ? 'Today is below your usual day. Good.' : `Today you spent ${money(spent)}. That is below your usual ${money(avg)}.`) : (prefs.privacy ? 'Today is above your usual day.' : `Today you spent ${money(spent)}. Your usual day is ${money(avg)}.`);
+        return `<div class="tg ${kind}"${tl(say, r > 1.5 ? 'bad' : '')}><div class="row"><span class="label">Today so far</span><span class="tg-note">${esc(note)}</span></div>
             <div class="tg-track"><i class="tg-fill grow" style="width:${pct}%"></i><b class="tg-mark" style="left:50%"></b></div>
             <div class="tg-scale"><span class="priv">${money(spent)} today</span><span>average ${mh(avg)}</span></div></div>`;
     }
@@ -552,7 +566,7 @@
         GC.mood(budgetMood());
         if (screen !== lastScreen) { if (lastScreen && SCREEN_ACT[screen] && !GC.state().action) GC.do(SCREEN_ACT[screen]); lastScreen = screen; }
         const left = D.P ? D.P - D.cur.spent : null;
-        if (left !== null && prevLeft !== null && prevLeft >= 0 && left < 0) { GC.pose('none'); GC.do('warn', { force: true }); setTimeout(() => GC.say('You have gone past this month\'s pool. No blame. Let us look at what can ease.', 6000), 900); }
+        if (left !== null && prevLeft !== null && prevLeft >= 0 && left < 0) { GC.pose('none'); fx('stop'); GC.do('warn', { force: true }); setTimeout(() => GC.say('You have gone past this month\'s pool. No blame. Let us look at what can ease.', 6000), 900); }
         prevLeft = left;
     }
     function companionReturns() {
@@ -646,17 +660,22 @@
         h += `<details class="acc" data-acc="bgp" ${accOpen('bgp')}><summary>Wallpaper photo and speed</summary><div class="acc-body"><button class="btn-line btn-accent" data-act="pick-bg">${hasBg ? 'Change' : 'Choose'} wallpaper photo</button>${hasBg ? '<button class="btn-line" data-act="clear-bg">Remove wallpaper</button>' : ''}${sw('lite', 'Lite mode', 'No blur or motion. Faster on older phones.')}${sw('privacy', 'Privacy mode', 'Blur amounts. Hold a number to peek.')}</div></details></div>`;
         return h;
     }
+    // a card whose body folds under its title with a triangle (state remembered)
+    function foldCard(html, key, open, note) {
+        const m = html.match(/^<div class="card([^"]*)">\s*<h3>([\s\S]*?)<\/h3>([\s\S]*)<\/div>\s*$/); if (!m || !window.GAcc) return html;
+        return `<div class="card${m[1]}"><details class="gacc fc" data-gacc="${key}" ${GAcc.open(key, open) ? 'open' : ''}><summary><h3>${m[2]}</h3>${note ? `<span class="gacc-n">${note}</span>` : ''}</summary><div class="gacc-body">${m[3]}</div></details></div>`;
+    }
     function renderSet() {
         let hasBg = false; try { hasBg = !!localStorage.getItem(K_BG); } catch (e) {}
         let h = lookCard();
-        h += dataCard();
+        h += foldCard(dataCard(), 'set-data', false);
         if (window.GCompanion) h += window.GCompanion.settingsHTML();
         if (window.GFeel) h += window.GFeel.settingsHTML();
-        h += `<div class="card"><h3>Experience</h3>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Daily line', 'Proverbs and tips.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}${sw('remindOn', 'Backup reminder', 'A banner in the app. A web app cannot ring while closed.')}</div>`;
-        h += `<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`;
+        h += foldCard(`<div class="card"><h3>Experience</h3>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Daily line', 'Proverbs and tips.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}${sw('remindOn', 'Backup reminder', 'A banner in the app. A web app cannot ring while closed.')}</div>`, 'set-exp', false);
+        h += foldCard(`<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`, 'set-cat', true);
         const pin = pinOn();
-        h += `<div class="card"><h3>Security</h3><p class="hint">The PIN keeps people out of the app. Backups are encrypted with their own password.</p>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<button class="btn-line" data-act="pin-off">Remove PIN</button>' : ''}</div>`;
-        h += `<div class="card"><h3>Backup</h3><p class="hint">${prefs.lastBackup ? 'Last backup ' + fmtDT(prefs.lastBackup) : 'Not backed up yet.'} Share opens your phone's share sheet: choose Google Drive or Proton Drive.</p><button class="btn-line btn-accent" data-act="backup" data-m="share">Back up now (share)</button><button class="btn-line" data-act="backup" data-m="download">Save to Downloads</button><button class="btn-line" data-act="backup" data-m="plain">Share unencrypted copy</button><button class="btn-line" data-act="restore">Restore from a file</button>${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}<button class="btn-line" data-act="erase" style="color:var(--warning)">Erase everything</button></div>`;
+        h += foldCard(`<div class="card"><h3>Security</h3><p class="hint">The PIN keeps people out of the app. Backups are encrypted with their own password.</p>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<button class="btn-line" data-act="pin-off">Remove PIN</button>' : ''}</div>`, 'set-sec', false);
+        h += foldCard(`<div class="card"><h3>Backup</h3><p class="hint">${prefs.lastBackup ? 'Last backup ' + fmtDT(prefs.lastBackup) : 'Not backed up yet.'} Share opens your phone's share sheet: choose Google Drive or Proton Drive.</p><button class="btn-line btn-accent" data-act="backup" data-m="share">Back up now (share)</button><button class="btn-line" data-act="backup" data-m="download">Save to Downloads</button><button class="btn-line" data-act="backup" data-m="plain">Share unencrypted copy</button><button class="btn-line" data-act="restore">Restore from a file</button>${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}<button class="btn-line" data-act="erase" style="color:var(--warning)">Erase everything</button></div>`, 'set-bak', true);
         $('s-set').innerHTML = h;
         const bb = $('bg-blur'), gb = $('glass-blur');
         if (bb) bb.oninput = () => { prefs.bgBlur = +bb.value; $('bg-blur-v').textContent = bb.value; applyBackground(); applyTheme(); persist(); };
@@ -696,7 +715,7 @@
                 const e = add({ t: 'plan', y: c.y, m: c.m, pool, bank, cash, save: sv, allow, minAmt: mn });
                 if (prefs.pendingSeed && !D.pool.init) { /* seed after the plan so carried balances survive migration */ }
                 if (prefs.pendingSeed) { const s = Object.assign({}, prefs.pendingSeed); add(s, e.ts + 1); prefs.pendingSeed = null; persist(); }
-                closeSheet(); render(); toast('Plan saved');
+                closeSheet(); render(); fx('save'); toast('Plan saved');
             };
         });
     }
@@ -711,7 +730,7 @@
             box.querySelector('#c-go').onclick = () => {
                 const s = Math.max(0, parseFloat(S.value) || 0), p = Math.max(0, parseFloat(Pp.value) || 0);
                 if (s + p > pc.left + 0.5) { box.querySelector('#c-err').textContent = 'That is more than what was left'; return; }
-                add({ t: 'close', y: pc.y, m: pc.m, toSave: s, toPool: p }); closeSheet(); render(); toast('Month closed');
+                add({ t: 'close', y: pc.y, m: pc.m, toSave: s, toPool: p }); closeSheet(); render(); if (pc.left >= 0) { fx('fanfare'); if (GC) GC.do('celebrate', { force: true }); toast(s > 0 ? `Month closed within budget. ${money(s)} went to savings.` : 'Month closed within budget. Well done.'); } else { fx('save'); toast('Month closed'); }
             };
         });
     }
@@ -721,14 +740,14 @@
             <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="k-go">Update</button></div>`, box => {
             box.querySelector('#k-go').onclick = () => {
                 const b = numv(box, '#k-b'), c = numv(box, '#k-c');
-                add({ t: 'check', bank: isFinite(b) ? b : null, cash: isFinite(c) ? c : null }); closeSheet(); render(); toast('Balances updated');
+                add({ t: 'check', bank: isFinite(b) ? b : null, cash: isFinite(c) ? c : null }); closeSheet(); render(); fx('save'); toast('Balances updated');
             };
         });
     }
     function xferSheet(dir) {
         const l = dir === 'b2c' ? ['Withdraw cash', 'Bank → Cash'] : ['Deposit cash', 'Cash → Bank'];
         sheet(`<h2>${l[0]}</h2><p>${l[1]}</p><label class="field"><span>Amount</span><input type="number" inputmode="decimal" id="x-a" autofocus></label><div class="error" id="x-e"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="x-go">Move</button></div>`, box => {
-            box.querySelector('#x-go').onclick = () => { const a = numv(box, '#x-a'); if (!(a > 0)) { box.querySelector('#x-e').textContent = 'Enter an amount'; return; } add({ t: 'xfer', dir, amt: a }); closeSheet(); render(); toast('Moved'); };
+            box.querySelector('#x-go').onclick = () => { const a = numv(box, '#x-a'); if (!(a > 0)) { box.querySelector('#x-e').textContent = 'Enter an amount'; return; } add({ t: 'xfer', dir, amt: a }); closeSheet(); render(); fx('save'); toast('Moved'); };
         });
     }
     function savSheet(dir) {
@@ -737,14 +756,14 @@
             box.querySelector('#s-go').onclick = () => {
                 const a = numv(box, '#s-a'); if (!(a > 0)) { box.querySelector('#s-e').textContent = 'Enter an amount'; return; }
                 if (out && a > D.savings) { box.querySelector('#s-e').textContent = 'More than you have saved'; return; }
-                add({ t: 'sav', amt: out ? -a : a, note: out ? val(box, '#s-n') : '' }); closeSheet(); render(); toast('Savings updated');
+                add({ t: 'sav', amt: out ? -a : a, note: out ? val(box, '#s-n') : '' }); closeSheet(); render(); fx(out ? 'down' : 'up'); toast(out ? 'Taken out of savings.' : `${money(a)} moved to savings. Well done.`);
             };
         });
     }
     function dayCloseSheet() {
         const T = D.today;
         sheet(`<h2>Close today</h2><p>You spent ${mh(T.spent)} today and have ${mh(D.P - D.cur.spent)} left this month. Is everything recorded, cash included?</p><div class="modal-actions"><button class="btn-secondary" data-act="close">Not yet</button><button class="btn-primary" id="dc">All recorded</button></div>`, box => {
-            box.querySelector('#dc').onclick = () => { add({ t: 'dayclose', day: T.key }); closeSheet(); render(); toast('Day closed'); if (GC) GC.do('celebrate', { force: true }); };
+            box.querySelector('#dc').onclick = () => { const av = dayAvg(), under = av !== null && av >= 1 && T.spent <= av; add({ t: 'dayclose', day: T.key }); closeSheet(); render(); fx(under ? 'glad' : 'save'); toast(under ? 'Day closed under your average. Nicely done.' : 'Day closed'); if (GC && under) GC.do('celebrate', { force: true }); };
         });
     }
 
@@ -794,7 +813,7 @@
                 const cnt = a > 0 ? buildPur(a) : (purBox.innerHTML = '', purBox.dataset.cnt = '', 0);
                 if (cnt && prefs.purchOn) {
                     const as = E.assess(D, c, cnt), emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked, rs = (val(box, '#e-reason') || '').trim();
-                    if (as.blocked && !emg) { ok = false; if (!waitShown && GC) { waitShown = true; GC.pose('none'); GC.do('wait', { force: true }); } }
+                    if (as.blocked && !emg) { ok = false; if (!waitShown) { waitShown = true; fx('stop'); if (GC) { GC.pose('none'); GC.do('wait', { force: true }); } } }
                     if (rs.length < 5) ok = false;
                     if (as.blocked && !emg) label = 'Blocked';
                 }
@@ -817,8 +836,8 @@
                 const e = { t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: a, acct, note: val(box, '#e-note'), kind: 'add' };
                 const cnt = prefs.purchOn ? E.counted(D, c, a) : 0;
                 if (cnt) { const emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked; e.pur = { c: cnt, need, reason: (val(box, '#e-reason') || '').trim(), emg: !!emg }; }
-                const ev = add(e); closeSheet(); render(); fx('up');
-                if (GC) GC.do(D.P && D.P - D.cur.spent < 0 ? 'warn' : 'yes', { force: true });
+                const ev = add(e); closeSheet(); render(); const brk = !!(D.P && D.P - D.cur.spent < 0); fx(brk || (e.pur && e.pur.emg) ? 'stop' : 'save');   // a spend is confirmed softly, never cheered
+                if (GC) GC.do(brk ? 'warn' : 'yes', { force: true });
                                 toast(`${money(a)} added to ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
                 if (D.P && D.P - D.cur.spent < 0 && prefs.warnOn) setTimeout(() => toast(`Over the monthly budget by ${money(D.cur.spent - D.P)}.`), 6200);
             };
@@ -830,7 +849,7 @@
         const p = E.preview(D, c.id, c.price);
         if (E.counted(D, c, c.price) > 0 || p.level === 'broken' || p.level === 'risk') { entrySheet(catId, c.price); return; }
         const ev = add({ t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: c.price, acct: c.lastAcct || 'bank', note: '', kind: 'add' });
-        render(); fx('up'); if (GC) GC.do('yes', { force: true });
+        render(); fx('save'); if (GC) GC.do('yes', { force: true });
         toast(`${money(c.price)} · ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
     }
 
@@ -886,6 +905,7 @@
     document.addEventListener('click', async ev => {
         const nav = ev.target.closest('.nav-item');
         if (nav) { screen = nav.dataset.s; render(); window.scrollTo(0, 0); return; }
+        const tg = ev.target.closest('[data-tell]'); if (tg && (!ev.target.closest('[data-act]') || ev.target.closest('[data-tell-first]'))) { ev.stopPropagation(); if (GC && GC.tell) GC.tell(tg.dataset.tell, tg.dataset.tone); else toast(tg.dataset.tell); return; }
         const el = ev.target.closest('[data-act]'); if (!el) { if (ev.target === $('sheet-bg')) closeSheet(); return; }
         const act = el.dataset.act, id = el.dataset.id;
         if (el.matches('button.add-btn')) ev.stopPropagation();
@@ -906,7 +926,7 @@
             case 'b-later': prefs.remindSnooze = Date.now() + 3600e3; persist(); renderBanner(); break;
             case 'b-now': backupSheet('share'); break;
             case 'want-add': wantSheet(); break;
-            case 'want-drop': add({ t: 'want', op: 'drop', wid: id }); render(); toast('Dropped. That is money kept.'); break;
+            case 'want-drop': add({ t: 'want', op: 'drop', wid: id }); render(); fx('glad'); toast('Dropped. That is money kept.'); break;
             case 'want-buy': { const w = D.wants.find(x => x.wid === id); if (w) { add({ t: 'want', op: 'buy', wid: id }); screen = 'today'; render(); entrySheet(w.cat, w.price); } break; }
             case 'rev': add({ t: 'rev', pid: +id, v: el.dataset.v }); render(); break;
             case 'pick-bg': $('file-bg').click(); break;

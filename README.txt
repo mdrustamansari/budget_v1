@@ -49,3 +49,10 @@ v2.8 - Sounds and vibration (with settings), a round save button at the bottom l
 v2.9 - All Goal Manager looks are now in the Budget Manager: Paper (page colour, dots/graph/ruled, margins, texture), Aurora and 11 nature themes (Settings, Look), plus the new Sunflower accent. Aurora stays the default, so nothing changes until you choose. Also carries the v5.9/v5.10 fixes: sound and vibration react when your finger lifts, "Quiet at night" off by default, original gentle vibration pulses, and the Companion no longer jumps mid-slide. Cache v21.
 
 v2.10 - The Look card is tidier: the theme tiles are smaller, four to a row. Cache v22.
+
+v2.11 - Tap a graphic and the Companion explains it in one or two short sentences: the ring, the "Day x of y" line, the pace bar, today against your average, the three tiles, the category bars (Today and Month). In privacy mode it says no amounts.
+      Sounds for real moments, never cheering a spend: a soft confirmation when you log a spend; a low double tone when the month's pool is broken or a big purchase is blocked; a small glad sound when you close a day under your average; a rising sound when money moves to savings; a fanfare when a month closes within budget; save, undo and "money kept" sounds. All under 3 seconds, with the same settings as before.
+      All confirmations and warnings now come from the Companion, with an Undo button when it applies.
+      Long cards in Settings fold with a small triangle (state remembered). Companion and Sounds settings are sectioned too.
+      Shared Companion changes: a physical spring stop after "Avoid text" slides or a drag-and-snap, a soft lens flare in the aura, the Colour setting (Classic or Shifting spectrum), and sliders that move only when you drag the handle on purpose (switches ignore swipes). Cache v23.
+      Credits: the lens-flare textures are resized and softened from three.js examples (MIT License, Copyright (c) three.js authors, https://github.com/mrdoob/three.js).
