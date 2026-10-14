@@ -1,5 +1,5 @@
 Rustam's Budget Manager (new generation)
-Upload ALL of these files to the same GitHub repo (replace the old ones): index.html, style.css, engine.js, app.js, sw.js, manifest.webmanifest, icon-192.png, icon-512.png, icon-maskable-512.png.
+Upload ALL of these files to the same GitHub repo (replace the old ones): index.html, style.css, flagship.css, the folder fonts/, engine.js, app.js, sw.js, manifest.webmanifest, icon-192.png, icon-512.png, icon-maskable-512.png.
 Then open the app twice (the first load fetches the update, the second shows it). Your old data is imported automatically.
 
 What is new in version 2.2
@@ -58,3 +58,14 @@ v2.11 - Tap a graphic and the Companion explains it in one or two short sentence
       Credits: the lens-flare textures are resized and softened from three.js examples (MIT License, Copyright (c) three.js authors, https://github.com/mrdoob/three.js).
 
 v2.12 - Same Companion effects as Goal Manager v5.15: fading glass, travelling outline light, "catch the light" flare (Soft or Photographic), movement styles and speed when it avoids text. Cache v24.
+
+v2.13 - Flagship theme, dark themes, no more jumping. Same as Goal Manager v5.16.
+      New: "Version 2.13" is shown just under the app title.
+      Fixed: the amount sheets and keypad no longer jump. They are pinned to the top and only grow downwards; the page behind is frozen while a sheet is open.
+      New: the Companion avoids text inside sheets and keypads too, but never moves while your hands are on the keypad.
+      New: the Flagship theme (now the default): refined frosted glass, thin large numbers, light small text, soft rounded shapes, slow silky motion. Light and dark versions; Sapphire or Champagne Gold accent; optional Soft glow; letters: phone default, Inter, Manrope or Arial.
+      New: five dark themes: Royal Gold, Midnight Forest, Deep Ocean, Ember Dusk, Graphite. Look is sorted into Light themes and Dark themes.
+      Changed: themes are fixed and never follow the phone's dark setting. Optional "Follow my phone" switches between your last light and last dark theme.
+      Changed: an untouched Aurora or Paper look moves to Flagship once.
+      IMPORTANT: also copy flagship.css and the folder fonts/ into your repository.
+      Credits: Inter and Manrope, SIL Open Font License 1.1. Cache v25.

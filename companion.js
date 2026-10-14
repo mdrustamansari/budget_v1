@@ -166,7 +166,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
     // adaptive ink: the real text colour of the app tells us if the screen is dark
     function rgbOf(v) { v = (v || '').trim(); let m = v.match(/rgba?\(\s*(\d+)[ ,]+(\d+)[ ,]+(\d+)/i); if (m) return [+m[1], +m[2], +m[3]]; m = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i); if (!m) return null; let t = m[1]; if (t.length === 3) t = t.split('').map(c => c + c).join(''); return [parseInt(t.slice(0, 2), 16), parseInt(t.slice(2, 4), 16), parseInt(t.slice(4, 6), 16)]; }
     function updateInk() { try { const r = document.documentElement, cs = getComputedStyle(r), c = rgbOf(cs.getPropertyValue('--text-main')) || rgbOf(getComputedStyle(document.body).color); if (c) r.setAttribute('data-gc-ink', (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255 > 0.58 ? 'white' : 'dark'); } catch (e) {} }
-    let inkOn = false; function watchInk() { if (inkOn) return; inkOn = true; updateInk(); try { new MutationObserver(updateInk).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] }); } catch (e) {} if (root.matchMedia) { const q = root.matchMedia('(prefers-color-scheme: dark)'); if (q.addEventListener) q.addEventListener('change', () => setTimeout(updateInk, 30)); } root.addEventListener('pageshow', updateInk); }
+    let inkOn = false; function watchInk() { if (inkOn) return; inkOn = true; updateInk(); try { new MutationObserver(updateInk).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-look', 'data-scheme', 'data-acc', 'class', 'style'] }); } catch (e) {} if (root.matchMedia) { const q = root.matchMedia('(prefers-color-scheme: dark)'); if (q.addEventListener) q.addEventListener('change', () => setTimeout(updateInk, 30)); } root.addEventListener('pageshow', updateInk); }
 
     let current = null;
     function create(host, opts) {
@@ -567,17 +567,23 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
 
         // ---- avoid text: when it sits over words for a moment, it glides to the nearest clear spot and stays there
         let lastScroll = 0, overSince = 0, quietUntil = 0, avTimer = null;
+        let lastPtr = 0;
         addEventListener('scroll', () => { lastScroll = performance.now(); }, { passive: true, capture: true });
+        addEventListener('pointerdown', () => { lastPtr = performance.now(); }, { passive: true, capture: true });
+        addEventListener('keydown', () => { lastPtr = performance.now(); }, { passive: true, capture: true });
+        // inside an open sheet only the sheet counts: its words, its keypad and its fields (the page behind is dimmed and out of reach)
+        const openSheet = () => { try { return (opts.busy && opts.busy()) ? document.querySelector('.modal-backdrop.show .modal') : null; } catch (e) { return null; } };
         function textRects() {
-            const out = [], vw = innerWidth, vh = innerHeight, tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode(n) { if (!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT; const p = n.parentElement; if (!p || p.closest('.gc, .gc-card, script, style, svg, #splash, .lock')) return NodeFilter.FILTER_REJECT; return NodeFilter.FILTER_ACCEPT; } });
+            const sh = openSheet(), out = [], vw = innerWidth, vh = innerHeight, tw = document.createTreeWalker(sh || document.body, NodeFilter.SHOW_TEXT, { acceptNode(n) { if (!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT; const p = n.parentElement; if (!p || p.closest('.gc, .gc-card, script, style, svg, #splash, .lock')) return NodeFilter.FILTER_REJECT; return NodeFilter.FILTER_ACCEPT; } });
             const rg = document.createRange(); let n, c = 0;
             while ((n = tw.nextNode()) && c < 1500) { rg.selectNodeContents(n); const rs = rg.getClientRects(); for (let i = 0; i < rs.length; i++) { const r = rs[i]; if (r.width < 2 || r.height < 4 || r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) continue; out.push(r); c++; } }
+            if (sh) sh.querySelectorAll('.keypad, input, select, textarea').forEach(el => { const r = el.getBoundingClientRect(); if (r.width > 2 && r.height > 2 && r.bottom > 0 && r.top < vh) out.push(r); });
             return out;
         }
         const hits = (x, y, rs) => { for (let i = 0; i < rs.length; i++) { const r = rs[i]; if (x + 58 > r.left + 1 && x - 2 < r.right - 1 && y + 58 > r.top + 2 && y - 2 < r.bottom - 2) return true; } return false; };
         function avoidStep() {
             const mode = PR.avoid; if (!mode || mode === 'off' || (PR.place !== 'snap' && PR.place !== 'free') || !shown || document.hidden || dragging || act) { overSince = 0; return; }
-            const now = performance.now(); if (now < quietUntil || now - lastTouch < 4000 || now - lastScroll < 500 || (opts.busy && opts.busy())) { overSince = 0; return; }
+            const now = performance.now(); const sh = openSheet(); if (now < quietUntil || now - lastTouch < 4000 || now - lastScroll < 500 || (sh && now - lastPtr < 1400)) { overSince = 0; return; }   // in a sheet it waits until the hands are off the keypad
             const r = shell.getBoundingClientRect(), rs = textRects(); if (!hits(r.left, r.top, rs)) { overSince = 0; return; }
             if (!overSince) { overSince = now; return; } if (now - overSince < (mode === 'eager' ? 300 : 1000)) return;
             overSince = 0; const L = lim(), cand = [];
@@ -585,6 +591,10 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             else { for (let y = L.minY; y <= L.maxY; y += 20) { cand.push([r.left, y, Math.abs(y - r.top)]); [L.minX, L.maxX].forEach(x => cand.push([x, y, Math.abs(x - r.left) * 0.7 + Math.abs(y - r.top)])); } for (let x = L.minX; x <= L.maxX; x += 20) cand.push([x, r.top, Math.abs(x - r.left)]); }
             cand.sort((a, b) => a[2] - b[2]);
             for (const c of cand) { const y = clearOf(c[0], c[1]); if (y !== c[1]) continue; if (!hits(c[0], c[1], rs)) { glideTo(c[0], c[1]); quietUntil = now + 3500; return; } }
+            if (sh) {   // nowhere clear: park in the dim strip above the sheet
+                const m = sh.getBoundingClientRect(), py = Math.max(L.minY, m.top - 62), px = PR.place === 'snap' ? (r.left + 28 > innerWidth / 2 ? L.maxX : L.minX) : clamp(r.left, L.minX, L.maxX);
+                if (Math.abs(py - r.top) > 3 || Math.abs(px - r.left) > 3) { glideTo(px, py); quietUntil = now + 3500; return; }
+            }
             quietUntil = now + 6000;
         }
         // ---- physics stop: a damped spring. It leans into the move, runs a little past the spot, rebounds, takes a small second bounce and settles.

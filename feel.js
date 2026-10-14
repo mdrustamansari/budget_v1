@@ -91,6 +91,18 @@
       try {
         const css = document.createElement('style'); css.textContent = 'input[type=range] { touch-action: pan-y; } .gacc { border-top: 1px solid var(--hairline, rgba(120,130,150,.22)); margin-top: 10px; } .gacc > summary { list-style: none; cursor: pointer; padding: 12px 0 4px; display: flex; align-items: center; gap: 8px; font-weight: 600; -webkit-tap-highlight-color: transparent; } .gacc > summary::-webkit-details-marker { display: none; } .gacc > summary::before { content: "\\25B8"; display: inline-block; width: 1em; color: var(--text-muted, #667); transition: transform .18s ease; } .gacc[open] > summary::before { transform: rotate(90deg); } .gacc > summary .gacc-n { margin-left: auto; font-weight: 400; font-size: .85rem; color: var(--text-muted, #667); } .gacc-body { padding-bottom: 6px; } body.still .gacc > summary::before, html.lite .gacc > summary::before { transition: none; }';
         (document.head || document.documentElement).appendChild(css);
+        // no jumping: a sheet is pinned to the top (so it only grows downwards), has a steady height cap, and the page behind it is frozen while it is open
+        const fix = document.createElement('style');
+        fix.textContent = '.modal-backdrop { align-items: flex-start !important; padding-top: max(14px, calc(env(safe-area-inset-top) + 48px)) !important; padding-bottom: 14px !important; overscroll-behavior: contain; } .modal-backdrop .modal { max-height: calc(100vh - max(14px, calc(env(safe-area-inset-top) + 48px)) - 14px) !important; overscroll-behavior: contain; scrollbar-gutter: stable; } @supports (height: 100dvh) { .modal-backdrop .modal { max-height: calc(100dvh - max(14px, calc(env(safe-area-inset-top) + 48px)) - 14px) !important; } } html.sheet-open, html.sheet-open body { overflow: hidden !important; } html.sheet-open body { position: fixed; left: 0; right: 0; width: 100%; top: var(--sheet-lock-top, 0px); }';
+        (document.head || document.documentElement).appendChild(fix);
+        try {
+          const bg = document.getElementById('sheet-bg'), de = document.documentElement; let sy = 0, locked = false;
+          if (bg && window.MutationObserver) new MutationObserver(() => {
+            const on = bg.classList.contains('show');
+            if (on && !locked) { locked = true; sy = window.pageYOffset || 0; de.style.setProperty('--sheet-lock-top', (-sy) + 'px'); de.classList.add('sheet-open'); }
+            else if (!on && locked) { locked = false; de.classList.remove('sheet-open'); de.style.removeProperty('--sheet-lock-top'); window.scrollTo(0, sy); }
+          }).observe(bg, { attributes: true, attributeFilter: ['class'] });
+        } catch (e) {}
         let dn = null, sw = null;
         const isR = el => el && el.tagName === 'INPUT' && el.type === 'range';
         document.addEventListener('pointerdown', e => {

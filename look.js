@@ -68,18 +68,45 @@
         return v;
     }
 
+    /* ---- Fixed themes. Light stays light and dark stays dark: the phone's own dark setting never changes them. ---- */
+    const FIXED = {
+        flagship:  { label: 'Flagship Light', dark: false, sw: 'linear-gradient(135deg,#f6f7fa,#cfe2fb 70%,#5c9fe6)' },
+        flagshipd: { label: 'Flagship Dark',  dark: true,  sw: 'linear-gradient(135deg,#2e323a,#17191d 60%,#3560bd)' },
+        royal:     { label: 'Royal Gold',     dark: true,  sw: 'linear-gradient(135deg,#2a1c3c,#0e0b17 60%,#d9ad4c)' },
+        midnight:  { label: 'Midnight Forest', dark: true, sw: 'linear-gradient(135deg,#123a2a,#07130e 60%,#2f9e6a)' },
+        deepocean: { label: 'Deep Ocean',     dark: true,  sw: 'linear-gradient(135deg,#0c3a5a,#04121f 60%,#2b7fd6)' },
+        ember:     { label: 'Ember Dusk',     dark: true,  sw: 'linear-gradient(135deg,#4a2420,#170c0b 60%,#e0523a)' },
+        graphite:  { label: 'Graphite',       dark: true,  sw: 'linear-gradient(135deg,#3a3c40,#131415 60%,#8793a8)' }
+    };
+    const DEFAULT_LOOK = 'flagship';
+    const isDarkLook = look => !!(FIXED[look] && FIXED[look].dark);
+    // "Follow my phone": the phone says light or dark; we go to the last light or last dark theme used. The first dark is Flagship Dark when the light theme is Flagship, otherwise Graphite.
+    function followTarget(prefs, phoneDark) {
+        const cur = prefs.look || DEFAULT_LOOK;
+        const ll = prefs.lastLight && !isDarkLook(prefs.lastLight) ? prefs.lastLight : (isDarkLook(cur) ? DEFAULT_LOOK : cur);
+        const ld = prefs.lastDark && isDarkLook(prefs.lastDark) ? prefs.lastDark : ((ll === 'flagship' || ll === 'flagshipd') ? 'flagshipd' : 'graphite');
+        return phoneDark ? ld : ll;
+    }
+    // remember the last light and the last dark theme the person used
+    function remember(prefs) { const l = prefs.look || DEFAULT_LOOK; if (isDarkLook(l)) prefs.lastDark = l; else prefs.lastLight = l; }
+    const FONTS = [['system', 'Phone default (San Francisco or Roboto)'], ['inter', 'Inter'], ['manrope', 'Manrope'], ['arial', 'Arial']];
+
     const set = new Set();
     function apply(prefs, o) {
-        const rootEl = document.documentElement, dark = !!o.dark, has = !!o.hasBg;
-        const look = prefs.look || 'paper';
+        const rootEl = document.documentElement, dark = false, has = !!o.hasBg;   // only the fixed dark themes are dark; nothing else follows the phone
+        const look = prefs.look || DEFAULT_LOOK, fixed = FIXED[look];
         // clear what an earlier look set
         set.forEach(k => rootEl.style.removeProperty(k)); set.clear();
         rootEl.setAttribute('data-look', NATURE[look] ? 'nature' : look);
+        rootEl.setAttribute('data-scheme', fixed && fixed.dark ? 'dark' : 'light');
+        if (look === 'flagship' || look === 'flagshipd') { rootEl.setAttribute('data-acc', prefs.accent === 'gold' ? 'gold' : 'sapphire'); rootEl.setAttribute('data-fl', FONTS.some(f => f[0] === prefs.flFont) ? prefs.flFont : 'system'); }
+        else { rootEl.removeAttribute('data-acc'); rootEl.removeAttribute('data-fl'); }
+        rootEl.classList.toggle('fl-glow', !!prefs.glow && !!fixed);
         const paper = document.getElementById('paper'), scene = document.getElementById('scene'), fx = document.getElementById('scene-fx');
         const bl = Math.max(0, +prefs.bgBlur || 0);
         rootEl.style.setProperty('--bg-blur', bl + 'px');
         paper.style.display = 'none'; scene.style.display = 'none'; fx.className = ''; fx.style.display = 'none';
-        if (has) return;
+        if (has || fixed) return;
         if (NATURE[look]) {
             const v = natureVars(look, dark); Object.keys(v).forEach(k => { rootEl.style.setProperty(k, v[k]); set.add(k); });
             scene.style.display = 'block'; scene.style.background = v['--scene'];
@@ -110,5 +137,5 @@
             side.style.display = showSide ? 'block' : 'none'; side.style.backgroundImage = gradV;
         }
     }
-    root.GLook = { PAPERS, INKS, MARGINS, NATURE, PAPER_DEFAULTS, apply, hex2 };
+    root.GLook = { PAPERS, INKS, MARGINS, NATURE, PAPER_DEFAULTS, FIXED, FONTS, DEFAULT_LOOK, isDarkLook, followTarget, remember, apply, hex2 };
 })(window);
