@@ -474,16 +474,11 @@
     // ---- today against yesterday, and your last entry
     const dk = ts => { const d = new Date(ts); return d.getFullYear() * 400 + d.getMonth() * 32 + d.getDate(); };
     function dayTotal(ts) { const k = dk(ts); let t = 0; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && dk(e.ts) === k) t += e.amt; })); return t; }
-    function pairCard() {
-        const now = Date.now(), a = dayTotal(now), b = dayTotal(now - 864e5), mx = Math.max(a, b, 1);
-        const say = prefs.privacy ? 'This compares today with yesterday. Amounts are hidden.' : `Today you spent ${money(a)} so far. Yesterday you spent ${money(b)}. ${a === 0 ? 'Nothing spent yet today.' : a <= b ? 'You are below yesterday.' : money(a - b) + ' above yesterday.'}`;
-        return `<div class="card pair" data-tell="${esc(say)}"><div class="pair-num priv"><span>${money(a)}</span><span class="sl">/</span><small>${money(b)}</small></div><div class="pair-side"><div class="pair-lbl">spent today so far / yesterday</div><div class="pair-bars"><i class="t"><b style="width:${a / mx * 100}%"></b></i><i class="y"><b style="width:${b / mx * 100}%"></b></i></div></div></div>`;
-    }
     function tornStrip() {
         let last = null; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && (!last || e.ts > last.ts)) last = e; }));
         if (!last) return '';
         const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(last.ts).setHours(0, 0, 0, 0)) / 864e5), when = days === 0 ? 'today' : days === 1 ? 'yesterday' : days + ' days ago';
-        return `<div class="torn-wrap" data-tell="${esc(prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${when}.`)}"><div class="torn">Your last entry: <b>${esc(last.icon)} ${esc(last.name)}</b>${prefs.privacy ? '' : ' · <b class="priv">' + money(last.amt) + '</b>'}, ${when}</div></div>`;
+        return `<div class="torn-wrap" data-tell="${esc(prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${when}.`)}"><div class="torn">Last entry: <b>${esc(last.icon)} ${esc(last.name)}</b>${prefs.privacy ? '' : ' · <b class="priv">' + money(last.amt) + '</b>'}, ${when}</div></div>`;
     }
     let moreOpen = false;
     function catsHTML() {
@@ -500,7 +495,7 @@
         if (!P) {
             h += `<div class="card"><h3>Welcome</h3><p class="hint">Tell the app your bank balance and this month's budget. Everything else follows from that.</p><button class="btn-line btn-accent" data-act="plan">Set up ${MONTHS[D.cur.m]}</button></div>`;
         } else {
-            h += tornStrip() + dashCard() + pairCard();
+            h += tornStrip() + dashCard();
         }
         if (prefs.lineOn) { const [q, k] = pickLine(); h += `<div class="daily-line" data-act="line"><span class="q">“</span><div class="t">${esc(q)}<span class="k">${esc(k)}</span></div></div>`; }
         if (prefs.dayCloseOn && P && new Date().getHours() >= 18 && !D.dayCloses.has(T.key)) h += `<div class="banner"><span>Close today? ${D.streak ? `Streak: ${plural(D.streak, 'day')}.` : ''}</span><span class="b-act"><button class="on" data-act="dayclose">Close day</button></span></div>`;
@@ -561,15 +556,20 @@
     let GC = null, lastScreen = null, prevLeft = null;
     // today's spend against your usual day: the average of this month's earlier days (today does not judge itself)
     function dayAvg() { const T = D.today; if (!D.P || T.day < 3) return null; return Math.max(0, (D.cur.spent - T.spent) / (T.day - 1)); }
+    // a thin line on the gauge that shows what yesterday cost
+    function yMark(avg) {
+        const y = dayTotal(Date.now() - 864e5), p = Math.min(100, y / (2 * avg) * 100);
+        return `<b class="tg-y" style="left:${p}%;--sh:${p < 16 ? '-10%' : p > 84 ? '-90%' : '-50%'}"><em class="priv">yesterday ${prefs.privacy ? '' : money(y)}</em></b>`;
+    }
     function todayGauge() {
         const T = D.today, avg = dayAvg(), spent = T.spent;
-        if (avg === null || avg < 1) return `<div class="tg"${tl('This shows today against your average day. The average appears after day 3.')}><div class="row"><span class="label">Today so far</span><span class="priv"><b>${money(spent)}</b></span></div><div class="hint">Your daily average appears after day 3.</div></div>`;
+        if (avg === null || avg < 1) return `<div class="tg"${tl('This shows today against your average day. The average appears after day 3.')}><div class="row"><span class="label">Today so far</span><span class="priv"><b>${money(spent)}</b></span></div><div class="hint">Yesterday: <span class="priv">${money(dayTotal(Date.now() - 864e5))}</span>. Your daily average appears after day 3.</div></div>`;
         const r = spent / avg, diff = Math.abs(spent - avg), pct = Math.min(100, spent / (2 * avg) * 100);
         const kind = r <= 1 ? 'down' : r <= 1.5 ? 'up' : 'high';
         const note = spent === 0 ? 'Nothing spent yet today.' : r <= 1 ? `▼ ${money(diff)} below your average` : `▲ ${money(diff)} above your average`;
         const say = spent === 0 ? 'You have spent nothing today.' : r <= 1 ? (prefs.privacy ? 'Today is below your usual day. Good.' : `Today you spent ${money(spent)}. That is below your usual ${money(avg)}.`) : (prefs.privacy ? 'Today is above your usual day.' : `Today you spent ${money(spent)}. Your usual day is ${money(avg)}.`);
-        return `<div class="tg ${kind}"${tl(say, r > 1.5 ? 'bad' : '')}><div class="row"><span class="label">Today so far</span><span class="tg-note">${esc(note)}</span></div>
-            <div class="tg-track"><i class="tg-fill grow" style="width:${pct}%"></i><b class="tg-mark" style="left:50%"></b></div>
+        return `<div class="tg ${kind}"${tl(say + (prefs.privacy ? '' : ` Yesterday you spent ${money(dayTotal(Date.now() - 864e5))}. The thin line on the bar shows it.`), r > 1.5 ? 'bad' : '')}><div class="row"><span class="label">Today so far</span><span class="tg-note">${esc(note)}</span></div>
+            <div class="tg-track" style="margin-top:18px"><i class="tg-fill grow" style="width:${pct}%"></i><b class="tg-mark" style="left:50%"></b>${yMark(avg)}</div>
             <div class="tg-scale"><span class="priv">${money(spent)} today</span><span>average ${mh(avg)}</span></div></div>`;
     }
     function budgetMood() {

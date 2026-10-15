@@ -85,3 +85,8 @@ v2.15 - Categories that adapt, today against yesterday, a torn-paper note.
       Changed: "Follow my phone" now always uses Flagship Light and Flagship Dark.
       New: Insights also tells you in which part of the day you spend most.
       Cache v27. Copy ALL files, including flagship.css, look.js, feel.js and the fonts/ folder.
+
+v2.16 - Note and "yesterday" refinements.
+      Changed: the torn note is now old white paper with a yellow tint, half as tall: "Last entry: Groceries · ₹357, today".
+      Changed: no separate today/yesterday card. The "Today so far" bar now has a thin line for yesterday's spending, with its amount. Tap the bar and the Companion explains.
+      Cache v28.
