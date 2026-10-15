@@ -470,18 +470,42 @@
             ${todayGauge()}
             <div class="freq">${chips}</div>${pch}</div>`;
     }
+    // The five most used categories stay on top, in order of use. The rest rest under a small arrow.
+    // ---- today against yesterday, and your last entry
+    const dk = ts => { const d = new Date(ts); return d.getFullYear() * 400 + d.getMonth() * 32 + d.getDate(); };
+    function dayTotal(ts) { const k = dk(ts); let t = 0; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && dk(e.ts) === k) t += e.amt; })); return t; }
+    function pairCard() {
+        const now = Date.now(), a = dayTotal(now), b = dayTotal(now - 864e5), mx = Math.max(a, b, 1);
+        const say = prefs.privacy ? 'This compares today with yesterday. Amounts are hidden.' : `Today you spent ${money(a)} so far. Yesterday you spent ${money(b)}. ${a === 0 ? 'Nothing spent yet today.' : a <= b ? 'You are below yesterday.' : money(a - b) + ' above yesterday.'}`;
+        return `<div class="card pair" data-tell="${esc(say)}"><div class="pair-num priv"><span>${money(a)}</span><span class="sl">/</span><small>${money(b)}</small></div><div class="pair-side"><div class="pair-lbl">spent today so far / yesterday</div><div class="pair-bars"><i class="t"><b style="width:${a / mx * 100}%"></b></i><i class="y"><b style="width:${b / mx * 100}%"></b></i></div></div></div>`;
+    }
+    function tornStrip() {
+        let last = null; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && (!last || e.ts > last.ts)) last = e; }));
+        if (!last) return '';
+        const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(last.ts).setHours(0, 0, 0, 0)) / 864e5), when = days === 0 ? 'today' : days === 1 ? 'yesterday' : days + ' days ago';
+        return `<div class="torn-wrap" data-tell="${esc(prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${when}.`)}"><div class="torn">Your last entry: <b>${esc(last.icon)} ${esc(last.name)}</b>${prefs.privacy ? '' : ' · <b class="priv">' + money(last.amt) + '</b>'}, ${when}</div></div>`;
+    }
+    let moreOpen = false;
+    function catsHTML() {
+        const L = D.cats, TOP = 5;
+        if (L.length <= TOP + 1) return L.map(catCard).join('');
+        const top = L.slice(0, TOP), rest = L.slice(TOP);
+        const unused = rest.filter(c => !c.uses).length;
+        const hint = unused === rest.length ? 'not used lately' : 'used less';
+        return top.map(catCard).join('') + `<div class="cat-more${moreOpen ? ' open' : ''}" id="cat-more"><button class="more-btn" data-act="more" aria-expanded="${moreOpen}"><i class="tri" aria-hidden="true"></i><span>${rest.length} more · ${hint}</span></button><div class="more-wrap"><div class="more-in">${rest.map((c, i) => catCard(c, i + TOP)).join('')}</div></div></div>`;
+    }
     function renderToday() {
         const T = D.today, P = D.P, el = $('s-today');
         let h = '';
         if (!P) {
             h += `<div class="card"><h3>Welcome</h3><p class="hint">Tell the app your bank balance and this month's budget. Everything else follows from that.</p><button class="btn-line btn-accent" data-act="plan">Set up ${MONTHS[D.cur.m]}</button></div>`;
         } else {
-            h += dashCard();
+            h += tornStrip() + dashCard() + pairCard();
         }
         if (prefs.lineOn) { const [q, k] = pickLine(); h += `<div class="daily-line" data-act="line"><span class="q">“</span><div class="t">${esc(q)}<span class="k">${esc(k)}</span></div></div>`; }
         if (prefs.dayCloseOn && P && new Date().getHours() >= 18 && !D.dayCloses.has(T.key)) h += `<div class="banner"><span>Close today? ${D.streak ? `Streak: ${plural(D.streak, 'day')}.` : ''}</span><span class="b-act"><button class="on" data-act="dayclose">Close day</button></span></div>`;
         else if (D.streak > 1) h += `<div class="streak" style="margin:0 0 10px 4px">🔥 ${plural(D.streak, 'day')} of closed days</div>`;
-        h += `<div class="list-header"><span>Categories</span><span class="hint">tap + to add</span></div><div id="cats">${D.cats.map(catCard).join('')}</div>`;
+        h += `<div class="list-header"><span>Categories</span><span class="hint">tap + to add</span></div><div id="cats">${catsHTML()}</div>`;
         const before = {};
         if (prefs.animOn && !reduced()) el.querySelectorAll('.cat-item2').forEach(n => { before[n.dataset.id] = n.getBoundingClientRect().top; });
         el.innerHTML = h;
@@ -608,6 +632,10 @@
         all.forEach(e => { if (e.ts >= cutoff) { const d = new Date(e.ts).getDay(); sum[d] += e.amt; dset[d].add(E.dateKey(e.ts)); } });
         const av = sum.map((v, i) => v / 8);
         if (dset.every(s => s.size >= 3)) { const hi = av.indexOf(Math.max.apply(null, av)), lo = av.indexOf(Math.min.apply(null, av)); if (av[hi] > av[lo] * 1.4) out.push(`You spend most on <b>${DN[hi]}s</b> (about ${mh(av[hi])}) and least on <b>${DN[lo]}s</b> (about ${mh(av[lo])}).`); }
+        // time of day
+        { const P = [['morning', 5, 12, 0], ['afternoon', 12, 17, 0], ['evening', 17, 22, 0], ['night', 22, 29, 0]]; let n = 0;
+          all.forEach(e => { let h = new Date(e.ts).getHours(); if (h < 5) h += 24; const b = P.find(x => h >= x[1] && h < x[2]); if (b) { b[3] += e.amt; n += e.amt; } });
+          const top = P.slice().sort((a, b) => b[3] - a[3])[0]; if (n > 0 && top[3] / n > 0.4) out.push(`Most of your spending (${Math.round(top[3] / n * 100)}%) happens in the <b>${top[0]}</b>.`); }
         // categories that keep going over their limit
         const closed = D.months.filter(m => m.spent > 0).slice(-4, -1).concat([]);
         const prev = D.months.filter(m => m.spent > 0 && !(m.y === D.cur.y && m.m === D.cur.m)).slice(-3);
@@ -936,6 +964,7 @@
             case 'xfer': xferSheet(el.dataset.dir); break;
             case 'sav': savSheet(el.dataset.dir || 'in'); break;
             case 'dayclose': dayCloseSheet(); break;
+            case 'more': { moreOpen = !moreOpen; const m = $('cat-more'); if (m) { m.classList.toggle('open', moreOpen); el.setAttribute('aria-expanded', moreOpen); } break; }
             case 'line': lineBump++; renderToday(); break;
             case 'entry': if (!D.P) planSheet(); else entrySheet(+id); break;
             case 'quick': quickAdd(+id); break;

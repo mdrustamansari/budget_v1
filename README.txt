@@ -76,3 +76,12 @@ v2.14 - Visible buttons, calmer colours, a cooler phone.
       Changed: the other light themes are paler and more muted, with only a slight gradient. Aurora's colour haze is half as strong; the nature themes have a lighter sky and a soft veil over the scenery.
       Cooler phone (nothing removed): the main heat came from the frosted-glass blur being redone for every card under the moving Companion many times a second. On smooth backgrounds (Flagship, dark themes, Aurora, Paper, nature themes without a wallpaper photo) the blur could not be seen anyway, so cards use a slightly more frosted tint instead. The nav bar, sheets and speech bubbles keep the live blur, and so does any look with a wallpaper photo. The Companion now draws its resting animation about 20 times a second (it was 30), remembers where the words on the page are instead of scanning every word several times a second, and checks for text every 0.6 second. The soft colour haze no longer has an extra blur layer. In my test the idle load fell from about 85% to about 35% of one core (laptop test, so expect smaller numbers on a phone).
       Cache v26.
+
+v2.15 - Categories that adapt, today against yesterday, a torn-paper note.
+      New: the five categories you use most stay on top, in order of use. The rest rest under a small arrow ("12 more"). Tap it to open or close them. They move up again when you use them.
+      New: a card under the dashboard shows spent today so far / yesterday (for example 357/513) with two slim bars. Tap it to hear the numbers.
+      New: a yellow torn-paper strip above the dashboard shows your last entry.
+      New: Settings > Sounds has a separate "Glass tap sound" switch. The other sounds stay on.
+      Changed: "Follow my phone" now always uses Flagship Light and Flagship Dark.
+      New: Insights also tells you in which part of the day you spend most.
+      Cache v27. Copy ALL files, including flagship.css, look.js, feel.js and the fonts/ folder.

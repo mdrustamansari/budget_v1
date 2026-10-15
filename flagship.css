@@ -224,3 +224,22 @@ html[data-scheme="dark"] .btn-accent, html[data-scheme="dark"] .btn-primary, htm
 html[data-fl] .modal input, html[data-fl] .modal select, html[data-fl] .modal textarea, html[data-fl] .set-select, html[data-scheme="dark"] .modal input, html[data-scheme="dark"] .modal select, html[data-scheme="dark"] .modal textarea, html[data-scheme="dark"] .set-select { border-color: var(--btn-line); background: var(--btn-bg); }
 html[data-fl] .switch i, html[data-scheme="dark"] .switch i { background: rgba(120, 130, 150, 0.35); }
 html[data-fl] .switch input:checked + i, html[data-scheme="dark"] .switch input:checked + i { background: linear-gradient(135deg, var(--blue-a), var(--blue-b)); }
+
+/* ===== today / yesterday pair and the torn paper strip ===== */
+.pair { display: flex; align-items: center; gap: 16px; }
+.pair-num { font-size: 2.3rem; line-height: 1; font-weight: 200; letter-spacing: -0.02em; white-space: nowrap; }
+.pair-num small { font-size: 1.3rem; opacity: .55; font-weight: 200; }
+.pair-num .sl { opacity: .35; margin: 0 2px; }
+.pair-side { flex: 1; min-width: 0; }
+.pair-lbl { font-size: .85rem; color: var(--text-muted); }
+.pair-bars { display: grid; gap: 6px; margin-top: 8px; }
+.pair-bars i { display: block; height: 8px; border-radius: 6px; background: var(--input-bg); position: relative; overflow: hidden; }
+.pair-bars i b { position: absolute; inset: 0 auto 0 0; border-radius: 6px; transition: width 1.1s cubic-bezier(.22,.8,.25,1); }
+.pair-bars i.t b { background: linear-gradient(90deg, var(--blue-a, #5c9fe6), var(--blue-b, #3560bd)); }
+.pair-bars i.y b { background: var(--text-muted); opacity: .45; }
+.torn { position: relative; margin: 0 -4px 14px; padding: 15px 20px 17px; background: #f3e39a; color: #4a3d12; font-size: .98rem; line-height: 1.4; transform: rotate(-.6deg); clip-path: polygon(0.0% 1.6%, 2.94% 0.8%, 5.88% 3.3%, 8.82% 0.4%, 11.76% 2.7%, 14.71% 1.8%, 17.65% 0.3%, 20.59% 2.5%, 23.53% 0.2%, 26.47% 2.2%, 29.41% 0.3%, 32.35% 0.5%, 35.29% 2.1%, 38.24% 4.1%, 41.18% 0.6%, 44.12% 1.1%, 47.06% 3.1%, 50.0% 4.7%, 52.94% 2.9%, 55.88% 2.0%, 58.82% 4.9%, 61.76% 0.2%, 64.71% 4.3%, 67.65% 1.4%, 70.59% 0.7%, 73.53% 0.6%, 76.47% 1.5%, 79.41% 4.1%, 82.35% 0.9%, 85.29% 2.9%, 88.24% 3.2%, 91.18% 1.9%, 94.12% 2.7%, 97.06% 0.3%, 100.0% 0.3%, 100.0% 98.3%, 97.06% 97.4%, 94.12% 99.7%, 91.18% 99.2%, 88.24% 97.3%, 85.29% 97.9%, 82.35% 98.0%, 79.41% 98.5%, 76.47% 96.6%, 73.53% 99.4%, 70.59% 97.9%, 67.65% 98.8%, 64.71% 98.3%, 61.76% 95.2%, 58.82% 97.4%, 55.88% 95.8%, 52.94% 98.8%, 50.0% 97.1%, 47.06% 95.6%, 44.12% 99.9%, 41.18% 96.4%, 38.24% 98.6%, 35.29% 99.4%, 32.35% 97.6%, 29.41% 97.9%, 26.47% 96.2%, 23.53% 98.5%, 20.59% 99.0%, 17.65% 96.5%, 14.71% 97.3%, 11.76% 97.9%, 8.82% 96.6%, 5.88% 97.1%, 2.94% 98.4%, 0.0% 96.0%); filter: drop-shadow(0 3px 5px rgba(0,0,0,.18)); cursor: pointer; }
+.torn b { font-weight: 600; }
+.torn .sub { display: block; font-size: .82rem; opacity: .7; margin-top: 2px; }
+:root[data-scheme="dark"] .torn, html[data-scheme="dark"] .torn { background: #d9c987; color: #3b3010; }
+.torn-wrap { filter: drop-shadow(0 3px 4px rgba(0,0,0,.2)); }
+.torn-wrap .torn { filter: none; }

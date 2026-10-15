@@ -85,10 +85,8 @@
     const isDarkLook = look => !!(FIXED[look] && FIXED[look].dark);
     // "Follow my phone": the phone says light or dark; we go to the last light or last dark theme used. The first dark is Flagship Dark when the light theme is Flagship, otherwise Graphite.
     function followTarget(prefs, phoneDark) {
-        const cur = prefs.look || DEFAULT_LOOK;
-        const ll = prefs.lastLight && !isDarkLook(prefs.lastLight) ? prefs.lastLight : (isDarkLook(cur) ? DEFAULT_LOOK : cur);
-        const ld = prefs.lastDark && isDarkLook(prefs.lastDark) ? prefs.lastDark : ((ll === 'flagship' || ll === 'flagshipd') ? 'flagshipd' : 'graphite');
-        return phoneDark ? ld : ll;
+        // the phone decides light or dark; Flagship is always the answer
+        return phoneDark ? 'flagshipd' : 'flagship';
     }
     // remember the last light and the last dark theme the person used
     function remember(prefs) { const l = prefs.look || DEFAULT_LOOK; if (isDarkLook(l)) prefs.lastDark = l; else prefs.lastLight = l; }

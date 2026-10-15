@@ -4,7 +4,7 @@
    API: GFeel.play(name)  GFeel.buzz(name)  GFeel.moment(name)  GFeel.settingsHTML()  GFeel.saveButton(opts)  GFeel.prefs */
 (function (root) {
     'use strict';
-    const KEY = 'gf_prefs2', DEF = { snd: true, vol: 55, night: false, vib: true, vs: 'mid', save: true };
+    const KEY = 'gf_prefs2', DEF = { snd: true, vol: 55, night: false, vib: true, vs: 'mid', save: true, tap: true };
     let PR = null;
     const load = () => { if (PR) return PR; let o = null; try { o = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {} PR = Object.assign({}, DEF, o || {}); return PR; };
     const set = p => { PR = Object.assign(load(), p); try { localStorage.setItem(KEY, JSON.stringify(PR)); } catch (e) {} if (p.save !== undefined && api._onSave) api._onSave(); };
@@ -81,7 +81,7 @@
     const unlock = () => { audio(); };
     document.addEventListener('pointerup', e => {
         unlock(); if (e.button !== undefined && e.button > 0) return; const k = e.target && e.target.closest ? kindOf(e.target) : null; if (!k) return;
-        buzz(k); if (k === 'tick' || k === 'pulse' || k === 'num') play('tick');
+        buzz(k); if (k === 'tick' || k === 'pulse' || k === 'num') { if (load().tap !== false) play('tick'); }
     }, { passive: true, capture: true });
     document.addEventListener('click', unlock, { passive: true, capture: true });
 
@@ -177,6 +177,7 @@ html.lite .gf-save, html.lite .gf-pop { -webkit-backdrop-filter: none; backdrop-
         const A = root.GAcc ? root.GAcc.sec : (k, t, bd) => bd;
         const snd = `${row('snd', 'Sounds', 'Rising notes for a gain, a soft fall for an undo.', p.snd)}
 <div class="gf-row"><div>Volume: <b data-gf-out="vol">${p.vol}</b>%</div><input type="range" min="0" max="100" value="${p.vol}" data-gf="vol"><div class="gf-lbl"><span>Quiet</span><span>Louder</span></div></div>
+${row('tap', 'Glass tap sound', 'The soft tick when you touch a button. Other sounds stay on.', p.tap !== false)}
 ${row('night', 'Quiet at night', 'No sounds between 10 pm and 7 am.', p.night)}`;
         const vib = `${row('vib', 'Vibration', 'A different feel for buttons, bars, numbers and the character.', p.vib)}
 <div class="gf-row"><div>Vibration strength</div><select class="set-select" data-gf="vs">${opt('low', 'Light', p.vs)}${opt('mid', 'Medium', p.vs)}${opt('high', 'Strong', p.vs)}</select></div>`;
