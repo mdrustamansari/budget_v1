@@ -387,7 +387,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
                 const g1 = 20, g2 = 26, c1 = ((f1 + 0.3) % 1) * 100, c2 = ((f2 + 0.45) % 1) * 100;
                 inkP.setAttribute('stroke-dasharray', `${100 - g1} ${g1}`); inkP.setAttribute('stroke-dashoffset', wrap(100 - g1 / 2 - c1).toFixed(2));
                 rimP.setAttribute('stroke-dasharray', `${100 - g2} ${g2}`); rimP.setAttribute('stroke-dashoffset', wrap(100 - g2 / 2 - c2).toFixed(2));
-                try { wpt = inkP.getPointAtLength(f1 * inkP.getTotalLength()); } catch (e) { wpt = null; }
+                if (ct.t0 || performance.now() > ct.next - 120) { try { wpt = inkP.getPointAtLength(f1 * inkP.getTotalLength()); } catch (e) { wpt = null; } }   // measuring the path is costly: only while the flare is on
             } else { edgeL.forEach(l => { l.W.style.display = 'none'; l.B.style.display = 'none'; }); inkP.removeAttribute('stroke-dasharray'); rimP.removeAttribute('stroke-dasharray'); }
             if (richOn && (frameN++ & 1) === 0) {
                 fillG.setAttribute('mask', U('fm'));
@@ -456,6 +456,10 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         }
         function frame(now) {
             if (!running) return;
+            if (now - last < 15) { requestAnimationFrame(frame); return; }   // never faster than about 60 pictures a second (many phones refresh at 90 or 120 Hz, which would double the work for nothing)
+            if (!document.hidden && PR.place === 'off') { setTimeout(() => requestAnimationFrame(frame), 500); return; }   // hidden by the owner: no drawing at all
+            if (!document.hidden && shown && !act && !dragging && !gliding && !motion && !spr && !poseOver && still() && now - last < 250) { requestAnimationFrame(frame); return; }   // still or Lite mode: the picture only needs a refresh now and then
+            if (!document.hidden && shown && !act && !dragging && !gliding && !motion && !spr && !poseOver && Math.abs(ks) < 0.004 && Math.abs(kv) < 0.05 && now - ptAt > 2400 && now - last < (root.__gcAmb || 50)) { requestAnimationFrame(frame); return; }   // resting: ambient drifting only needs about 20 pictures a second (it was 30); every picture also makes the phone re-blur the frosted glass under it
             const dt = Math.min(0.1, (now - last) / 1000 || 0.016); last = now;
             if (document.hidden || !shown) { requestAnimationFrame(frame); return; }
             const st_ = still();
@@ -567,13 +571,26 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
 
         // ---- avoid text: when it sits over words for a moment, it glides to the nearest clear spot and stays there
         let lastScroll = 0, overSince = 0, quietUntil = 0, avTimer = null;
-        let lastPtr = 0;
-        addEventListener('scroll', () => { lastScroll = performance.now(); }, { passive: true, capture: true });
+        let lastPtr = 0, dirty = true, lastKey = '', lastHit = false, lastScan = 0;
+        // the text scan is costly: repeat it only when the page, the scroll or the character has changed (or every 4 s as a safety net)
+        const markDirty = () => { dirty = true; };
+        addEventListener('resize', markDirty, { passive: true }); addEventListener('pointerup', markDirty, { passive: true, capture: true }); addEventListener('orientationchange', markDirty);
+        try { if (window.MutationObserver) new MutationObserver(markDirty).observe(document.body, { childList: true, subtree: true, characterData: true }); } catch (e) {}
+        addEventListener('scroll', () => { lastScroll = performance.now(); dirty = true; }, { passive: true, capture: true });
         addEventListener('pointerdown', () => { lastPtr = performance.now(); }, { passive: true, capture: true });
         addEventListener('keydown', () => { lastPtr = performance.now(); }, { passive: true, capture: true });
         // inside an open sheet only the sheet counts: its words, its keypad and its fields (the page behind is dimmed and out of reach)
         const openSheet = () => { try { return (opts.busy && opts.busy()) ? document.querySelector('.modal-backdrop.show .modal') : null; } catch (e) { return null; } };
+        // the page rarely changes, so the scan of every word is kept for a few seconds and redone only after a scroll, a resize, a change to the page or a sheet opening
+        let rcDirty = true, rcAt = 0, rcKey = '', rcRects = [];
+        try { new MutationObserver(() => { rcDirty = true; }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'open'] }); } catch (e) {}
+        addEventListener('resize', () => { rcDirty = true; }, { passive: true }); addEventListener('scroll', () => { rcDirty = true; }, { passive: true, capture: true });
         function textRects() {
+            const sh = openSheet(), key = sh ? 's' : 'p', t = performance.now();
+            if (!rcDirty && key === rcKey && t - rcAt < 3000) return rcRects;
+            rcRects = textRectsScan(); rcKey = key; rcAt = t; rcDirty = false; return rcRects;
+        }
+        function textRectsScan() {
             const sh = openSheet(), out = [], vw = innerWidth, vh = innerHeight, tw = document.createTreeWalker(sh || document.body, NodeFilter.SHOW_TEXT, { acceptNode(n) { if (!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT; const p = n.parentElement; if (!p || p.closest('.gc, .gc-card, script, style, svg, #splash, .lock')) return NodeFilter.FILTER_REJECT; return NodeFilter.FILTER_ACCEPT; } });
             const rg = document.createRange(); let n, c = 0;
             while ((n = tw.nextNode()) && c < 1500) { rg.selectNodeContents(n); const rs = rg.getClientRects(); for (let i = 0; i < rs.length; i++) { const r = rs[i]; if (r.width < 2 || r.height < 4 || r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) continue; out.push(r); c++; } }
@@ -584,7 +601,11 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         function avoidStep() {
             const mode = PR.avoid; if (!mode || mode === 'off' || (PR.place !== 'snap' && PR.place !== 'free') || !shown || document.hidden || dragging || act) { overSince = 0; return; }
             const now = performance.now(); const sh = openSheet(); if (now < quietUntil || now - lastTouch < 4000 || now - lastScroll < 500 || (sh && now - lastPtr < 1400)) { overSince = 0; return; }   // in a sheet it waits until the hands are off the keypad
-            const r = shell.getBoundingClientRect(), rs = textRects(); if (!hits(r.left, r.top, rs)) { overSince = 0; return; }
+            const r = shell.getBoundingClientRect(), key = Math.round(r.left) + ',' + Math.round(r.top) + (sh ? 's' : '');
+            let rs = null, hit;
+            if (!dirty && key === lastKey && now - lastScan < 4000) hit = lastHit; else { rs = textRects(); hit = hits(r.left, r.top, rs); dirty = false; lastKey = key; lastHit = hit; lastScan = now; }
+            if (!hit) { overSince = 0; return; }
+            if (!rs) rs = textRects();
             if (!overSince) { overSince = now; return; } if (now - overSince < (mode === 'eager' ? 300 : 1000)) return;
             overSince = 0; const L = lim(), cand = [];
             if (PR.place === 'snap') { [L.minX, L.maxX].forEach(x => { for (let y = L.minY; y <= L.maxY; y += 20) cand.push([x, y, Math.abs(x - r.left) * 0.4 + Math.abs(y - r.top)]); }); }
@@ -643,7 +664,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             spr = { t0: performance.now(), raf: 0 }; spr.raf = requestAnimationFrame(step);
         }
         function glideTo(x, y) { springTo(x, y, { style: PR.evade, spd: PR.evspeed }); }
-        function avoidRestart() { clearInterval(avTimer); avTimer = null; overSince = 0; if (PR.avoid && PR.avoid !== 'off') avTimer = setInterval(avoidStep, 350); }
+        function avoidRestart() { clearInterval(avTimer); avTimer = null; overSince = 0; if (PR.avoid && PR.avoid !== 'off') avTimer = setInterval(avoidStep, 600); }
         avoidRestart(); watchers.push(avoidRestart);
         const cosmic = [auraT, auraG, auraV, orb1, orb2, sp1, sp2, star1, star2, flare].concat(twink.map(t => t.e));
         // ---- shifting spectrum colour: two or three soft colours of the spectrum at a time, slowly drifting (one colour a day when still or Lite)

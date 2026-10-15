@@ -61,8 +61,11 @@
             '--ink-a': toHex(dark ? mix(A, WHITE, 0.25) : mix(A, BLACK, 0.42)), '--ink-b': toHex(dark ? mix(B, WHITE, 0.25) : mix(B, BLACK, 0.3)),
             '--on-accent': lum(M) > 0.58 ? '#1a1206' : '#ffffff', '--on-shadow': lum(M) > 0.58 ? 'none' : '0 1px 2px rgba(0,0,0,.3)',
             '--text-main': text, '--text-muted': muted, '--base': top, '--scrim': rgba(T, 0.42),
-            '--scene': `${n.art(dark)} bottom / 100% 38% no-repeat, linear-gradient(180deg, ${top} 0%, ${bot} 100%)`
+            '--scene': dark ? `${n.art(dark)} bottom / 100% 38% no-repeat, linear-gradient(180deg, ${top} 0%, ${bot} 100%)`
+                // light themes: pale and muted. The sky is lightened, the gradient is short, and a soft white veil sits over the scenery so it reads as a quiet hint.
+                : `linear-gradient(rgba(255,255,255,0.42), rgba(255,255,255,0.42)) bottom / 100% 38% no-repeat, ${n.art(dark)} bottom / 100% 38% no-repeat, linear-gradient(180deg, ${toHex(mix(T, WHITE, 0.55))} 0%, ${toHex(mix(hex2(bot), WHITE, 0.55))} 100%)`
         };
+        if (!dark) { v['--base'] = toHex(mix(T, WHITE, 0.55)); v['--scrim'] = rgba(mix(T, WHITE, 0.55), 0.42); }
         if (dark) { v['--glass'] = 'rgba(14,24,34,0.50)'; v['--glass-hi'] = 'rgba(16,28,40,0.82)'; v['--glass-line'] = 'rgba(255,255,255,0.16)'; v['--sheen'] = 'rgba(255,255,255,0.12)'; v['--hairline'] = 'rgba(255,255,255,0.10)'; v['--track'] = 'rgba(255,255,255,0.13)'; v['--input-bg'] = 'rgba(255,255,255,0.08)'; v['--warning'] = '#ff7a6e'; }
         else { v['--warning'] = '#d63a34'; }
         return v;
@@ -102,6 +105,10 @@
         if (look === 'flagship' || look === 'flagshipd') { rootEl.setAttribute('data-acc', prefs.accent === 'gold' ? 'gold' : 'sapphire'); rootEl.setAttribute('data-fl', FONTS.some(f => f[0] === prefs.flFont) ? prefs.flFont : 'system'); }
         else { rootEl.removeAttribute('data-acc'); rootEl.removeAttribute('data-fl'); }
         rootEl.classList.toggle('fl-glow', !!prefs.glow && !!fixed);
+        // smooth backgrounds (nothing fine behind the cards): live blur of the card backdrop is invisible, so it is switched off to keep the phone cool
+        // Paper and the nature themes: the blur would only hide a faint dot grid or soft hills, so a slightly more frosted tint does the same job without the cost
+        if (!o.hasBg) rootEl.setAttribute('data-smooth', '1'); else rootEl.removeAttribute('data-smooth');
+        if (!o.hasBg && !fixed && look !== 'aurora') { const gl = look === 'paper' ? 'rgba(255,255,255,0.80)' : 'rgba(255,255,255,0.70)'; rootEl.style.setProperty('--glass', gl); set.add('--glass'); }
         const paper = document.getElementById('paper'), scene = document.getElementById('scene'), fx = document.getElementById('scene-fx');
         const bl = Math.max(0, +prefs.bgBlur || 0);
         rootEl.style.setProperty('--bg-blur', bl + 'px');

@@ -20,7 +20,7 @@ html[data-look="flagship"] {
     --glass: rgba(255, 255, 255, 0.72); --glass-hi: rgba(255, 255, 255, 0.93); --glass-line: rgba(255, 255, 255, 0.95); --sheen: rgba(255, 255, 255, 0.55);
     --hairline: rgba(27, 32, 48, 0.08); --track: #dfe6f2; --input-bg: rgba(255, 255, 255, 0.78);
     --shadow: 0 12px 28px rgba(40, 60, 100, 0.11), 0 2px 6px rgba(40, 60, 100, 0.05);
-    --aur-1: rgba(92, 159, 230, 0.30); --aur-2: rgba(150, 180, 240, 0.14); --aur-3: rgba(92, 159, 230, 0.10); --aur-4: rgba(200, 215, 245, 0.20);
+    --aur-1: rgba(92, 159, 230, 0.20); --aur-2: rgba(150, 180, 240, 0.09); --aur-3: rgba(92, 159, 230, 0.06); --aur-4: rgba(200, 215, 245, 0.12);
     --fl-glow: 92, 159, 230;
 }
 /* dark, Sapphire */
@@ -30,65 +30,65 @@ html[data-look="flagshipd"] {
     --glass: rgba(46, 50, 58, 0.62); --glass-hi: rgba(40, 44, 52, 0.94); --glass-line: rgba(255, 255, 255, 0.09); --sheen: rgba(255, 255, 255, 0.06);
     --hairline: rgba(255, 255, 255, 0.07); --track: rgba(255, 255, 255, 0.10); --input-bg: rgba(255, 255, 255, 0.06);
     --shadow: 0 12px 28px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.2);
-    --aur-1: rgba(80, 130, 210, 0.26); --aur-2: rgba(90, 120, 190, 0.10); --aur-3: rgba(80, 130, 210, 0.07); --aur-4: rgba(120, 140, 190, 0.08);
+    --aur-1: rgba(80, 130, 210, 0.15); --aur-2: rgba(90, 120, 190, 0.07); --aur-3: rgba(80, 130, 210, 0.04); --aur-4: rgba(120, 140, 190, 0.05);
     --fl-glow: 92, 159, 230;
 }
 /* Champagne Gold accent (both versions) */
 html[data-look="flagship"][data-acc="gold"] {
     --blue-a: #f3d36e; --blue-b: #c9a43a; --ink-a: #a8832a; --ink-b: #8f6d1d; --on-accent: #33260a; --base: #f7f6f2; --scrim: rgba(247, 246, 242, 0.5);
-    --track: #ece7d8; --aur-1: rgba(243, 211, 110, 0.30); --aur-2: rgba(230, 200, 120, 0.14); --aur-3: rgba(243, 211, 110, 0.10); --aur-4: rgba(240, 225, 180, 0.20);
+    --track: #ece7d8; --aur-1: rgba(243, 211, 110, 0.20); --aur-2: rgba(230, 200, 120, 0.09); --aur-3: rgba(243, 211, 110, 0.06); --aur-4: rgba(240, 225, 180, 0.12);
     --fl-glow: 226, 190, 90;
 }
 html[data-look="flagshipd"][data-acc="gold"] {
     --blue-a: #f3d36e; --blue-b: #c9a43a; --ink-a: #ecd484; --ink-b: #e2c46a; --on-accent: #33260a; --base: #18181a; --scrim: rgba(24, 24, 26, 0.55);
-    --aur-1: rgba(210, 175, 80, 0.22); --aur-2: rgba(200, 170, 90, 0.09); --aur-3: rgba(210, 175, 80, 0.06); --aur-4: rgba(200, 180, 120, 0.07);
+    --aur-1: rgba(210, 175, 80, 0.14); --aur-2: rgba(200, 170, 90, 0.06); --aur-3: rgba(210, 175, 80, 0.04); --aur-4: rgba(200, 180, 120, 0.04);
     --fl-glow: 226, 190, 90;
 }
 
-/* ===================== The five dark themes ===================== */
+/* ===================== The five dark themes: muted, flat, modern. Soft grey-tinted colours; only a whisper of light in the corner. ===================== */
 html[data-look="royal"], html[data-look="midnight"], html[data-look="deepocean"], html[data-look="ember"], html[data-look="graphite"] {
-    --on-shadow: none; --warning: #ff7a72; --track: rgba(255, 255, 255, 0.11); --input-bg: rgba(255, 255, 255, 0.07);
-    --shadow: 0 12px 28px rgba(0, 0, 0, 0.42), 0 2px 6px rgba(0, 0, 0, 0.25);
+    --on-shadow: none; --warning: #f08a82; --track: rgba(255, 255, 255, 0.10); --input-bg: rgba(255, 255, 255, 0.06);
+    --shadow: 0 8px 20px rgba(0, 0, 0, 0.30), 0 1px 3px rgba(0, 0, 0, 0.2);
 }
-/* Royal Gold: near-black aubergine and midnight navy, gold hairlines, a serif feel */
+/* Royal Gold: near-black aubergine, soft champagne-gold hairlines, a serif feel */
 html[data-look="royal"] {
-    --blue-a: #f2d58a; --blue-b: #b8892f; --ink-a: #f0d78f; --ink-b: #d9ad4c; --on-accent: #2a1d05;
-    --text-main: #f4eddc; --text-muted: #b2a68d; --base: #0e0b17; --scrim: rgba(14, 11, 23, 0.55);
-    --glass: rgba(36, 28, 48, 0.58); --glass-hi: rgba(30, 24, 42, 0.95); --glass-line: rgba(214, 176, 84, 0.30); --sheen: rgba(255, 228, 160, 0.07);
-    --hairline: rgba(214, 176, 84, 0.18);
-    --aur-1: rgba(110, 66, 160, 0.34); --aur-2: rgba(40, 62, 140, 0.26); --aur-3: rgba(214, 176, 84, 0.10); --aur-4: rgba(120, 70, 150, 0.14);
-    --fl-glow: 226, 190, 90;
+    --blue-a: #dcc994; --blue-b: #b59d5f; --ink-a: #e2d09c; --ink-b: #c9b377; --on-accent: #1d1a12;
+    --text-main: #ece6d8; --text-muted: #a39c8c; --base: #121017; --scrim: rgba(18, 16, 23, 0.55);
+    --glass: rgba(34, 31, 40, 0.62); --glass-hi: rgba(30, 27, 36, 0.96); --glass-line: rgba(201, 179, 119, 0.20); --sheen: rgba(255, 240, 200, 0.04);
+    --hairline: rgba(201, 179, 119, 0.14);
+    --aur-1: rgba(120, 100, 150, 0.12); --aur-2: rgba(70, 80, 120, 0.09); --aur-3: rgba(201, 179, 119, 0.05); --aur-4: rgba(110, 90, 130, 0.05);
+    --fl-glow: 200, 180, 120;
 }
 html[data-look="midnight"] {
-    --blue-a: #7fe3a8; --blue-b: #2f9e6a; --ink-a: #9ceec0; --ink-b: #6bd29a; --on-accent: #052014;
-    --text-main: #e4f2e8; --text-muted: #8fae9a; --base: #07130e; --scrim: rgba(7, 19, 14, 0.55);
-    --glass: rgba(16, 38, 29, 0.56); --glass-hi: rgba(14, 33, 26, 0.95); --glass-line: rgba(255, 255, 255, 0.11); --sheen: rgba(255, 255, 255, 0.06);
-    --hairline: rgba(255, 255, 255, 0.08);
-    --aur-1: rgba(40, 150, 100, 0.30); --aur-2: rgba(30, 110, 90, 0.18); --aur-3: rgba(60, 170, 110, 0.12); --aur-4: rgba(90, 140, 70, 0.10);
-    --fl-glow: 90, 210, 150;
+    --blue-a: #94b8a3; --blue-b: #5f8873; --ink-a: #a9cbb7; --ink-b: #86ae98; --on-accent: #0d1713;
+    --text-main: #e1e9e4; --text-muted: #8b9a91; --base: #0d1210; --scrim: rgba(13, 18, 16, 0.55);
+    --glass: rgba(26, 34, 30, 0.62); --glass-hi: rgba(22, 30, 26, 0.96); --glass-line: rgba(255, 255, 255, 0.09); --sheen: rgba(255, 255, 255, 0.04);
+    --hairline: rgba(255, 255, 255, 0.07);
+    --aur-1: rgba(70, 120, 95, 0.12); --aur-2: rgba(60, 100, 85, 0.08); --aur-3: rgba(70, 120, 95, 0.05); --aur-4: rgba(90, 120, 80, 0.05);
+    --fl-glow: 120, 180, 150;
 }
 html[data-look="deepocean"] {
-    --blue-a: #5ed2ec; --blue-b: #2b7fd6; --ink-a: #84e0f4; --ink-b: #74b4f2; --on-accent: #04182a;
-    --text-main: #e3f1fa; --text-muted: #86a9bf; --base: #04121f; --scrim: rgba(4, 18, 31, 0.55);
-    --glass: rgba(10, 36, 56, 0.56); --glass-hi: rgba(8, 31, 49, 0.95); --glass-line: rgba(255, 255, 255, 0.11); --sheen: rgba(255, 255, 255, 0.06);
-    --hairline: rgba(255, 255, 255, 0.08);
-    --aur-1: rgba(30, 130, 200, 0.32); --aur-2: rgba(20, 80, 170, 0.22); --aur-3: rgba(40, 190, 220, 0.12); --aur-4: rgba(60, 100, 190, 0.12);
-    --fl-glow: 80, 190, 235;
+    --blue-a: #8aadc3; --blue-b: #5a809b; --ink-a: #a1c2d6; --ink-b: #82a8c3; --on-accent: #0b141b;
+    --text-main: #e2eaf0; --text-muted: #8a98a4; --base: #0c1117; --scrim: rgba(12, 17, 23, 0.55);
+    --glass: rgba(24, 33, 42, 0.62); --glass-hi: rgba(20, 28, 36, 0.96); --glass-line: rgba(255, 255, 255, 0.09); --sheen: rgba(255, 255, 255, 0.04);
+    --hairline: rgba(255, 255, 255, 0.07);
+    --aur-1: rgba(60, 110, 150, 0.12); --aur-2: rgba(50, 80, 130, 0.08); --aur-3: rgba(70, 130, 160, 0.05); --aur-4: rgba(70, 100, 140, 0.05);
+    --fl-glow: 120, 165, 200;
 }
 html[data-look="ember"] {
-    --blue-a: #ffb273; --blue-b: #e0523a; --ink-a: #ffc596; --ink-b: #f58f72; --on-accent: #2a0e05;
-    --text-main: #f8eadf; --text-muted: #bd9d8b; --base: #170c0b; --scrim: rgba(23, 12, 11, 0.55);
-    --glass: rgba(50, 26, 22, 0.55); --glass-hi: rgba(42, 22, 19, 0.95); --glass-line: rgba(255, 190, 150, 0.16); --sheen: rgba(255, 200, 160, 0.06);
-    --hairline: rgba(255, 190, 150, 0.10);
-    --aur-1: rgba(224, 82, 58, 0.28); --aur-2: rgba(150, 60, 90, 0.18); --aur-3: rgba(255, 160, 100, 0.12); --aur-4: rgba(120, 50, 70, 0.14);
-    --fl-glow: 255, 160, 110;
+    --blue-a: #d9a98c; --blue-b: #b3775f; --ink-a: #e5bda4; --ink-b: #d0937c; --on-accent: #1f120c;
+    --text-main: #efe5dd; --text-muted: #a89589; --base: #14100e; --scrim: rgba(20, 16, 14, 0.55);
+    --glass: rgba(40, 32, 29, 0.62); --glass-hi: rgba(34, 27, 24, 0.96); --glass-line: rgba(255, 220, 200, 0.10); --sheen: rgba(255, 220, 200, 0.04);
+    --hairline: rgba(255, 220, 200, 0.08);
+    --aur-1: rgba(170, 100, 80, 0.11); --aur-2: rgba(120, 70, 80, 0.07); --aur-3: rgba(200, 140, 100, 0.05); --aur-4: rgba(110, 60, 70, 0.05);
+    --fl-glow: 210, 150, 120;
 }
 html[data-look="graphite"] {
-    --blue-a: #b4bfd0; --blue-b: #6f7b90; --ink-a: #d3dae6; --ink-b: #aebbd0; --on-accent: #10141a;
-    --text-main: #e9eaec; --text-muted: #9a9da3; --base: #131415; --scrim: rgba(19, 20, 21, 0.55);
-    --glass: rgba(42, 44, 48, 0.6); --glass-hi: rgba(36, 38, 42, 0.95); --glass-line: rgba(255, 255, 255, 0.09); --sheen: rgba(255, 255, 255, 0.06);
+    --blue-a: #bcc1cb; --blue-b: #868e9b; --ink-a: #d3d8e0; --ink-b: #adb5c2; --on-accent: #12151a;
+    --text-main: #e9eaec; --text-muted: #9a9da3; --base: #141415; --scrim: rgba(20, 20, 21, 0.55);
+    --glass: rgba(42, 44, 48, 0.62); --glass-hi: rgba(36, 38, 42, 0.96); --glass-line: rgba(255, 255, 255, 0.09); --sheen: rgba(255, 255, 255, 0.04);
     --hairline: rgba(255, 255, 255, 0.07);
-    --aur-1: rgba(150, 165, 190, 0.18); --aur-2: rgba(120, 130, 150, 0.10); --aur-3: rgba(150, 165, 190, 0.06); --aur-4: rgba(120, 130, 150, 0.07);
+    --aur-1: rgba(150, 160, 180, 0.09); --aur-2: rgba(120, 130, 150, 0.06); --aur-3: rgba(150, 160, 180, 0.04); --aur-4: rgba(120, 130, 150, 0.04);
     --fl-glow: 170, 185, 210;
 }
 /* the sheet back-drop and toast suit dark themes */
@@ -174,3 +174,53 @@ html.fl-glow[data-fl] .card { position: relative; }
 html.fl-glow[data-fl] .btn-accent, html.fl-glow[data-fl] .btn-primary, html.fl-glow[data-fl] .add-btn, html.fl-glow[data-fl] .nav-item.active { box-shadow: 0 0 18px rgba(var(--fl-glow), 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
 html.fl-glow[data-fl] .progress-bar, html.fl-glow[data-fl] .cat-bar > div, html.fl-glow[data-fl] .slipbar i { box-shadow: 0 0 12px rgba(var(--fl-glow), 0.7); }
 html.fl-glow[data-fl] .switch input:checked + i { box-shadow: 0 0 12px rgba(var(--fl-glow), 0.6); }
+
+/* ===================== Cool phone ===================== */
+/* On smooth backgrounds (Flagship, the dark themes, Aurora; no wallpaper photo) blurring what is behind a card changes nothing you can see,
+   but it makes the phone re-blur every card under the moving Companion many times a second. So those cards skip the live blur.
+   Nav bar, sheets, toasts and speech bubbles keep it, because content really passes behind them. */
+html[data-smooth] .dashboard, html[data-smooth] .panel, html[data-smooth] .category-item, html[data-smooth] .history-card, html[data-smooth] .card, html[data-smooth] .cat-item2, html[data-smooth] .tile, html[data-smooth] .daily-line, html[data-smooth] .banner, html[data-smooth] .undo-btn {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+html[data-smooth] body::before { filter: none; }
+
+/* ===================== Buttons you can always see =====================
+   Every secondary button, key and chip gets its own fill and a clear edge, in every Flagship and dark theme. */
+html[data-fl], html[data-scheme="dark"] { --btn-bg: rgba(255, 255, 255, 0.09); --btn-line: rgba(255, 255, 255, 0.20); --btn-hi: rgba(255, 255, 255, 0.14); --btn-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); }
+html[data-look="flagship"] { --btn-bg: #eef1f7; --btn-line: rgba(40, 60, 110, 0.20); --btn-hi: #e3e8f2; --btn-shadow: 0 1px 2px rgba(40, 60, 100, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9); }
+html[data-look="flagship"][data-acc="gold"] { --btn-bg: #f3f0e6; --btn-line: rgba(110, 90, 40, 0.22); --btn-hi: #ebe6d6; }
+html[data-fl] .btn-line:not(.on):not(.btn-accent),
+html[data-fl] .btn-secondary:not(.on):not(.btn-accent),
+html[data-fl] .undo-btn:not(.on):not(.btn-accent),
+html[data-fl] .keypad button:not(.on):not(.btn-accent),
+html[data-fl] .seg button:not(.on):not(.btn-accent),
+html[data-fl] .fchip:not(.on):not(.btn-accent),
+html[data-fl] .mini-btn:not(.on):not(.btn-accent),
+html[data-fl] .days-chips button:not(.on):not(.btn-accent),
+html[data-fl] .b-act button:not(.on):not(.btn-accent),
+html[data-fl] .pg:not(.on):not(.btn-accent),
+html[data-fl] .grid2 button:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .btn-line:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .btn-secondary:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .undo-btn:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .keypad button:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .seg button:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .fchip:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .mini-btn:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .days-chips button:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .b-act button:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .pg:not(.on):not(.btn-accent),
+html[data-scheme="dark"] .grid2 button:not(.on):not(.btn-accent) {
+    background: var(--btn-bg); border: 1px solid var(--btn-line); color: var(--text-main); box-shadow: var(--btn-shadow);
+}
+html[data-fl] .btn-line:active, html[data-fl] .btn-secondary:active, html[data-fl] .keypad button:active, html[data-fl] .grid2 button:active, html[data-fl] .undo-btn:active,
+html[data-scheme="dark"] .btn-line:active, html[data-scheme="dark"] .keypad button:active, html[data-scheme="dark"] .grid2 button:active { background: var(--btn-hi); }
+/* the filled (accent) buttons keep their accent fill and show a fine edge so they never melt into the card */
+html[data-fl] .btn-accent, html[data-fl] .btn-primary, html[data-scheme="dark"] .btn-accent, html[data-scheme="dark"] .btn-primary { border: 1px solid rgba(255, 255, 255, 0.28); }
+html[data-look="flagship"] .btn-accent, html[data-look="flagship"] .btn-primary { border-color: rgba(30, 50, 100, 0.25); }
+html[data-fl] .seg button.on, html[data-fl] .days-chips button.on, html[data-fl] .b-act button.on, html[data-scheme="dark"] .seg button.on, html[data-scheme="dark"] .days-chips button.on, html[data-scheme="dark"] .b-act button.on { border-color: transparent; }
+html[data-fl] .btn-accent, html[data-fl] .btn-primary, html[data-fl] .seg button.on, html[data-fl] .days-chips button.on { color: var(--on-accent); }
+html[data-scheme="dark"] .btn-accent, html[data-scheme="dark"] .btn-primary, html[data-scheme="dark"] .seg button.on, html[data-scheme="dark"] .days-chips button.on { color: var(--on-accent); }
+html[data-fl] .modal input, html[data-fl] .modal select, html[data-fl] .modal textarea, html[data-fl] .set-select, html[data-scheme="dark"] .modal input, html[data-scheme="dark"] .modal select, html[data-scheme="dark"] .modal textarea, html[data-scheme="dark"] .set-select { border-color: var(--btn-line); background: var(--btn-bg); }
+html[data-fl] .switch i, html[data-scheme="dark"] .switch i { background: rgba(120, 130, 150, 0.35); }
+html[data-fl] .switch input:checked + i, html[data-scheme="dark"] .switch input:checked + i { background: linear-gradient(135deg, var(--blue-a), var(--blue-b)); }
