@@ -90,3 +90,18 @@ v2.16 - Note and "yesterday" refinements.
       Changed: the torn note is now old white paper with a yellow tint, half as tall: "Last entry: Groceries · ₹357, today".
       Changed: no separate today/yesterday card. The "Today so far" bar now has a thin line for yesterday's spending, with its amount. Tap the bar and the Companion explains.
       Cache v28.
+
+v2.17 - Weekday averages corrected.
+      Fixed: "Which days cost most" no longer divides by a fixed eight weeks. Each weekday is divided by how many of that weekday really passed since your first entry (a day with no spending counts as zero). Voided entries, adjustments and imports are not counted.
+      New: one very large entry (a big purchase, or about ₹1,000 and more than 10 times your usual entry) is flagged. The card shows the average with it and without it, and the entry's name, amount and date.
+      New: the card says how many days were counted, and says plainly when a weekday has fewer than 3 days: too few to show a habit. Weekday insights in words appear only after 4 weeks.
+      Your records are never changed; only the calculation and the explanation changed.
+      Example from your backup: Monday = 5 Oct ₹7,361 + 12 Oct ₹110 = ₹7,471 over 2 Mondays = ₹3,735.50 (shown as 3.7k); without the ₹7,300 fragrance, ₹85.50.
+      Cache v29.
+
+v2.18 - Real frosted glass everywhere, a much cooler phone, a better ledger.
+      Changed: every theme has the real live frosted glass again. Nothing is switched off. The Companion redraws only when something changes (see Goal v5.20 notes).
+      New: the Ledger (Month tab) lists every day with its total and number of entries, then that day's entries with the time. Each entry has Edit (amount, bank or cash, note) and Delete. Both can be undone from the message that appears. Edits keep the original time. Show older adds 14 more days.
+      Changed: the note under the header is a soft old-paper note: "Your last entry was ₹95 for Groceries, yesterday at 11:17 pm."
+      Changed: the yesterday line on "Today so far" is clearer; the Welcome screen shows the app version.
+      Cache v30.

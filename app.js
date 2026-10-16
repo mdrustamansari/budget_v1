@@ -5,6 +5,8 @@
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const DAY = E.DAY;
     const $ = id => document.getElementById(id);
+    // a screen is only rebuilt when what it shows has really changed: no needless repaint (and no re-blur of the glass) on the quiet minute refresh
+    function put(el, h) { if (el.__h === h && el.firstChild) return false; el.__h = h; el.innerHTML = h; return true; }
     const fmt = n => Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
     const fmt2 = n => Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
     const money = n => (n < 0 ? '-' : '') + '₹' + fmt(Math.abs(Math.round(n)));
@@ -474,11 +476,17 @@
     // ---- today against yesterday, and your last entry
     const dk = ts => { const d = new Date(ts); return d.getFullYear() * 400 + d.getMonth() * 32 + d.getDate(); };
     function dayTotal(ts) { const k = dk(ts); let t = 0; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && dk(e.ts) === k) t += e.amt; })); return t; }
+    const whenWords = ts => {
+        const d = new Date(ts), t0 = new Date().setHours(0, 0, 0, 0), days = Math.round((t0 - new Date(ts).setHours(0, 0, 0, 0)) / 864e5);
+        const tm = d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true });
+        const day = days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 7 ? 'on ' + d.toLocaleDateString('en-GB', { weekday: 'long' }) : 'on ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+        return `${day} at ${tm}`;
+    };
     function tornStrip() {
-        let last = null; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && (!last || e.ts > last.ts)) last = e; }));
+        let last = null; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && e.kind !== 'import' && (!last || e.ts > last.ts)) last = e; }));
         if (!last) return '';
-        const days = Math.round((new Date().setHours(0, 0, 0, 0) - new Date(last.ts).setHours(0, 0, 0, 0)) / 864e5), when = days === 0 ? 'today' : days === 1 ? 'yesterday' : days + ' days ago';
-        return `<div class="torn-wrap" data-tell="${esc(prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${when}.`)}"><div class="torn">Last entry: <b>${esc(last.icon)} ${esc(last.name)}</b>${prefs.privacy ? '' : ' · <b class="priv">' + money(last.amt) + '</b>'}, ${when}</div></div>`;
+        const txt = prefs.privacy ? `Your last entry was ${whenWords(last.ts)}.` : `Your last entry was <b class="priv">${money(last.amt)}</b> for <b>${esc(last.name)}</b>, ${whenWords(last.ts)}.`;
+        return `<div class="torn-wrap" data-tell="${esc(prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${whenWords(last.ts)}.`)}"><div class="torn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg><span>${txt}</span></div></div>`;
     }
     let moreOpen = false;
     function catsHTML() {
@@ -503,7 +511,7 @@
         h += `<div class="list-header"><span>Categories</span><span class="hint">tap + to add</span></div><div id="cats">${catsHTML()}</div>`;
         const before = {};
         if (prefs.animOn && !reduced()) el.querySelectorAll('.cat-item2').forEach(n => { before[n.dataset.id] = n.getBoundingClientRect().top; });
-        el.innerHTML = h;
+        put(el, h);
         if (prefs.animOn && !reduced() && Object.keys(before).length && el.animate !== undefined) {
             el.querySelectorAll('.cat-item2').forEach(n => {
                 const b = before[n.dataset.id]; if (b === undefined) return;
@@ -513,11 +521,28 @@
         }
     }
 
-    function monthLedger(box) {
-        const list = D.cur.exps.filter(e => e.kind !== 'import').slice().reverse().slice(0, 60);
-        if (!list.length) return '<p class="hint">Nothing yet this month.</p>';
-        return list.map(e => `<div class="ledger-row"><div style="min-width:0"><div>${esc(e.icon)} ${esc(e.name)}${e.pur ? ' · big' : ''}</div><div class="meta">${fmtDT(e.ts)} · ${e.acct === 'cash' ? 'Cash' : 'Bank'}${e.note ? ' · ' + esc(e.note) : ''}</div></div><div class="row" style="gap:8px"><b class="num priv">${money(e.amt)}</b><button class="mini-btn" data-act="void" data-id="${e.id}">Undo</button></div></div>`).join('');
+    // The ledger: every day with its total, then that day's entries. Each entry can be fixed or deleted (and both can be undone).
+    let ledDays = 14, ledEdit = 0;
+    const ledTime = ts => new Date(ts).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' am', ' am').replace(' pm', ' pm');
+    function ledgerEntries() { const out = []; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'import') out.push(e); })); return out.sort((a, b) => b.ts - a.ts); }
+    function monthLedger() {
+        const all = ledgerEntries(); if (!all.length) return '<p class="hint">Nothing yet.</p>';
+        const t0 = E.startOfDay(Date.now()), shown = all.filter(e => e.ts >= t0 - (ledDays - 1) * 864e5), older = all.length - shown.length;
+        if (!shown.length) return `<p class="hint">Nothing in the last ${ledDays} days.</p><button type="button" class="btn-line" data-act="led-more">Show older (${older})</button>`;
+        const days = []; shown.forEach(e => { const k = E.dateKey(e.ts); let d = days[days.length - 1]; if (!d || d.k !== k) { d = { k, ts: e.ts, list: [], sum: 0 }; days.push(d); } d.list.push(e); if (e.kind !== 'adjust') d.sum += e.amt; });
+        const dn = ts => new Date(ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '');
+        const row = e => {
+            const meta = `${ledTime(e.ts)} · ${e.acct === 'cash' ? 'Cash' : 'Bank'}${e.note ? ' · ' + esc(e.note) : ''}${e.kind === 'adjust' ? ' · adjustment' : ''}`;
+            if (ledEdit === e.id) return `<div class="ledger-row led-edit" data-id="${e.id}"><div style="min-width:0;flex:1"><div>${esc(e.icon)} ${esc(e.name)}</div>
+                <div class="led-form"><input type="number" inputmode="decimal" step="any" id="led-amt" value="${e.amt}" aria-label="Amount"><select id="led-acct" aria-label="Paid from"><option value="bank"${e.acct !== 'cash' ? ' selected' : ''}>Bank</option><option value="cash"${e.acct === 'cash' ? ' selected' : ''}>Cash</option></select><input type="text" id="led-note" value="${esc(e.note || '')}" placeholder="Note" aria-label="Note"></div>
+                <div class="led-btns"><button type="button" class="mini-btn btn-accent" data-act="led-save" data-id="${e.id}">Save</button><button type="button" class="mini-btn" data-act="led-cancel">Cancel</button></div></div></div>`;
+            return `<div class="ledger-row" data-id="${e.id}"><div style="min-width:0"><div>${esc(e.icon)} ${esc(e.name)}${e.pur ? ' · big' : ''}</div><div class="meta">${meta}</div></div><div class="row" style="gap:6px"><b class="num priv">${money(e.amt)}</b><button type="button" class="mini-btn" data-act="led-edit" data-id="${e.id}">Edit</button><button type="button" class="mini-btn" data-act="led-del" data-id="${e.id}">Delete</button></div></div>`;
+        };
+        return days.map(d => `<div class="led-day"><span>${dn(d.ts)}</span><span class="priv">${money(d.sum)} · ${plural(d.list.length, 'entry').replace('entrys', 'entries')}</span></div>${d.list.map(row).join('')}`).join('')
+            + (older > 0 ? `<button type="button" class="btn-line" data-act="led-more">Show older (${older})</button>` : '');
     }
+    const ledFind = id => { let f = null; D.months.forEach(r => r.exps.forEach(e => { if (e.id === id) f = e; })); return f; };
+    const ledCopy = (e, over) => { const c = Object.assign({}, e, over || {}); delete c.id; delete c.ts; return c; };
     function renderMonth() {
         const P = D.P, c = D.cur;
         let h = `<div class="card"><h3>${MONTHS[c.m]} ${c.y}</h3>`;
@@ -531,7 +556,7 @@
             ${D.savLog.slice(-4).reverse().map(s => `<div class="ledger-row"><span class="meta">${fmtDay(s.ts)} · ${esc(s.note || (s.amt > 0 ? 'Deposit' : 'Withdrawal'))}</span><b class="priv">${money(s.amt)}</b></div>`).join('')}</div>`;
         h += `<div class="card"><h3>Envelopes</h3>${D.cats.map(k => { const r = k.limit > 0 ? k.spent / k.limit : 0, g = statusGrad(r); return `<div class="env"${tl(catTell(k, r), k.spent > k.limit ? 'bad' : '')}><div class="top"><span>${esc(k.icon)} ${esc(k.name)}</span><span class="priv ${k.spent > k.limit ? 'bad' : ''}">${money(k.spent)} / ${money(k.limit)}</span></div><div class="cat-bar"><div style="width:${Math.min(100, r * 100)}%;background:linear-gradient(90deg,${rgb(g.g1)},${rgb(g.g2)})"></div></div></div>`; }).join('')}</div>`;
         h += `<div class="card"><h3>Ledger</h3>${monthLedger()}</div>`;
-        $('s-month').innerHTML = h;
+        put($('s-month'), h);
     }
 
     function renderMind() {
@@ -547,7 +572,7 @@
             if (due.length) h += `<div class="card"><h3>Still glad?</h3>${due.slice(0, 3).map(x => `<div class="want"><div class="row"><span>${esc(x.icon)} ${esc(x.catName)} · ${fmtDay(x.ts)}</span><b class="priv">${money(x.total)}</b></div><div class="p-reason">“${esc(x.reason)}”</div><div class="review-row"><button data-act="rev" data-id="${x.id}" data-v="yes">Yes</button><button data-act="rev" data-id="${x.id}" data-v="meh">Meh</button><button data-act="rev" data-id="${x.id}" data-v="no">No</button></div></div>`).join('')}</div>`;
         }
         h += `<div class="card"><h3>Purchases</h3>${D.purchases.slice(0, 30).map(x => `<div class="pitem"><div class="pi-top"><span>${esc(x.icon)} ${esc(x.catName)}</span><b class="priv">${money(x.total)}</b></div><div class="meta muted">${fmtDay(x.ts)}${x.emg ? ' · emergency' : ''}${x.review ? ' · ' + ({ yes: 'glad', meh: 'unsure', no: 'regret' })[x.review] : ''}</div>${x.reason ? `<div class="p-reason">“${esc(x.reason)}”</div>` : ''}</div>`).join('') || '<p class="hint">No big purchases yet.</p>'}</div>`;
-        $('s-mind').innerHTML = h;
+        put($('s-mind'), h);
     }
 
 
@@ -625,13 +650,14 @@
         if (prefs.learnOn === false) return `<div class="card"><h3>What the app has learned</h3><p class="hint">Learning is switched off in Settings.</p></div>`;
         const all = []; D.months.forEach(m => m.exps.forEach(e => { if (e.kind !== 'import' && e.kind !== 'adjust' && e.amt > 0) all.push(e); }));
         const span = all.length ? (Date.now() - Math.min.apply(null, all.map(e => e.ts))) / DAY : 0;
-        if (all.length < 15 || span < 21) return `<div class="card"><h3>What the app has learned</h3><p class="hint">After about three weeks of entries, this card shows your spending habits in plain words. So far: ${plural(all.length, 'entry')}.</p></div>`;
+        if (all.length < 15 || span < 21) return `<div class="card"><h3>What the app has learned</h3><p class="hint">After about three weeks of entries, this card shows your spending habits in plain words. So far: ${(all.length === 1 ? '1 entry' : all.length + ' entries')}.</p></div>`;
         const out = [], DN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         // days of the week
-        const cutoff = Date.now() - 56 * DAY, sum = [0, 0, 0, 0, 0, 0, 0], dset = [new Set(), new Set(), new Set(), new Set(), new Set(), new Set(), new Set()];
-        all.forEach(e => { if (e.ts >= cutoff) { const d = new Date(e.ts).getDay(); sum[d] += e.amt; dset[d].add(E.dateKey(e.ts)); } });
-        const av = sum.map((v, i) => v / 8);
-        if (dset.every(s => s.size >= 3)) { const hi = av.indexOf(Math.max.apply(null, av)), lo = av.indexOf(Math.min.apply(null, av)); if (av[hi] > av[lo] * 1.4) out.push(`You spend most on <b>${DN[hi]}s</b> (about ${mh(av[hi])}) and least on <b>${DN[lo]}s</b> (about ${mh(av[lo])}).`); }
+        { const S = E.weekdayStats(all, Date.now());
+          if (S.ready && S.enough) {
+            const av = S.days.map(r => r.avgEx), hi = av.indexOf(Math.max.apply(null, av)), lo = av.indexOf(Math.min.apply(null, av));
+            if (av[hi] > av[lo] * 1.4) out.push(`Without very large purchases, you spend most on <b>${DN[hi]}s</b> (about ${mh(av[hi])}) and least on <b>${DN[lo]}s</b> (about ${mh(av[lo])}). This uses ${S.spanDays} days.`);
+          } else if (S.ready) out.push(`Weekday patterns need at least 4 weeks of days. So far the app has counted ${S.spanDays} days, which is too few to say which day costs most.`); }
         // time of day
         { const P = [['morning', 5, 12, 0], ['afternoon', 12, 17, 0], ['evening', 17, 22, 0], ['night', 22, 29, 0]]; let n = 0;
           all.forEach(e => { let h = new Date(e.ts).getHours(); if (h < 5) h += 24; const b = P.find(x => h >= x[1] && h < x[2]); if (b) { b[3] += e.amt; n += e.amt; } });
@@ -655,12 +681,20 @@
         return `<div class="card"><h3>Your data</h3><p class="hint">Every entry is saved on this phone only: ${events.length} entries, about ${kb} KB. The app learns from them here. Nothing is sent anywhere. Use Backup to keep a safe copy.</p>${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}</div>`;
     }
     function renderIns() {
-        const days = [0, 0, 0, 0, 0, 0, 0], cnt = [0, 0, 0, 0, 0, 0, 0], cutoff = Date.now() - 56 * DAY, seen = {};
-        D.months.forEach(m => m.exps.forEach(e => { if (e.ts >= cutoff && e.kind !== 'import') { const d = new Date(e.ts); days[d.getDay()] += e.amt; seen[E.dateKey(e.ts)] = d.getDay(); } }));
-        Object.keys(seen).forEach(k => cnt[seen[k]]++);
-        const avg = days.map((v, i) => v / Math.max(1, Math.round(56 / 7)));
-        const mx = Math.max(1, ...avg), names = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-        let h = `<div class="card"><h3>Which days cost most</h3><p class="hint">Average spend per weekday, last 8 weeks.</p><div class="bars">${avg.map((v, i) => `<div><span class="priv">${v >= 1000 ? Math.round(v / 100) / 10 + 'k' : Math.round(v)}</span><b style="height:${Math.max(3, v / mx * 62)}px"></b>${names[i]}</div>`).join('')}</div></div>`;
+        const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], names = ['S', 'M', 'T', 'W', 'T', 'F', 'S'], order = [1, 2, 3, 4, 5, 6, 0];
+        const allx = []; D.months.forEach(m => m.exps.forEach(x => allx.push(x)));
+        const S = E.weekdayStats(allx, Date.now()), mx2 = v => `<span class="priv">₹${(Math.round(v * 100) / 100).toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(Math.round(v * 100) / 100) ? 0 : 2, maximumFractionDigits: 2 })}</span>`, sh = v => v >= 1000 ? Math.round(v / 100) / 10 + 'k' : Math.round(v);
+        let h;
+        if (!S.ready) h = `<div class="card"><h3>Which days cost most</h3><p class="hint">No finished days with spending yet. This card appears after your first full day.</p></div>`;
+        else {
+            const mx = Math.max(1, ...S.days.map(r => r.avg)), fd = ts => new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            const bars = order.map(w => { const r = S.days[w], tot = Math.max(3, r.avg / mx * 62), inner = r.big.length ? Math.max(3, r.avgEx / mx * 62) : 0;
+                return `<div${tl(`${WD[w]}: ${prefs.privacy ? 'average hidden' : 'average ' + money(r.avg)} over ${plural(r.n, WD[w])}. ${r.big.length ? 'One very large entry is included.' : ''}`)}><span class="priv">${sh(r.avg)}</span><b style="height:${tot}px;${r.big.length ? 'opacity:.45;position:relative' : ''}">${inner ? `<i style="position:absolute;left:0;right:0;bottom:0;height:${inner}px;border-radius:inherit;background:var(--blue-b);opacity:1"></i>` : ''}</b>${names[w]}<small style="display:block;font-size:.62rem;opacity:.6">${r.n}×</small></div>`; }).join('');
+            const notes = S.days.filter(r => r.big.length).map(r => { const b = r.big.map(x => `${mx2(x.amt)} (${esc(x.name)}, ${fd(x.ts)})`).join(' and ');
+                return `<div class="hint mt"><b>${WD[r.w]}:</b> the average is ${mx2(r.avg)} over ${plural(r.n, WD[r.w])}, but one very large entry, ${b}, is most of it. Without it the average is ${mx2(r.avgEx)}. ${r.n < 3 ? `Only ${plural(r.n, WD[r.w])} ${r.n === 1 ? 'is' : 'are'} counted, which ${r.n === 1 ? 'is' : 'are'} too few to show a pattern. Please do not read this as a habit.` : ''}</div>`; }).join('');
+            const thin = S.days.filter(r => r.n < 3).length;
+            h = `<div class="card"><h3>Which days cost most</h3><p class="hint">Average spend on each weekday, ${fd(S.first)} to yesterday. ${plural(S.spanDays, 'day')} counted. A day with no spending counts as zero. The number under each letter shows how many of that weekday were counted. Pale bars include a very large entry; the dark part is the average without it.</p><div class="bars">${bars}</div>${notes}${S.enough ? '' : `<div class="hint mt">${S.spanDays < 28 ? 'This is too little data to show a habit.' : 'Some weekdays have fewer than 3 days.'} Each bar only shows what happened on ${thin ? 'those few days' : 'these days'}. A clearer picture needs about 4 weeks.</div>`}</div>`;
+        }
         const ms = D.months.filter(m => m.spent > 0).slice(-6), mm = Math.max(1, ...ms.map(m => m.spent));
         h += `<div class="card"><h3>Months</h3><div class="bars">${ms.map(m => `<div><span class="priv">${Math.round(m.spent / 1000)}k</span><b style="height:${Math.max(3, m.spent / mm * 62)}px"></b>${MONTHS[m.m]}</div>`).join('')}</div></div>`;
         const fixed = D.cats.filter(c => c.type === 'fixed' && (D.priceHist[c.id] || []).length > 1);
@@ -668,7 +702,7 @@
         const resisted = D.wants.filter(w => w.status === 'dropped').reduce((s, w) => s + w.price, 0);
         h += `<div class="card"><h3>Resisted</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(resisted)}</b><span class="hint">in wants you let go</span></div></div>`;
         h += `<div class="card"><h3>Closed months</h3>${D.months.filter(m => m.close).slice(-6).reverse().map(m => `<div class="ledger-row"><span>${MONTHS[m.m]} ${m.y}</span><span class="priv">saved ${money(m.close.toSave)} · pool +${money(m.close.toPool)}</span></div>`).join('') || '<p class="hint">None yet.</p>'}</div>`;
-        $('s-ins').innerHTML = learnInsights() + h;
+        put($('s-ins'), learnInsights() + h);
     }
 
     const sw = (k, t, d) => `<div class="sw-row"><div><div>${t}</div>${d ? `<div class="set-meta">${d}</div>` : ''}</div><label class="switch"><input type="checkbox" data-pref="${k}" ${prefs[k] ? 'checked' : ''}><i></i></label></div>`;
@@ -722,7 +756,7 @@
         const pin = pinOn();
         h += foldCard(`<div class="card"><h3>Security</h3><p class="hint">The PIN keeps people out of the app. Backups are encrypted with their own password.</p>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<button class="btn-line" data-act="pin-off">Remove PIN</button>' : ''}</div>`, 'set-sec', false);
         h += foldCard(`<div class="card"><h3>Backup</h3><p class="hint">${prefs.lastBackup ? 'Last backup ' + fmtDT(prefs.lastBackup) : 'Not backed up yet.'} Share opens your phone's share sheet: choose Google Drive or Proton Drive.</p><button class="btn-line btn-accent" data-act="backup" data-m="share">Back up now (share)</button><button class="btn-line" data-act="backup" data-m="download">Save to Downloads</button><button class="btn-line" data-act="backup" data-m="plain">Share unencrypted copy</button><button class="btn-line" data-act="restore">Restore from a file</button>${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}<button class="btn-line" data-act="erase" style="color:var(--warning)">Erase everything</button></div>`, 'set-bak', true);
-        $('s-set').innerHTML = h;
+        put($('s-set'), h);
         const bb = $('bg-blur'), gb = $('glass-blur');
         if (bb) bb.oninput = () => { prefs.bgBlur = +bb.value; $('bg-blur-v').textContent = bb.value; applyBackground(); applyTheme(); persist(); };
         if (gb) gb.oninput = () => { prefs.glassBlur = +gb.value; $('glass-blur-v').textContent = gb.value; document.documentElement.style.setProperty('--glass-blur', gb.value + 'px'); persist(); };
@@ -968,6 +1002,26 @@
             case 'line': lineBump++; renderToday(); break;
             case 'entry': if (!D.P) planSheet(); else entrySheet(+id); break;
             case 'quick': quickAdd(+id); break;
+            case 'led-more': ledDays += 14; renderMonth(); break;
+            case 'led-edit': ledEdit = +id; renderMonth(); { const i = $('led-amt'); if (i) { i.focus(); i.select(); } } break;
+            case 'led-cancel': ledEdit = 0; renderMonth(); break;
+            case 'led-save': {
+                const e0 = ledFind(+id); if (!e0) { ledEdit = 0; renderMonth(); break; }
+                const v = parseFloat(($('led-amt') || {}).value); if (!(Math.abs(v) > 0) || (e0.kind !== 'adjust' && v < 0)) { toast('Enter an amount above 0'); break; }
+                const acct = ($('led-acct') || {}).value === 'cash' ? 'cash' : 'bank', note = (($('led-note') || {}).value || '').trim();
+                ledEdit = 0;
+                if (v === e0.amt && acct === e0.acct && note === (e0.note || '')) { renderMonth(); break; }
+                const over = { amt: v, acct, note }; if (e0.pur && e0.amt) over.pur = Object.assign({}, e0.pur, { c: Math.round(e0.pur.c * v / e0.amt * 100) / 100 });
+                add({ t: 'void', target: e0.id }); const ne = add(ledCopy(e0, over), e0.ts); render(); fx('save');
+                toast(`Changed ${money(e0.amt)} to ${money(v)}.`, () => { add({ t: 'void', target: ne.id }); add(ledCopy(e0), e0.ts); render(); });
+                break;
+            }
+            case 'led-del': {
+                const e0 = ledFind(+id); if (!e0) break;
+                add({ t: 'void', target: e0.id }); render(); fx('down');
+                toast(`Deleted ${e0.name}, ${money(e0.amt)}.`, () => { add(ledCopy(e0), e0.ts); render(); });
+                break;
+            }
             case 'void': add({ t: 'void', target: +id }); render(); fx('down'); toast('Entry undone'); break;
             case 'toast-undo': { const f = $('toast')._undo; $('toast').classList.remove('show'); if (f) f(); break; }
             case 'b-later': prefs.remindSnooze = Date.now() + 3600e3; persist(); renderBanner(); break;
@@ -1025,6 +1079,7 @@
         const s = $('splash'); if (!prefs.introOn || reduced()) return;
         $('s-hi').textContent = prefs.greetOn ? greeting() : "Rustam's Budget Manager";
         $('s-sub').innerHTML = D.P ? `${esc(money(D.P - D.cur.spent))} left from the pool<br>${esc(money(avgPerDay()))} a day` : 'Let\'s set up your month';
+        { const v = $('app-ver'), sv = $('s-ver'); if (v && sv) sv.textContent = v.textContent; }
         s.classList.add('show');
         const close = () => { clearTimeout(showSplash._t); s.classList.remove('show'); };
         s.onclick = close; showSplash._t = setTimeout(close, 3000);

@@ -495,3 +495,15 @@ html.lite #scene-fx { display: none !important; }
 .cat-more.open .more-wrap { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition-delay: 0s; }
 .more-in { overflow: hidden; min-height: 0; }
 @media (prefers-reduced-motion: reduce) { .more-wrap, .more-btn .tri { transition: none; } }
+
+/* ledger by day */
+.led-day { display: flex; justify-content: space-between; gap: 8px; margin: 14px 0 2px; font-size: .88rem; font-weight: 600; color: var(--text-muted); }
+.led-day:first-child { margin-top: 2px; }
+.led-form { display: grid; grid-template-columns: 1fr 5.5rem; gap: 8px; margin: 8px 0; }
+.led-form input, .led-form select { min-width: 0; padding: 9px 11px; border-radius: 12px; border: 1px solid var(--glass-line); background: var(--input-bg); color: var(--text-main); font: inherit; }
+.led-form #led-note { grid-column: 1 / -1; }
+.led-btns { display: flex; gap: 8px; }
+.ledger-row .row .mini-btn { padding: 5px 10px; }
+
+#splash .s-ver { margin-top: 18px; font-size: .85rem; letter-spacing: .06em; color: var(--text-muted); opacity: 0; transition: opacity .8s ease .9s; }
+#splash.show .s-ver { opacity: .8; }

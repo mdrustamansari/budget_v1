@@ -103,10 +103,8 @@
         if (look === 'flagship' || look === 'flagshipd') { rootEl.setAttribute('data-acc', prefs.accent === 'gold' ? 'gold' : 'sapphire'); rootEl.setAttribute('data-fl', FONTS.some(f => f[0] === prefs.flFont) ? prefs.flFont : 'system'); }
         else { rootEl.removeAttribute('data-acc'); rootEl.removeAttribute('data-fl'); }
         rootEl.classList.toggle('fl-glow', !!prefs.glow && !!fixed);
-        // smooth backgrounds (nothing fine behind the cards): live blur of the card backdrop is invisible, so it is switched off to keep the phone cool
-        // Paper and the nature themes: the blur would only hide a faint dot grid or soft hills, so a slightly more frosted tint does the same job without the cost
-        if (!o.hasBg) rootEl.setAttribute('data-smooth', '1'); else rootEl.removeAttribute('data-smooth');
-        if (!o.hasBg && !fixed && look !== 'aurora') { const gl = look === 'paper' ? 'rgba(255,255,255,0.80)' : 'rgba(255,255,255,0.70)'; rootEl.style.setProperty('--glass', gl); set.add('--glass'); }
+        // frosted glass is the heart of the design: every theme keeps the real, live blur behind its cards (cost is saved elsewhere, see companion.js)
+        rootEl.removeAttribute('data-smooth');
         const paper = document.getElementById('paper'), scene = document.getElementById('scene'), fx = document.getElementById('scene-fx');
         const bl = Math.max(0, +prefs.bgBlur || 0);
         rootEl.style.setProperty('--bg-blur', bl + 'px');

@@ -44,7 +44,15 @@
     };
 
     // ---------- tiny drawing helpers
-    function mk(tag, a, parent) { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (parent) parent.appendChild(e); return e; }
+    // Every picture the character draws sets many attributes, and most of them are the same as a moment ago. Writing a same value still
+    // makes the phone repaint (and re-blur the glass under it), so each element remembers what it shows and skips repeats.
+    // Opacity is kept to 2 decimals, which nobody can see, so slow fades produce fewer changes.
+    function lazySet(k, v) {
+        if (k === 'opacity' && typeof v === 'number') v = Math.round(v * 50) / 50;
+        v = String(v); const c = this.__v || (this.__v = {}); if (c[k] === v) return; c[k] = v; Element.prototype.setAttribute.call(this, k, v);
+    }
+    function lazyRemove(k) { if (this.__v) delete this.__v[k]; Element.prototype.removeAttribute.call(this, k); }
+    function mk(tag, a, parent) { const e = document.createElementNS(NS, tag); e.setAttribute = lazySet; e.removeAttribute = lazyRemove; for (const k in a) e.setAttribute(k, a[k]); if (parent) parent.appendChild(e); return e; }
     const H = g => ({
         p: (d, a) => mk('path', Object.assign({ d, fill: 'none' }, a || {}), g),
         c: (cx, cy, r, a) => mk('circle', Object.assign({ cx, cy, r }, a || {}), g),

@@ -454,14 +454,33 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
                 if (on) r.ticks.forEach(f => f(s));
             });
         }
+        // sleep between pictures instead of waking the screen 60 times a second just to find nothing changed
+        // how often a resting character is redrawn: about 10 times a second while you are using the app, 7 when it has been quiet, 4 while the page scrolls
+        // (slow breathing does not need more, and every picture makes the phone re-blur the frosted glass under it)
+        // The frame governor. Busy (the page scrolls, you type or tap elsewhere): the picture is held, nobody is watching it.
+        // Quiet for a moment: about 10 pictures a second. Still for a long time: it rests, and stirs for a moment now and then.
+        // Anything that really changes (a mood, a prop, a move) is always drawn at once.
+        let lastUse = performance.now(), burstUntil = 0, burstNext = performance.now() + 30000;
+        const useNow = () => { lastUse = performance.now(); };
+        ['pointerdown', 'keydown', 'input'].forEach(ev => document.addEventListener(ev, useNow, { passive: true, capture: true }));
+        function settling() { for (const k in T) if (typeof T[k] === 'number' && Math.abs(P[k] - T[k]) > 0.004) return true; for (const n in props) if (Math.abs(props[n].a - props[n].t) > 0.004) return true; return false; }
+        function ambMs(now) {
+            if (settling()) return 100;
+            if (now - lastScroll < 450 || now - lastUse < 450) return 1e9;
+            const idle = now - Math.max(lastUse, lastTouch);
+            if (idle < 9000) return 100;
+            if (now > burstNext) { burstUntil = now + 1800; burstNext = now + 22000 + Math.random() * 23000; }
+            return now < burstUntil ? 100 : 1e9;
+        }
+        function wake(ms) { ms = Math.min(ms, 300); if (ms > 24) setTimeout(() => requestAnimationFrame(frame), ms - 12); else requestAnimationFrame(frame); }
         function frame(now) {
             if (!running) return;
-            if (now - last < 15) { requestAnimationFrame(frame); return; }   // never faster than about 60 pictures a second (many phones refresh at 90 or 120 Hz, which would double the work for nothing)
+            if (now - last < ((dragging || gliding || spr) ? 15 : 30)) { requestAnimationFrame(frame); return; }   // 60 pictures a second only while you drag it or it springs; 30 is plenty for the rest   // never faster than about 60 pictures a second (many phones refresh at 90 or 120 Hz, which would double the work for nothing)
             if (!document.hidden && PR.place === 'off') { setTimeout(() => requestAnimationFrame(frame), 500); return; }   // hidden by the owner: no drawing at all
-            if (!document.hidden && shown && !act && !dragging && !gliding && !motion && !spr && !poseOver && still() && now - last < 250) { requestAnimationFrame(frame); return; }   // still or Lite mode: the picture only needs a refresh now and then
-            if (!document.hidden && shown && !act && !dragging && !gliding && !motion && !spr && !poseOver && Math.abs(ks) < 0.004 && Math.abs(kv) < 0.05 && now - ptAt > 2400 && now - last < (root.__gcAmb || 50)) { requestAnimationFrame(frame); return; }   // resting: ambient drifting only needs about 20 pictures a second (it was 30); every picture also makes the phone re-blur the frosted glass under it
+            if (!document.hidden && shown && !act && !dragging && !gliding && !motion && !spr && !poseOver && still() && now - last < 250) { wake(250 - (now - last)); return; }   // still or Lite mode: the picture only needs a refresh now and then
+            if (!document.hidden && shown && !act && !dragging && !gliding && !motion && !spr && !poseOver && Math.abs(ks) < 0.004 && Math.abs(kv) < 0.05 && now - ptAt > 2400 && now - last < (root.__gcAmb || ambMs(now))) { wake((root.__gcAmb || ambMs(now)) - (now - last)); return; }   // resting: ambient drifting only needs about 20 pictures a second (it was 30); every picture also makes the phone re-blur the frosted glass under it
             const dt = Math.min(0.1, (now - last) / 1000 || 0.016); last = now;
-            if (document.hidden || !shown) { requestAnimationFrame(frame); return; }
+            if (document.hidden || !shown) { wake(300); return; }
             const st_ = still();
             if (PR.place === 'header') syncHeader();
             const k = 1 - Math.exp(-dt * 6.5); for (const key in T) if (typeof T[key] === 'number') P[key] = lerp(P[key], T[key], k);
@@ -575,7 +594,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         // the text scan is costly: repeat it only when the page, the scroll or the character has changed (or every 4 s as a safety net)
         const markDirty = () => { dirty = true; };
         addEventListener('resize', markDirty, { passive: true }); addEventListener('pointerup', markDirty, { passive: true, capture: true }); addEventListener('orientationchange', markDirty);
-        try { if (window.MutationObserver) new MutationObserver(markDirty).observe(document.body, { childList: true, subtree: true, characterData: true }); } catch (e) {}
+        try { if (window.MutationObserver) new MutationObserver(ms => { for (let i = 0; i < ms.length; i++) if (!shell.contains(ms[i].target)) { dirty = true; return; } }).observe(document.body, { childList: true, subtree: true, characterData: true }); } catch (e) {}
         addEventListener('scroll', () => { lastScroll = performance.now(); dirty = true; }, { passive: true, capture: true });
         addEventListener('pointerdown', () => { lastPtr = performance.now(); }, { passive: true, capture: true });
         addEventListener('keydown', () => { lastPtr = performance.now(); }, { passive: true, capture: true });
@@ -583,11 +602,11 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         const openSheet = () => { try { return (opts.busy && opts.busy()) ? document.querySelector('.modal-backdrop.show .modal') : null; } catch (e) { return null; } };
         // the page rarely changes, so the scan of every word is kept for a few seconds and redone only after a scroll, a resize, a change to the page or a sheet opening
         let rcDirty = true, rcAt = 0, rcKey = '', rcRects = [];
-        try { new MutationObserver(() => { rcDirty = true; }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'open'] }); } catch (e) {}
+        try { new MutationObserver(ms => { for (let i = 0; i < ms.length; i++) if (!shell.contains(ms[i].target)) { rcDirty = true; return; } }).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class', 'style', 'open'] }); } catch (e) {}
         addEventListener('resize', () => { rcDirty = true; }, { passive: true }); addEventListener('scroll', () => { rcDirty = true; }, { passive: true, capture: true });
         function textRects() {
             const sh = openSheet(), key = sh ? 's' : 'p', t = performance.now();
-            if (!rcDirty && key === rcKey && t - rcAt < 3000) return rcRects;
+            if (!rcDirty && key === rcKey && t - rcAt < 10000) return rcRects;
             rcRects = textRectsScan(); rcKey = key; rcAt = t; rcDirty = false; return rcRects;
         }
         function textRectsScan() {
@@ -603,7 +622,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             const now = performance.now(); const sh = openSheet(); if (now < quietUntil || now - lastTouch < 4000 || now - lastScroll < 500 || (sh && now - lastPtr < 1400)) { overSince = 0; return; }   // in a sheet it waits until the hands are off the keypad
             const r = shell.getBoundingClientRect(), key = Math.round(r.left) + ',' + Math.round(r.top) + (sh ? 's' : '');
             let rs = null, hit;
-            if (!dirty && key === lastKey && now - lastScan < 4000) hit = lastHit; else { rs = textRects(); hit = hits(r.left, r.top, rs); dirty = false; lastKey = key; lastHit = hit; lastScan = now; }
+            if (!dirty && key === lastKey && now - lastScan < 10000) hit = lastHit; else { rs = textRects(); hit = hits(r.left, r.top, rs); dirty = false; lastKey = key; lastHit = hit; lastScan = now; }
             if (!hit) { overSince = 0; return; }
             if (!rs) rs = textRects();
             if (!overSince) { overSince = now; return; } if (now - overSince < (mode === 'eager' ? 300 : 1000)) return;

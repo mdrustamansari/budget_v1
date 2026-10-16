@@ -456,9 +456,30 @@
         return out;
     }
 
+    /* ---------- Spending by weekday, worked out from real (non-void, non-adjusting) expenses only ----------
+       Each weekday is divided by how many of that weekday really passed in the period counted (days with no
+       spending count as zero), not by a fixed number of weeks. One very large entry is flagged and also shown left out. */
+    function weekdayStats(exps, now, maxDays) {
+        const lim = maxDays || 56, today0 = startOfDay(now);
+        const list = (exps || []).filter(e => e && e.kind !== 'import' && e.kind !== 'adjust' && e.amt > 0 && e.ts < today0 && e.ts >= today0 - lim * DAY);
+        if (!list.length) return { ready: false, spanDays: 0, days: [] };
+        const first = startOfDay(Math.min.apply(null, list.map(e => e.ts)));
+        const amts = list.map(e => e.amt).sort((a, b) => a - b), med = amts[Math.floor(amts.length / 2)];
+        const big = e => !!e.pur || e.amt >= Math.max(1000, 10 * med);
+        const days = [0, 1, 2, 3, 4, 5, 6].map(w => ({ w, n: 0, withSpend: 0, sum: 0, bigSum: 0, big: [], keys: new Set() }));
+        let spanDays = 0;
+        for (let t = first; t < today0; t += DAY) { const d = new Date(t); days[d.getDay()].n++; spanDays++; }
+        list.forEach(e => {
+            const r = days[new Date(e.ts).getDay()]; r.sum += e.amt; r.keys.add(dateKey(e.ts));
+            if (big(e)) { r.bigSum += e.amt; r.big.push({ ts: e.ts, amt: e.amt, name: e.name }); }
+        });
+        days.forEach(r => { r.withSpend = r.keys.size; delete r.keys; r.avg = r.n ? r.sum / r.n : 0; r.avgEx = r.n ? (r.sum - r.bigSum) / r.n : 0; });
+        return { ready: true, spanDays, first, days, enough: spanDays >= 28 && days.every(r => r.n >= 3) };
+    }
+
     const E = {
         DAY, ymKey, keyOfTs, dateKey, dim, startOfDay, ICONS, guessIcon, defaultPur, normPur, normCat, defaultLump,
-        DEFAULT_CATS, bootstrapEvents, derive, counted, assess, poolOpensFor, preview, migrateV1
+        DEFAULT_CATS, bootstrapEvents, derive, weekdayStats, counted, assess, poolOpensFor, preview, migrateV1
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = E;
     else root.Engine = E;
