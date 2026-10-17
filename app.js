@@ -165,6 +165,9 @@
         const first = box.querySelector('[autofocus]'); if (first && !(opts && opts.noFocus)) setTimeout(() => { try { first.focus(); } catch (e) {} }, 60);
     }
     function closeSheet() { if (GC) GC.pose('none'); $('sheet-bg').classList.remove('show'); const f = sheetCloser; sheetCloser = null; if (f) f(); }
+    // Icon-only Edit (Lucide square-pen) and Delete (Lucide trash-2): same size, tooltip and spoken label
+    const ICO = { edit: '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>', del: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/>' };
+    const icoBtn = (kind, attrs, what) => `<button type="button" class="ico-btn ico-${kind}" ${attrs} title="${kind === 'edit' ? 'Edit' : 'Delete'}" aria-label="${kind === 'edit' ? 'Edit' : 'Delete'} ${what}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICO[kind]}</svg></button>`;
     function confirmSheet(o) {
         return new Promise(res => {
             sheet(`<h2>${esc(o.title)}</h2><p>${esc(o.sub || '')}</p><div class="modal-actions"><button class="btn-secondary" data-r="0">${esc(o.cancel || 'Cancel')}</button><button class="${o.danger ? 'btn-danger' : 'btn-primary'}" data-r="1">${esc(o.ok || 'OK')}</button></div>`, box => {
@@ -486,7 +489,7 @@
         let last = null; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && e.kind !== 'import' && (!last || e.ts > last.ts)) last = e; }));
         if (!last) return '';
         const txt = prefs.privacy ? `Your last entry was ${whenWords(last.ts)}.` : `Your last entry was <b class="priv">${money(last.amt)}</b> for <b>${esc(last.name)}</b>, ${whenWords(last.ts)}.`;
-        return `<div class="torn-wrap" data-tell="${esc(prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${whenWords(last.ts)}.`)}"><div class="torn"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg><span>${txt}</span></div></div>`;
+        return `<div class="torn-wrap" data-tell="${esc(prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${whenWords(last.ts)}.`)}"><div class="torn"><span>${txt}</span></div></div>`;
     }
     let moreOpen = false;
     function catsHTML() {
@@ -536,7 +539,7 @@
             if (ledEdit === e.id) return `<div class="ledger-row led-edit" data-id="${e.id}"><div style="min-width:0;flex:1"><div>${esc(e.icon)} ${esc(e.name)}</div>
                 <div class="led-form"><input type="number" inputmode="decimal" step="any" id="led-amt" value="${e.amt}" aria-label="Amount"><select id="led-acct" aria-label="Paid from"><option value="bank"${e.acct !== 'cash' ? ' selected' : ''}>Bank</option><option value="cash"${e.acct === 'cash' ? ' selected' : ''}>Cash</option></select><input type="text" id="led-note" value="${esc(e.note || '')}" placeholder="Note" aria-label="Note"></div>
                 <div class="led-btns"><button type="button" class="mini-btn btn-accent" data-act="led-save" data-id="${e.id}">Save</button><button type="button" class="mini-btn" data-act="led-cancel">Cancel</button></div></div></div>`;
-            return `<div class="ledger-row" data-id="${e.id}"><div style="min-width:0"><div>${esc(e.icon)} ${esc(e.name)}${e.pur ? ' · big' : ''}</div><div class="meta">${meta}</div></div><div class="row" style="gap:6px"><b class="num priv">${money(e.amt)}</b><button type="button" class="mini-btn" data-act="led-edit" data-id="${e.id}">Edit</button><button type="button" class="mini-btn" data-act="led-del" data-id="${e.id}">Delete</button></div></div>`;
+            return `<div class="ledger-row" data-id="${e.id}"><div style="min-width:0"><div>${esc(e.icon)} ${esc(e.name)}${e.pur ? ' · big' : ''}</div><div class="meta">${meta}</div></div><div class="row" style="gap:6px"><b class="num priv">${money(e.amt)}</b>${icoBtn('edit', `data-act="led-edit" data-id="${e.id}"`, esc(e.name))}${icoBtn('del', `data-act="led-del" data-id="${e.id}"`, esc(e.name))}</div></div>`;
         };
         return days.map(d => `<div class="led-day"><span>${dn(d.ts)}</span><span class="priv">${money(d.sum)} · ${plural(d.list.length, 'entry').replace('entrys', 'entries')}</span></div>${d.list.map(row).join('')}`).join('')
             + (older > 0 ? `<button type="button" class="btn-line" data-act="led-more">Show older (${older})</button>` : '');
@@ -1018,8 +1021,11 @@
             }
             case 'led-del': {
                 const e0 = ledFind(+id); if (!e0) break;
-                add({ t: 'void', target: e0.id }); render(); fx('down');
-                toast(`Deleted ${e0.name}, ${money(e0.amt)}.`, () => { add(ledCopy(e0), e0.ts); render(); });
+                confirmSheet({ title: 'Delete this entry?', sub: `${e0.name}, ${money(e0.amt)} will be removed and your totals recalculated. You can undo straight after.`, ok: 'Delete', danger: true }).then(yes => {
+                    if (!yes) return;
+                    add({ t: 'void', target: e0.id }); render(); fx('down');
+                    toast(`Deleted ${e0.name}, ${money(e0.amt)}.`, () => { add(ledCopy(e0), e0.ts); render(); });
+                });
                 break;
             }
             case 'void': add({ t: 'void', target: +id }); render(); fx('down'); toast('Entry undone'); break;

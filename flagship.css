@@ -230,10 +230,28 @@ html[data-fl] .switch input:checked + i, html[data-scheme="dark"] .switch input:
 .tide-mark { position: absolute; top: -5px; bottom: -5px; width: 2px; margin-left: -1px; border-radius: 2px; background: var(--text-muted); opacity: .75; }
 .tide-mark em { position: absolute; bottom: 100%; left: 50%; transform: translateX(var(--sh, -50%)); margin-bottom: 2px; font-style: normal; font-size: .72rem; line-height: 1; white-space: nowrap; color: var(--text-muted); }
 .torn-wrap { margin: 0 0 12px; cursor: pointer; }
-.torn { display: flex; align-items: center; gap: 10px; padding: 9px 16px; border-radius: 20px; background: linear-gradient(180deg, #fdf9e9, #f8f0cf); color: #4a4126; border: 1px solid rgba(150, 125, 50, .22); box-shadow: 0 6px 16px -8px rgba(90, 70, 20, .35), inset 0 1px 0 rgba(255, 255, 255, .8); font-size: .92rem; font-weight: 300; line-height: 1.3; letter-spacing: .005em; }
-.torn svg { flex: none; width: 18px; height: 18px; stroke: #8a7a3c; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+.torn { padding: 7px 12px; border-radius: 6px; background: #f8f1d6; color: #4a4126; border: 1px solid rgba(150, 125, 50, .28); font-size: .9rem; font-weight: 300; line-height: 1.4; }
 .torn b { font-weight: 500; }
-html[data-scheme="dark"] .torn { background: linear-gradient(180deg, #ece5cb, #e2d9b8); color: #3a3520; border-color: rgba(255, 255, 255, .25); box-shadow: 0 6px 16px -8px rgba(0, 0, 0, .6), inset 0 1px 0 rgba(255, 255, 255, .5); }
+/* icon-only Edit and Delete: one size, neutral and red, a hairline edge so they show on every theme */
+.ico-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border-radius: 11px; border: 1px solid var(--btn-line, rgba(60, 70, 100, .28)); background: var(--btn-bg, var(--input-bg)); color: var(--text-main); cursor: pointer; }
+.ico-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ico-btn.ico-del { color: #d23b34; border-color: rgba(210, 59, 52, .45); }
+html[data-scheme="dark"] .ico-btn.ico-del { color: #ff8f88; border-color: rgba(255, 143, 136, .45); }
+.ico-btn:active { transform: scale(.94); }
+.ico-btn:focus-visible { outline: 2px solid var(--blue-b, #2f6fed); outline-offset: 2px; }
+.hl-b, .ledger-row .row { gap: 8px; align-items: center; }
+/* Visibility rule: on every light theme (not only Flagship) buttons keep a hairline edge */
+html[data-scheme="light"]:not([data-fl]) .btn-line:not(.on):not(.btn-accent),
+html[data-scheme="light"]:not([data-fl]) .btn-secondary:not(.on):not(.btn-accent),
+html[data-scheme="light"]:not([data-fl]) .undo-btn:not(.on):not(.btn-accent),
+html[data-scheme="light"]:not([data-fl]) .keypad button:not(.on):not(.btn-accent),
+html[data-scheme="light"]:not([data-fl]) .seg button:not(.on):not(.btn-accent),
+html[data-scheme="light"]:not([data-fl]) .fchip:not(.on):not(.btn-accent),
+html[data-scheme="light"]:not([data-fl]) .mini-btn:not(.on):not(.btn-accent),
+html[data-scheme="light"]:not([data-fl]) .days-chips button:not(.on):not(.btn-accent),
+html[data-scheme="light"]:not([data-fl]) .b-act button:not(.on):not(.btn-accent),
+html[data-scheme="light"]:not([data-fl]) .more-btn,
+html[data-scheme="light"]:not([data-fl]) .pg:not(.on):not(.btn-accent) { border: 1px solid rgba(40, 55, 95, .26); background-color: rgba(255, 255, 255, .55); box-shadow: 0 1px 2px rgba(40, 55, 95, .10); }
 /* the yesterday mark must be seen on light themes too */
 .tide-track { position: relative; height: 10px; margin: 20px 0 4px; border-radius: 8px; background: color-mix(in srgb, var(--text-main, #1d2740) 12%, transparent); }
 .tide-mark { background: var(--text-main, #1d2740); opacity: .85; width: 2.5px; margin-left: -1.25px; }

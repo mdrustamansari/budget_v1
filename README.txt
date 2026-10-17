@@ -105,3 +105,10 @@ v2.18 - Real frosted glass everywhere, a much cooler phone, a better ledger.
       Changed: the note under the header is a soft old-paper note: "Your last entry was ₹95 for Groceries, yesterday at 11:17 pm."
       Changed: the yesterday line on "Today so far" is clearer; the Welcome screen shows the app version.
       Cache v30.
+
+v2.19 - A livelier Companion that rests and wakes gently, clearer buttons, a cooler phone.
+      Changed: the Companion no longer jumps between still and moving. Its own clock slows to a stop and starts again softly, and it stirs for about 4 seconds every 12 to 25 seconds. It also checks how hard it is working for your phone (and your battery) and draws less often if needed.
+      Removed: the photographic lens flare. Only the gentle bloom is left.
+      Ledger: Edit and Delete are now small icons with a tooltip (pen and bin). Delete asks first, then still offers Undo.
+      Buttons now have a thin outline on every light theme (Paper, nature, Aurora and the rest), so you can always see them.
+      The note at the top is now a simple, flat banner.

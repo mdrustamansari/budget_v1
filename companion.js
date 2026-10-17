@@ -226,9 +226,9 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         }
         flare.style.mixBlendMode = 'screen';
         // "catch the light": every so often the whitest part of the outline blooms for a moment
-        const catchG = mk('g', { opacity: 0 }, bodyG); catchG.style.mixBlendMode = 'screen'; let catchPh = null, catchSoft = null, flC = null;
+        const catchG = mk('g', { opacity: 0 }, bodyG); catchG.style.mixBlendMode = 'screen'; let catchSoft = null, flC = null;
         if (FT) { const f = mk('filter', { id: uid + 'ftc', x: '0', y: '0', width: '1', height: '1', 'color-interpolation-filters': 'sRGB' }, defs); flC = mk('feFlood', { 'flood-color': '#ffe9c2', result: 'c' }, f); mk('feComposite', { in: 'c', in2: 'SourceGraphic', operator: 'in' }, f); flTint.push(flC);
-            catchPh = mk('image', { href: FT.photo || FT.glow, x: -30, y: -30, width: 60, height: 60, filter: U('ftc'), preserveAspectRatio: 'none' }, catchG); catchSoft = mk('image', { href: FT.glow, x: -22, y: -22, width: 44, height: 44, filter: U('ftc'), preserveAspectRatio: 'none' }, catchG); }
+            catchSoft = mk('image', { href: FT.glow, x: -22, y: -22, width: 44, height: 44, filter: U('ftc'), preserveAspectRatio: 'none' }, catchG); }
         const ct = { next: performance.now() + 5000 + Math.random() * 6000, t0: 0, dur: 2200 };
         const face = mk('g', {}, bodyG);
         const st = (a) => Object.assign({ fill: 'none', stroke: INK, 'stroke-linecap': 'round' }, a);
@@ -410,11 +410,11 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             const fp = 0.45 + 0.4 * Math.sin(s * 1.2 + 1), fcx = x0 + bw * 0.3, fcy = y0 + bh * 0.2; flare.setAttribute('transform', `translate(${fcx.toFixed(1)} ${fcy.toFixed(1)})`); flare.setAttribute('opacity', (fp * (0.5 + P.glow * 0.5)).toFixed(2));
             flImg.forEach(o => { if (o.k === 'ghost') { const gx = (cx0(x0, x1) - fcx) * o.t * 0.5, gy = (cy0(y0, y1) - fcy) * o.t * 0.5; o.e.setAttribute('transform', `translate(${gx.toFixed(1)} ${gy.toFixed(1)})`); } else o.e.setAttribute('transform', `rotate(${(Math.sin(s * 0.5) * 8).toFixed(1)})`); });
             { const nowT = performance.now(); let env = 0;
-              if (!ct.t0 && PR.catchlight !== false && fxOn && nowT > ct.next) { ct.t0 = nowT; ct.dur = PR.flare === 'photo' ? 2400 : 1800; }
+              if (!ct.t0 && PR.catchlight !== false && fxOn && nowT > ct.next) { ct.t0 = nowT; ct.dur = 1800; }
               if (ct.t0) { const k = (nowT - ct.t0) / ct.dur; if (k >= 1) { ct.t0 = 0; ct.next = nowT + 10000 + Math.random() * 10000; } else env = Math.pow(Math.sin(Math.PI * k), 2); }
-              if (catchPh) { const px = wpt ? wpt.x : fcx, py = wpt ? wpt.y : fcy, photo = PR.flare === 'photo';
+              if (catchSoft) { const px = wpt ? wpt.x : fcx, py = wpt ? wpt.y : fcy;
                 catchG.setAttribute('transform', `translate(${px.toFixed(1)} ${py.toFixed(1)}) rotate(${(s * 6).toFixed(1)}) scale(${(0.7 + env * 0.9).toFixed(2)})`);
-                catchG.setAttribute('opacity', Math.min(1, env * 1.15).toFixed(2)); catchPh.style.display = photo ? '' : 'none'; catchSoft.style.display = photo ? 'none' : ''; } }
+                catchG.setAttribute('opacity', Math.min(1, env * 1.15).toFixed(2)); } }
             twink.forEach(t => t.e.setAttribute('opacity', (0.15 + 0.85 * Math.max(0, Math.sin(s * (0.9 + t.i * 0.23) * Math.max(0.35, mv) + t.i * 1.9))).toFixed(2)));
             star1.setAttribute('transform', `translate(${sp1.getAttribute('cx') || 0} ${sp1.getAttribute('cy') || 0}) scale(${(0.6 + 0.6 * Math.abs(Math.sin(s * 1.3))).toFixed(2)})`); star2.setAttribute('transform', `translate(${sp2.getAttribute('cx') || 0} ${sp2.getAttribute('cy') || 0}) scale(${(0.5 + 0.6 * Math.abs(Math.sin(s * 0.9 + 1.7))).toFixed(2)})`);
             rimG.setAttribute('gradientTransform', `rotate(${((s * 12 * mv) % 360).toFixed(1)} .5 .5)`);
@@ -464,13 +464,27 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
         const useNow = () => { lastUse = performance.now(); };
         ['pointerdown', 'keydown', 'input'].forEach(ev => document.addEventListener(ev, useNow, { passive: true, capture: true }));
         function settling() { for (const k in T) if (typeof T[k] === 'number' && Math.abs(P[k] - T[k]) > 0.004) return true; for (const n in props) if (Math.abs(props[n].a - props[n].t) > 0.004) return true; return false; }
-        function ambMs(now) {
-            if (settling()) return 100;
-            if (now - lastScroll < 450 || now - lastUse < 450) return 1e9;
+        // Rest and stir without a jolt: the Companion's own clock (vt) runs at a "rate" that eases down to 0 when it rests and back up to 1 when it wakes,
+        // so its drifting slows to a stop and starts again gently. Pictures are only drawn while the rate is moving or above 0.
+        let rate = 1, vt = 0;
+        // Cool-running governor: it measures what its own drawing costs this phone (milliseconds of work per second, smoothed over about 20 s)
+        // and on a low battery. If that stays high it draws less often and rests sooner; it comes back by itself when things calm down.
+        let duty = 0, dutyAt = performance.now(), batTier = 0, tier = 0;
+        const STEP = [80, 120, 200], WIN = [12000, 8000, 5000];
+        function noteCost(ms, now) { const gap = Math.max(1, now - dutyAt); dutyAt = now; const a = 1 - Math.exp(-gap / 20000); duty += (ms * 1000 / gap - duty) * a; tier = Math.max(batTier, duty > 70 ? 2 : duty > 40 ? 1 : 0); }
+        try { if (navigator.getBattery) navigator.getBattery().then(b => { const u = () => { batTier = b.charging ? 0 : b.level < 0.1 ? 2 : b.level < 0.2 ? 1 : 0; }; u(); b.addEventListener('levelchange', u); b.addEventListener('chargingchange', u); }).catch(() => {}); } catch (e) {}
+        root.__gcTier = () => ({ tier, duty: Math.round(duty), rate });
+        function awake(now) {
             const idle = now - Math.max(lastUse, lastTouch);
-            if (idle < 9000) return 100;
-            if (now > burstNext) { burstUntil = now + 1800; burstNext = now + 22000 + Math.random() * 23000; }
-            return now < burstUntil ? 100 : 1e9;
+            if (idle < WIN[tier]) return true;
+            if (now > burstNext) { burstUntil = now + 4000; burstNext = now + 12000 + Math.random() * 13000; }
+            return now < burstUntil;
+        }
+        function ambMs(now) {
+            if (settling()) return STEP[tier];
+            if (now - lastScroll < 450 || now - lastUse < 450) return 1e9;
+            if (awake(now)) return STEP[tier];
+            return rate > 0.01 ? STEP[tier] : 1e9;
         }
         function wake(ms) { ms = Math.min(ms, 300); if (ms > 24) setTimeout(() => requestAnimationFrame(frame), ms - 12); else requestAnimationFrame(frame); }
         function frame(now) {
@@ -496,7 +510,8 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
                 if (now > gazeAt) { gazeAt = now + rnd(2800, 8000); const r = Math.random(); if (r < 0.45) { gzx = 0; gzy = 0; } else { gzx = rnd(-1, 1); gzy = rnd(-0.6, 0.5); } }
             }
             P.blink = now < blinkUntil ? 1 : lerp(P.blink, 0, 1 - Math.exp(-dt * 25));
-            draw(st_ ? 1000 : now - t0, st_); requestAnimationFrame(frame);
+            { const want = awake(now) ? 1 : 0; rate += (want - rate) * (1 - Math.exp(-dt / (want ? 0.45 : 0.6))); if (want === 0 && rate < 0.004) rate = 0; if (want === 1 && rate > 0.996) rate = 1; vt += dt * 1000 * rate; }
+            const c0 = performance.now(); draw(st_ ? 1000 : vt, st_); noteCost(performance.now() - c0, now); requestAnimationFrame(frame);
         }
         function start() { if (running) return; running = true; last = performance.now(); if (reduced()) { applyScene(true); draw(1000, true); } requestAnimationFrame(frame); }
 
@@ -733,7 +748,7 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             + sw('aura', 'Cosmic aura', 'Glow, rings, soft lens flare and tiny stars around it.', p.aura !== false)
             + sel('hue', 'Colour', opt('classic', 'Classic: teal and gold', p.hue) + opt('shift', 'Shifting spectrum: slow drifting colours', p.hue), 'Shifting uses soft colours that drift. In Lite mode or with reduced motion it keeps one colour a day.')
             + sel('fx', 'Glass effects', opt('rich', 'Rich: fading glass, travelling outline light', p.fx) + opt('light', 'Light: outline light only', p.fx) + opt('off', 'Off: plain and steady', p.fx), 'Parts of the body fade softly and a band of light and shadow runs round the edge. Rich uses more battery. Lite mode turns it all off.')
-            + sel('flare', 'Lens flare style', opt('soft', 'Soft: a gentle bloom', p.flare) + opt('photo', 'Photographic: a real starburst', p.flare), 'Used when the outline catches the light.')
+            + sel('flare', 'Lens flare style', opt('soft', 'Soft: a gentle bloom', 'soft'), 'Used when the outline catches the light.')
             + sw('catchlight', 'Catch the light', 'Every 10 to 20 seconds the brightest part of the outline blooms for a moment.', p.catchlight !== false)
             + `<div class="gc-shift" style="display:${p.hue === 'shift' ? '' : 'none'}">` + sel('huespeed', 'Colour speed', opt('slow', 'Slow: about 10 minutes a round', p.huespeed) + opt('calm', 'Calm: about 4 minutes', p.huespeed) + opt('lively', 'Lively: about 1.5 minutes', p.huespeed)) + sel('huen', 'Colours at a time', opt('2', 'Two', String(p.huen)) + opt('3', 'Three', String(p.huen))) + '</div>';
         const where = sel('place', 'Where it lives', opt('header', 'Fixed in the header corner', p.place) + opt('snap', 'Floating, snaps to the nearest side', p.place) + opt('free', 'Floating, free anywhere', p.place) + opt('off', 'Hidden', p.place), 'It always stays on top. In the floating modes, drag it where you like.')
