@@ -118,3 +118,7 @@ v2.20 - One banner with tips, smart sections, clearer edit buttons.
       New: Smart sections on Today, Month, Mindful and Insights. After two weeks the app folds sections you have not opened for three weeks under "More". Switch it off in Settings.
       Fixed: the Save button text was invisible on light themes.
       New file: DESIGN-LANGUAGE.md, the design rules shared by all your apps.
+
+Update (17 Oct 2026, later): The Lens flare style list is gone (only the gentle bloom remains, so there is nothing to choose). Tips in the top banner now use normal upright type. Every button now has a visible edge on all themes, including the Companion's question box and the More button. Checked on all 10 themes and every tab.
+
+v2.22 - Shared style update: small buttons and chips have a hairline edge on every theme (same as Goal v5.24). Nothing else changed.

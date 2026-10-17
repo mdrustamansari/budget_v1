@@ -235,7 +235,7 @@ html[data-fl] .switch input:checked + i, html[data-scheme="dark"] .switch input:
 .bn-ico { flex: none; width: 17px; height: 17px; fill: none; stroke: #8a7a3c; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .bn-view { position: relative; flex: 1; min-width: 0; overflow: hidden; -webkit-mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(transparent, #000 10%, #000 90%, transparent); }
 .bn-line { padding: 1px 0; }
-.bn-line.bn-tip { font-style: italic; }
+.bn-line.bn-tip { font-style: normal; }
 /* the save button inside small forms keeps its blue fill (the plain small-button rule comes later and used to win) */
 .mini-btn.btn-accent { color: var(--on-accent, #fff); text-shadow: var(--on-shadow, none); border: none; background: linear-gradient(135deg, var(--blue-a), var(--blue-b)); }
 /* icon-only Edit and Delete: one size, neutral and red, a hairline edge so they show on every theme */
@@ -275,3 +275,12 @@ html[data-scheme="light"]:not([data-fl]) .pg:not(.on):not(.btn-accent) { border:
 .sec-more.open .more-wrap { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition-delay: 0s; }
 .sec-more .more-in { overflow: hidden; min-height: 0; }
 @media (prefers-reduced-motion: reduce) { .sec-more .more-wrap, .sec-more .more-btn .tri { transition: none; } }
+/* the More fold button gets its own edge on Flagship and dark themes too */
+html[data-fl] .more-btn, html[data-scheme="dark"] .more-btn, html[data-fl] .sec-more .more-btn, html[data-scheme="dark"] .sec-more .more-btn { border: 1px solid var(--btn-line); background: var(--btn-bg); }
+/* subtle text buttons and info chips still get a hairline edge, so you can see where to tap */
+.btn-soft { border: 1px solid var(--btn-line, rgba(40, 55, 95, .26)) !important; border-radius: 14px; opacity: .9 !important; }
+html[data-fl] .tp-chip, html[data-scheme="dark"] .tp-chip { border-color: var(--btn-line); }
+html[data-scheme="light"]:not([data-fl]) .tp-chip { border-color: rgba(40, 55, 95, .26); }
+.pg-edit { border: 1px solid var(--btn-line, rgba(40, 55, 95, .26)) !important; border-radius: 14px; padding: 5px 12px; }
+html[data-scheme="light"] .tp-chip.good { color: color-mix(in srgb, var(--good, #1a8f5b) 78%, #000); }
+html[data-scheme="light"] .tp-chip.bad { color: color-mix(in srgb, var(--warning, #d63a34) 82%, #000); }

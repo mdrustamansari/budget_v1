@@ -1,7 +1,7 @@
 # Rustam's apps: design language and philosophy
 One living file for every app (Budget Manager, Goal Manager, and any future one).
 Rule: when something new is decided, add it here in the same release. Never delete a rule; mark it "replaced by" instead.
-Last updated: 17 Oct 2026 (Goal v5.22, Budget v2.20)
+Last updated: 17 Oct 2026 (Goal v5.24, Budget v2.22)
 
 ## 1. Philosophy
 1. **Frosted glass is the heart of the design.** It is never switched off or weakened on any theme. We save energy by smarter means instead.
@@ -26,9 +26,13 @@ Last updated: 17 Oct 2026 (Goal v5.22, Budget v2.20)
 3. Look at the screen on Flagship light, Flagship dark, Paper, a nature theme and Aurora.
 4. Icons have a tooltip (`title`) and a spoken label (`aria-label`).
 5. Destructive actions ask first, then still offer Undo.
+6. Run the visibility audit on all 10 themes and every tab, plus the open entry sheet. It flags any button whose fill and edge both match its background, and any button text below 3:1 contrast. Result must be 0 flags. Run it with real backup data, not made-up data (Goal: log sheet, page picker and log history too). Last run 17 Oct 2026: 0 flags in both apps.
+9. Small text buttons ("Log history", "Last finished: N · change", "New daily task") and info chips keep a hairline edge. Chip text is darkened on light themes so it passes 3:1 contrast.
+7. Include buttons the Companion draws (its question box) and folded-section buttons.
+8. Do not show a dropdown with only one choice. If one option remains, remove the list.
 
 ## 4. Components
-- **Banner** (`banner.js`): one line at the top of Today. Info icon for "last finished"; bulb icon for a tip or proverb. Text slides up inside the banner, about 0.7 s. Never switches while typing or with a sheet open. Reduced motion: it only fades.
+- **Banner** (`banner.js`): one line at the top of Today. Info icon for "last finished"; bulb icon for a tip or proverb. Text slides up inside the banner, about 0.7 s. Tips are in normal upright type, never italic. Never switches while typing or with a sheet open. Reduced motion: it only fades.
 - **Icon-only Edit and Delete:** Lucide `square-pen` (neutral) and `trash-2` (red), 34 px, same spacing everywhere.
 - **Smart sections** (`sections.js`): a section tagged `data-sec` folds under "More" if untouched for 3 weeks, after 2 weeks of learning. Decided once when the app opens. Settings is never touched. Today, Plan, Life, Outlook, Month, Mindful and Insights use it.
 - **Companion** (`companion.js`): always translucent, blobby, soft, supple and cute. Gentle bloom only (no photographic flare). Rests and wakes smoothly (its own clock slows and speeds up). Speaks rarely.

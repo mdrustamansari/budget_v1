@@ -149,7 +149,7 @@ html[data-gc-ink="white"] .gc { --gc-ink: #ffffff; }
 .gc-ask.on { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
 .gc-ask .q { font-size: 1rem; line-height: 1.4; margin-bottom: 10px; } .gc-ask .r { display: flex; gap: 8px; align-items: center; }
 .gc-ask input { flex: 1; min-width: 0; font-size: 1.1rem; padding: 9px 12px; border-radius: 12px; border: 1px solid var(--glass-line, rgba(0,0,0,.15)); background: var(--input-bg, #fff); color: var(--text-main); }
-.gc-ask button { border-radius: 12px; padding: 9px 14px; font-size: .95rem; border: 1px solid var(--glass-line, rgba(0,0,0,.15)); background: transparent; color: var(--text-main); } .gc-ask button.ok { background: linear-gradient(135deg, var(--blue-a, #7aa7ff), var(--blue-b, #4a6cf7)); color: var(--on-accent, #fff); border: none; font-weight: 600; }
+.gc-ask button { border-radius: 12px; padding: 9px 14px; font-size: .95rem; border: 1px solid var(--btn-line, rgba(40,55,95,.30)); background: var(--btn-bg, rgba(255,255,255,.55)); color: var(--text-main); } .gc-ask button.ok { background: linear-gradient(135deg, var(--blue-a, #7aa7ff), var(--blue-b, #4a6cf7)); color: var(--on-accent, #fff); border: none; font-weight: 600; }
 .gc-ask .err { color: var(--warning, #d63a34); font-size: .85rem; margin-top: 6px; min-height: 1em; }
 html.lite .gc-ask, body.still .gc-ask { transition: none; }
 .gc-card.on { opacity: 1; transform: translateX(-50%); pointer-events: auto; }
@@ -748,7 +748,6 @@ html.lite .gc-card, body.still .gc-card { transition: none; }
             + sw('aura', 'Cosmic aura', 'Glow, rings, soft lens flare and tiny stars around it.', p.aura !== false)
             + sel('hue', 'Colour', opt('classic', 'Classic: teal and gold', p.hue) + opt('shift', 'Shifting spectrum: slow drifting colours', p.hue), 'Shifting uses soft colours that drift. In Lite mode or with reduced motion it keeps one colour a day.')
             + sel('fx', 'Glass effects', opt('rich', 'Rich: fading glass, travelling outline light', p.fx) + opt('light', 'Light: outline light only', p.fx) + opt('off', 'Off: plain and steady', p.fx), 'Parts of the body fade softly and a band of light and shadow runs round the edge. Rich uses more battery. Lite mode turns it all off.')
-            + sel('flare', 'Lens flare style', opt('soft', 'Soft: a gentle bloom', 'soft'), 'Used when the outline catches the light.')
             + sw('catchlight', 'Catch the light', 'Every 10 to 20 seconds the brightest part of the outline blooms for a moment.', p.catchlight !== false)
             + `<div class="gc-shift" style="display:${p.hue === 'shift' ? '' : 'none'}">` + sel('huespeed', 'Colour speed', opt('slow', 'Slow: about 10 minutes a round', p.huespeed) + opt('calm', 'Calm: about 4 minutes', p.huespeed) + opt('lively', 'Lively: about 1.5 minutes', p.huespeed)) + sel('huen', 'Colours at a time', opt('2', 'Two', String(p.huen)) + opt('3', 'Three', String(p.huen))) + '</div>';
         const where = sel('place', 'Where it lives', opt('header', 'Fixed in the header corner', p.place) + opt('snap', 'Floating, snaps to the nearest side', p.place) + opt('free', 'Floating, free anywhere', p.place) + opt('off', 'Hidden', p.place), 'It always stays on top. In the floating modes, drag it where you like.')
