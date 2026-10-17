@@ -112,3 +112,9 @@ v2.19 - A livelier Companion that rests and wakes gently, clearer buttons, a coo
       Ledger: Edit and Delete are now small icons with a tooltip (pen and bin). Delete asks first, then still offers Undo.
       Buttons now have a thin outline on every light theme (Paper, nature, Aurora and the rest), so you can always see them.
       The note at the top is now a simple, flat banner.
+
+v2.20 - One banner with tips, smart sections, clearer edit buttons.
+      New: the top banner now shows "last entry" (info icon) and, now and then, a tip or proverb (bulb icon). The text slides up inside the banner. The separate tip block is gone.
+      New: Smart sections on Today, Month, Mindful and Insights. After two weeks the app folds sections you have not opened for three weeks under "More". Switch it off in Settings.
+      Fixed: the Save button text was invisible on light themes.
+      New file: DESIGN-LANGUAGE.md, the design rules shared by all your apps.

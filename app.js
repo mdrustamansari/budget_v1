@@ -6,7 +6,7 @@
     const DAY = E.DAY;
     const $ = id => document.getElementById(id);
     // a screen is only rebuilt when what it shows has really changed: no needless repaint (and no re-blur of the glass) on the quiet minute refresh
-    function put(el, h) { if (el.__h === h && el.firstChild) return false; el.__h = h; el.innerHTML = h; return true; }
+    function put(el, h) { if (el.__h === h && el.firstChild) return false; el.__h = h; el.innerHTML = h; if (window.GSections) GSections.apply(el); return true; }
     const fmt = n => Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
     const fmt2 = n => Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
     const money = n => (n < 0 ? '-' : '') + '₹' + fmt(Math.abs(Math.round(n)));
@@ -25,7 +25,7 @@
     const K_EV = 'bm2_events', K_PREF = 'bm2_prefs', K_PIN = 'bm2_pin', K_BG = 'budgetApp_bg';
     const PREF_DEFAULT = () => ({
         theme: 'auto', look: 'flagship', accent: 'sapphire', glow: false, flFont: 'system', follow: false, lastLight: null, lastDark: null, p: {}, acc: [], bgBlur: 24, glassBlur: 20,
-        introOn: true, greetOn: true, lineOn: true, forecastOn: true, stripOn: true, animOn: true,
+        introOn: true, greetOn: true, lineOn: true, smartOn: true, forecastOn: true, stripOn: true, animOn: true,
         remindOn: true, remindHour: 23, remindSnooze: null, lastBackup: null,
         lite: false, privacy: false, warnOn: true, dayCloseOn: true, waitOn: true, reviewOn: true, purchOn: true,
         autoLock: true, rememberPass: false, pass: '', pendingSeed: null, learnOn: true, orbMode: 'header'
@@ -486,10 +486,11 @@
         return `${day} at ${tm}`;
     };
     function tornStrip() {
+        const next = () => { lineBump++; return pickLine(); };
         let last = null; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && e.kind !== 'import' && (!last || e.ts > last.ts)) last = e; }));
-        if (!last) return '';
+        if (!last) return GBanner.html({ last: null, tips: prefs.lineOn, next });
         const txt = prefs.privacy ? `Your last entry was ${whenWords(last.ts)}.` : `Your last entry was <b class="priv">${money(last.amt)}</b> for <b>${esc(last.name)}</b>, ${whenWords(last.ts)}.`;
-        return `<div class="torn-wrap" data-tell="${esc(prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${whenWords(last.ts)}.`)}"><div class="torn"><span>${txt}</span></div></div>`;
+        return GBanner.html({ last: { html: txt, tell: prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${whenWords(last.ts)}.` }, tips: prefs.lineOn, next });
     }
     let moreOpen = false;
     function catsHTML() {
@@ -508,9 +509,8 @@
         } else {
             h += tornStrip() + dashCard();
         }
-        if (prefs.lineOn) { const [q, k] = pickLine(); h += `<div class="daily-line" data-act="line"><span class="q">“</span><div class="t">${esc(q)}<span class="k">${esc(k)}</span></div></div>`; }
         if (prefs.dayCloseOn && P && new Date().getHours() >= 18 && !D.dayCloses.has(T.key)) h += `<div class="banner"><span>Close today? ${D.streak ? `Streak: ${plural(D.streak, 'day')}.` : ''}</span><span class="b-act"><button class="on" data-act="dayclose">Close day</button></span></div>`;
-        else if (D.streak > 1) h += `<div class="streak" style="margin:0 0 10px 4px">🔥 ${plural(D.streak, 'day')} of closed days</div>`;
+        else if (D.streak > 1) h += `<div class="streak" data-sec="today:streak" style="margin:0 0 10px 4px">🔥 ${plural(D.streak, 'day')} of closed days</div>`;
         h += `<div class="list-header"><span>Categories</span><span class="hint">tap + to add</span></div><div id="cats">${catsHTML()}</div>`;
         const before = {};
         if (prefs.animOn && !reduced()) el.querySelectorAll('.cat-item2').forEach(n => { before[n.dataset.id] = n.getBoundingClientRect().top; });
@@ -554,8 +554,8 @@
             <div class="row"><span class="muted">Bank · Cash spent</span><span class="priv">${money(c.byAcct.bank)} · ${money(c.byAcct.cash)}</span></div>
             <div class="grid2 mt"><button class="btn-line" data-act="plan">Edit plan</button><button class="btn-line" data-act="check">Reality check</button></div>`;
         else h += `<button class="btn-line btn-accent" data-act="plan">Set up ${MONTHS[c.m]}</button>`;
-        h += `</div><div class="card"><h3>Money moves</h3><p class="hint">Record cash you withdraw or deposit so Bank and Cash stay true.</p><div class="grid2"><button class="btn-line" data-act="xfer" data-dir="b2c">Bank → Cash</button><button class="btn-line" data-act="xfer" data-dir="c2b">Cash → Bank</button></div></div>`;
-        h += `<div class="card"><h3>Savings</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(D.savings)}</b><span class="hint">stays in your bank</span></div><div class="grid2 mt"><button class="btn-line" data-act="sav" data-dir="in">Add</button><button class="btn-line" data-act="sav" data-dir="out">Withdraw</button></div>
+        h += `</div><div class="card" data-sec="month:money-moves"><h3>Money moves</h3><p class="hint">Record cash you withdraw or deposit so Bank and Cash stay true.</p><div class="grid2"><button class="btn-line" data-act="xfer" data-dir="b2c">Bank → Cash</button><button class="btn-line" data-act="xfer" data-dir="c2b">Cash → Bank</button></div></div>`;
+        h += `<div class="card" data-sec="month:savings"><h3>Savings</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(D.savings)}</b><span class="hint">stays in your bank</span></div><div class="grid2 mt"><button class="btn-line" data-act="sav" data-dir="in">Add</button><button class="btn-line" data-act="sav" data-dir="out">Withdraw</button></div>
             ${D.savLog.slice(-4).reverse().map(s => `<div class="ledger-row"><span class="meta">${fmtDay(s.ts)} · ${esc(s.note || (s.amt > 0 ? 'Deposit' : 'Withdrawal'))}</span><b class="priv">${money(s.amt)}</b></div>`).join('')}</div>`;
         h += `<div class="card"><h3>Envelopes</h3>${D.cats.map(k => { const r = k.limit > 0 ? k.spent / k.limit : 0, g = statusGrad(r); return `<div class="env"${tl(catTell(k, r), k.spent > k.limit ? 'bad' : '')}><div class="top"><span>${esc(k.icon)} ${esc(k.name)}</span><span class="priv ${k.spent > k.limit ? 'bad' : ''}">${money(k.spent)} / ${money(k.limit)}</span></div><div class="cat-bar"><div style="width:${Math.min(100, r * 100)}%;background:linear-gradient(90deg,${rgb(g.g1)},${rgb(g.g2)})"></div></div></div>`; }).join('')}</div>`;
         h += `<div class="card"><h3>Ledger</h3>${monthLedger()}</div>`;
@@ -567,7 +567,7 @@
         let h = `<div class="card"><h3>Big-purchase pool</h3><div class="row"><b class="num" style="font-size:2rem">${mh(p.bal)}</b><span class="hint">available now</span></div>
             <p class="hint mt">${mh(p.allow)} arrives each month. Unused money carries forward. Spending of ${mh(p.min)} or more counts as a big purchase and needs a reason. Used this month: ${mh(p.used)}.</p></div>`;
         const waits = D.cats.filter(c => c.bucket.allow > 0).sort((a, b) => b.bucket.cool - a.bucket.cool || b.bucket.bal - a.bucket.bal);
-        h += `<div class="card"><h3>Waiting by category</h3>${waits.map(c => `<div class="ledger-row"><div><div>${esc(c.icon)} ${esc(c.name)}</div><div class="meta">${c.bucket.cool > 0 ? 'Opens ' + fmtDay(c.bucket.until) : 'Open now'} · grows ${money(c.bucket.allow)}/month</div></div><div class="right"><b class="num ${c.bucket.cool > 0 ? 'bad' : 'good'}">${c.bucket.cool > 0 ? plural(c.bucket.cool, 'day') : mh(c.bucket.bal)}</b></div></div>`).join('') || '<p class="hint">No category has an allowance yet.</p>'}</div>`;
+        h += `<div class="card" data-sec="mind:waiting-by-category"><h3>Waiting by category</h3>${waits.map(c => `<div class="ledger-row"><div><div>${esc(c.icon)} ${esc(c.name)}</div><div class="meta">${c.bucket.cool > 0 ? 'Opens ' + fmtDay(c.bucket.until) : 'Open now'} · grows ${money(c.bucket.allow)}/month</div></div><div class="right"><b class="num ${c.bucket.cool > 0 ? 'bad' : 'good'}">${c.bucket.cool > 0 ? plural(c.bucket.cool, 'day') : mh(c.bucket.bal)}</b></div></div>`).join('') || '<p class="hint">No category has an allowance yet.</p>'}</div>`;
         const wantCard = prefs.waitOn ? `<div class="card"><h3>Want list</h3><p class="hint">Write wants down. Each waits 24 hours before you can buy it.</p>${D.wants.filter(w => w.status === 'wait').map(w => { const left = w.ts + DAY - Date.now(); return `<div class="want"><div class="row"><span>${esc(w.name)}</span><b class="num priv">${money(w.price)}</b></div><div class="row mt"><span class="meta muted">${left > 0 ? 'Wait ' + Math.ceil(left / 3600e3) + 'h more' : 'Ready if you still want it'}</span><span><button class="mini-btn" data-act="want-drop" data-id="${w.wid}">Drop it</button> <button class="mini-btn" data-act="want-buy" data-id="${w.wid}" ${left > 0 ? 'disabled style="opacity:.4"' : ''}>Buy</button></span></div></div>`; }).join('') || '<p class="hint">Empty.</p>'}<button class="btn-line" data-act="want-add">Add a want</button></div>` : '';
         h += wantCard;
         if (prefs.reviewOn) {
@@ -688,7 +688,7 @@
         const allx = []; D.months.forEach(m => m.exps.forEach(x => allx.push(x)));
         const S = E.weekdayStats(allx, Date.now()), mx2 = v => `<span class="priv">₹${(Math.round(v * 100) / 100).toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(Math.round(v * 100) / 100) ? 0 : 2, maximumFractionDigits: 2 })}</span>`, sh = v => v >= 1000 ? Math.round(v / 100) / 10 + 'k' : Math.round(v);
         let h;
-        if (!S.ready) h = `<div class="card"><h3>Which days cost most</h3><p class="hint">No finished days with spending yet. This card appears after your first full day.</p></div>`;
+        if (!S.ready) h = `<div class="card" data-sec="ins:which-days-cost-most"><h3>Which days cost most</h3><p class="hint">No finished days with spending yet. This card appears after your first full day.</p></div>`;
         else {
             const mx = Math.max(1, ...S.days.map(r => r.avg)), fd = ts => new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
             const bars = order.map(w => { const r = S.days[w], tot = Math.max(3, r.avg / mx * 62), inner = r.big.length ? Math.max(3, r.avgEx / mx * 62) : 0;
@@ -696,15 +696,15 @@
             const notes = S.days.filter(r => r.big.length).map(r => { const b = r.big.map(x => `${mx2(x.amt)} (${esc(x.name)}, ${fd(x.ts)})`).join(' and ');
                 return `<div class="hint mt"><b>${WD[r.w]}:</b> the average is ${mx2(r.avg)} over ${plural(r.n, WD[r.w])}, but one very large entry, ${b}, is most of it. Without it the average is ${mx2(r.avgEx)}. ${r.n < 3 ? `Only ${plural(r.n, WD[r.w])} ${r.n === 1 ? 'is' : 'are'} counted, which ${r.n === 1 ? 'is' : 'are'} too few to show a pattern. Please do not read this as a habit.` : ''}</div>`; }).join('');
             const thin = S.days.filter(r => r.n < 3).length;
-            h = `<div class="card"><h3>Which days cost most</h3><p class="hint">Average spend on each weekday, ${fd(S.first)} to yesterday. ${plural(S.spanDays, 'day')} counted. A day with no spending counts as zero. The number under each letter shows how many of that weekday were counted. Pale bars include a very large entry; the dark part is the average without it.</p><div class="bars">${bars}</div>${notes}${S.enough ? '' : `<div class="hint mt">${S.spanDays < 28 ? 'This is too little data to show a habit.' : 'Some weekdays have fewer than 3 days.'} Each bar only shows what happened on ${thin ? 'those few days' : 'these days'}. A clearer picture needs about 4 weeks.</div>`}</div>`;
+            h = `<div class="card" data-sec="ins:which-days-cost-most"><h3>Which days cost most</h3><p class="hint">Average spend on each weekday, ${fd(S.first)} to yesterday. ${plural(S.spanDays, 'day')} counted. A day with no spending counts as zero. The number under each letter shows how many of that weekday were counted. Pale bars include a very large entry; the dark part is the average without it.</p><div class="bars">${bars}</div>${notes}${S.enough ? '' : `<div class="hint mt">${S.spanDays < 28 ? 'This is too little data to show a habit.' : 'Some weekdays have fewer than 3 days.'} Each bar only shows what happened on ${thin ? 'those few days' : 'these days'}. A clearer picture needs about 4 weeks.</div>`}</div>`;
         }
         const ms = D.months.filter(m => m.spent > 0).slice(-6), mm = Math.max(1, ...ms.map(m => m.spent));
-        h += `<div class="card"><h3>Months</h3><div class="bars">${ms.map(m => `<div><span class="priv">${Math.round(m.spent / 1000)}k</span><b style="height:${Math.max(3, m.spent / mm * 62)}px"></b>${MONTHS[m.m]}</div>`).join('')}</div></div>`;
+        h += `<div class="card" data-sec="ins:months"><h3>Months</h3><div class="bars">${ms.map(m => `<div><span class="priv">${Math.round(m.spent / 1000)}k</span><b style="height:${Math.max(3, m.spent / mm * 62)}px"></b>${MONTHS[m.m]}</div>`).join('')}</div></div>`;
         const fixed = D.cats.filter(c => c.type === 'fixed' && (D.priceHist[c.id] || []).length > 1);
-        h += `<div class="card"><h3>Price tracker</h3>${fixed.map(c => `<div class="ledger-row"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="priv">${D.priceHist[c.id].map(x => money(x.price)).join(' → ')}</span></div>`).join('') || '<p class="hint">Change a fixed price in Settings and its history shows here.</p>'}</div>`;
+        h += `<div class="card" data-sec="ins:price-tracker"><h3>Price tracker</h3>${fixed.map(c => `<div class="ledger-row"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="priv">${D.priceHist[c.id].map(x => money(x.price)).join(' → ')}</span></div>`).join('') || '<p class="hint">Change a fixed price in Settings and its history shows here.</p>'}</div>`;
         const resisted = D.wants.filter(w => w.status === 'dropped').reduce((s, w) => s + w.price, 0);
-        h += `<div class="card"><h3>Resisted</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(resisted)}</b><span class="hint">in wants you let go</span></div></div>`;
-        h += `<div class="card"><h3>Closed months</h3>${D.months.filter(m => m.close).slice(-6).reverse().map(m => `<div class="ledger-row"><span>${MONTHS[m.m]} ${m.y}</span><span class="priv">saved ${money(m.close.toSave)} · pool +${money(m.close.toPool)}</span></div>`).join('') || '<p class="hint">None yet.</p>'}</div>`;
+        h += `<div class="card" data-sec="ins:resisted"><h3>Resisted</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(resisted)}</b><span class="hint">in wants you let go</span></div></div>`;
+        h += `<div class="card" data-sec="ins:closed-months"><h3>Closed months</h3>${D.months.filter(m => m.close).slice(-6).reverse().map(m => `<div class="ledger-row"><span>${MONTHS[m.m]} ${m.y}</span><span class="priv">saved ${money(m.close.toSave)} · pool +${money(m.close.toPool)}</span></div>`).join('') || '<p class="hint">None yet.</p>'}</div>`;
         put($('s-ins'), learnInsights() + h);
     }
 
@@ -754,7 +754,7 @@
         h += foldCard(dataCard(), 'set-data', false);
         if (window.GCompanion) h += window.GCompanion.settingsHTML();
         if (window.GFeel) h += window.GFeel.settingsHTML();
-        h += foldCard(`<div class="card"><h3>Experience</h3>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Daily line', 'Proverbs and tips.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}${sw('remindOn', 'Backup reminder', 'A banner in the app. A web app cannot ring while closed.')}</div>`, 'set-exp', false);
+        h += foldCard(`<div class="card"><h3>Experience</h3>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Tips in the top banner', 'Proverbs and tips slide in now and then.')}${sw('smartOn', 'Smart sections', 'Sections you rarely open fold under More. The app learns for two weeks first.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}${sw('remindOn', 'Backup reminder', 'A banner in the app. A web app cannot ring while closed.')}</div>`, 'set-exp', false);
         h += foldCard(`<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`, 'set-cat', true);
         const pin = pinOn();
         h += foldCard(`<div class="card"><h3>Security</h3><p class="hint">The PIN keeps people out of the app. Backups are encrypted with their own password.</p>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<button class="btn-line" data-act="pin-off">Remove PIN</button>' : ''}</div>`, 'set-sec', false);
@@ -766,6 +766,7 @@
     }
 
     function render() {
+        if (!render.gs && window.GSections) { render.gs = 1; GSections.init({ app: 'budget', enabled: () => prefs.smartOn !== false }); }
         if (!$('lock').classList.contains('show') || !pinOn()) { /* render underneath too */ }
         refresh(); applyTheme(); renderBanner();
         $('brand-sub').textContent = (prefs.greetOn ? greeting() + ' · ' : '') + `${MONTHS[D.cur.m]} ${D.cur.y}`;
