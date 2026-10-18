@@ -97,7 +97,7 @@
         root.classList.toggle('pm', !!prefs.privacy);
         root.style.setProperty('--glass-blur', prefs.glassBlur + 'px');
         applyBackground();
-        try { GLook.apply(prefs, { hasBg: root.classList.contains('has-bg'), lite: !!prefs.lite }); } catch (e) {}
+        try { GLook.apply(prefs, { hasBg: root.classList.contains('has-bg'), lite: !!prefs.lite }); } catch (e) {} if (window.GLiquid) GLiquid.apply();
     }
     // "Follow my phone": only when the phone changes (or on switching it on, or at start) do we go to the last light or last dark theme used
     function phoneDark() { try { return !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); } catch (e) { return false; } }
@@ -768,6 +768,7 @@
     function renderSet() {
         let hasBg = false; try { hasBg = !!localStorage.getItem(K_BG); } catch (e) {}
         let h = lookCard();
+        if (window.GLiquid) h += GLiquid.settingsHTML();
         h += foldCard(`<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`, 'set-cat', true);
         const pin = pinOn();
         h += foldCard(`<div class="card"><h3>Security</h3><p class="hint">The PIN keeps people out of the app. Backups are encrypted with their own password.</p>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<button class="btn-line" data-act="pin-off">Remove PIN</button>' : ''}</div>`, 'set-sec', false);
@@ -1124,6 +1125,7 @@
         initStore();
         refresh(); applyTheme();
         const locked = pinOn() && hasCrypto() ? showLock() : Promise.resolve();
+        if (window.GLiquid) GLiquid.config({ prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, render: () => { if (D) render(); } });
         if (window.GWizard) GWizard.config({ app: 'budget', brand: "Rustam's Budget Manager", prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, apply: () => { applyTheme(); followNow(); }, render: () => { if (D) render(); }, hasData: () => events.some(e => e.t !== 'cat'),
           tour: [["Tap to learn", "Tap any graphic or number. The Companion explains it in simple words."], ["Add spending", "Tap + on a category, type the amount, then tap Add. Your usual amounts appear as quick buttons."], ["Fix a mistake", "Open Month, then Ledger. Tap the pen to change an entry or the bin to delete it. You can always Undo."], ["The top banner", "It shows your last entry, and now and then a tip. Tap a tip to see the next one."], ["More", "Categories and sections you rarely use fold under More. They come back when you open them."], ["Keep a copy", "Settings, then Backup, saves a copy of your data. You can run setup again or replay this tour in Settings."]],
           later: [
