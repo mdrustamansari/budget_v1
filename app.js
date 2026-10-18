@@ -526,14 +526,14 @@
     }
 
     // The ledger: every day with its total, then that day's entries. Each entry can be fixed or deleted (and both can be undone).
-    let ledDays = 14, ledEdit = 0;
+    let ledShow = 5, ledEdit = 0;
     const ledTime = ts => new Date(ts).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' am', ' am').replace(' pm', ' pm');
     function ledgerEntries() { const out = []; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'import') out.push(e); })); return out.sort((a, b) => b.ts - a.ts); }
     function monthLedger() {
         const all = ledgerEntries(); if (!all.length) return '<div class="empty"><span class="em-ico">🌱</span><b>No entries yet</b><p>Tap Add to write your first spend.</p></div>';
-        const t0 = E.startOfDay(Date.now()), shown = all.filter(e => e.ts >= t0 - (ledDays - 1) * 864e5), older = all.length - shown.length;
-        if (!shown.length) return `<p class="hint">Nothing in the last ${ledDays} days.</p><button type="button" class="btn-line" data-act="led-more">Show older (${older})</button>`;
-        const days = []; shown.forEach(e => { const k = E.dateKey(e.ts); let d = days[days.length - 1]; if (!d || d.k !== k) { d = { k, ts: e.ts, list: [], sum: 0 }; days.push(d); } d.list.push(e); if (e.kind !== 'adjust') d.sum += e.amt; });
+        const shown = all.slice(0, ledShow), older = all.length - shown.length;
+        const dSum = {}, dCnt = {}; all.forEach(e => { const k = E.dateKey(e.ts); dCnt[k] = (dCnt[k] || 0) + 1; if (e.kind !== 'adjust') dSum[k] = (dSum[k] || 0) + e.amt; });
+        const days = []; shown.forEach(e => { const k = E.dateKey(e.ts); let d = days[days.length - 1]; if (!d || d.k !== k) { d = { k, ts: e.ts, list: [], sum: dSum[k] || 0, cnt: dCnt[k] }; days.push(d); } d.list.push(e); });
         const dn = ts => new Date(ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '');
         const row = e => {
             const meta = `${ledTime(e.ts)} · ${e.acct === 'cash' ? 'Cash' : 'Bank'}${e.note ? ' · ' + esc(e.note) : ''}${e.kind === 'adjust' ? ' · adjustment' : ''}`;
@@ -542,7 +542,7 @@
                 <div class="led-btns"><button type="button" class="mini-btn btn-accent" data-act="led-save" data-id="${e.id}">Save</button><button type="button" class="mini-btn" data-act="led-cancel">Cancel</button></div></div></div>`;
             return `<div class="ledger-row" data-id="${e.id}"><div style="min-width:0"><div>${esc(e.icon)} ${esc(e.name)}${e.pur ? ' · big' : ''}</div><div class="meta">${meta}</div></div><div class="row" style="gap:6px"><b class="num priv">${money(e.amt)}</b>${icoBtn('edit', `data-act="led-edit" data-id="${e.id}"`, esc(e.name))}${icoBtn('del', `data-act="led-del" data-id="${e.id}"`, esc(e.name))}</div></div>`;
         };
-        return days.map(d => `<div class="led-day"><span>${dn(d.ts)}</span><span class="priv">${money(d.sum)} · ${plural(d.list.length, 'entry').replace('entrys', 'entries')}</span></div>${d.list.map(row).join('')}`).join('')
+        return days.map(d => `<div class="led-day"><span>${dn(d.ts)}</span><span class="priv">${money(d.sum)} · ${plural(d.cnt, 'entry').replace('entrys', 'entries')}</span></div>${d.list.map(row).join('')}`).join('')
             + (older > 0 ? `<button type="button" class="btn-line" data-act="led-more">Show older (${older})</button>` : '');
     }
     const ledFind = id => { let f = null; D.months.forEach(r => r.exps.forEach(e => { if (e.id === id) f = e; })); return f; };
@@ -1026,7 +1026,7 @@
             case 'line': lineBump++; renderToday(); break;
             case 'entry': if (!D.P) planSheet(); else entrySheet(+id); break;
             case 'quick': quickAdd(+id); break;
-            case 'led-more': ledDays += 14; renderMonth(); break;
+            case 'led-more': ledShow += 10; renderMonth(); break;
             case 'led-edit': ledEdit = +id; renderMonth(); { const i = $('led-amt'); if (i) { i.focus(); i.select(); } } break;
             case 'led-cancel': ledEdit = 0; renderMonth(); break;
             case 'led-save': {
