@@ -24,7 +24,7 @@
     /* ---------- Storage: one event log + preferences ---------- */
     const K_EV = 'bm2_events', K_PREF = 'bm2_prefs', K_PIN = 'bm2_pin', K_BG = 'budgetApp_bg';
     const PREF_DEFAULT = () => ({
-        theme: 'auto', look: 'flagship', accent: 'sapphire', glow: false, flFont: 'system', follow: false, lastLight: null, lastDark: null, p: {}, acc: [], bgBlur: 24, glassBlur: 20,
+        theme: 'auto', look: 'flagship', accent: 'sapphire', glow: false, flFont: 'system', follow: true, lastLight: null, lastDark: null, p: {}, acc: [], bgBlur: 24, glassBlur: 20,
         introOn: true, greetOn: true, lineOn: true, smartOn: true, forecastOn: true, stripOn: true, animOn: true,
         remindOn: true, remindHour: 23, remindSnooze: null, lastBackup: null,
         lite: false, privacy: false, warnOn: true, dayCloseOn: true, waitOn: true, reviewOn: true, purchOn: true,
@@ -169,6 +169,7 @@
     const ICO = { edit: '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>', del: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/>' };
     const icoBtn = (kind, attrs, what) => `<button type="button" class="ico-btn ico-${kind}" ${attrs} title="${kind === 'edit' ? 'Edit' : 'Delete'}" aria-label="${kind === 'edit' ? 'Edit' : 'Delete'} ${what}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICO[kind]}</svg></button>`;
     function confirmSheet(o) {
+        if (o.danger && window.GFeel) GFeel.buzz('stop');
         return new Promise(res => {
             sheet(`<h2>${esc(o.title)}</h2><p>${esc(o.sub || '')}</p><div class="modal-actions"><button class="btn-secondary" data-r="0">${esc(o.cancel || 'Cancel')}</button><button class="${o.danger ? 'btn-danger' : 'btn-primary'}" data-r="1">${esc(o.ok || 'OK')}</button></div>`, box => {
                 box.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { sheetCloser = null; closeSheet(); res(b.dataset.r === '1'); });
@@ -255,7 +256,7 @@
         const pool = LINES[ctx];
         return pool[((n % pool.length) + pool.length) % pool.length];
     }
-    const greeting = () => { const h = new Date().getHours(); return (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + ', Rustam'; };
+    const greeting = () => { const h = new Date().getHours(); return (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + ', ' + (prefs.name || 'Rustam'); };
 
     /* ---------- Security: PIN and encrypted backups (WebCrypto) ---------- */
     const enc = new TextEncoder(), dec = new TextDecoder();
@@ -507,7 +508,7 @@
         if (!P) {
             h += `<div class="card"><h3>Welcome</h3><p class="hint">Tell the app your bank balance and this month's budget. Everything else follows from that.</p><button class="btn-line btn-accent" data-act="plan">Set up ${MONTHS[D.cur.m]}</button></div>`;
         } else {
-            h += tornStrip() + dashCard();
+            h += tornStrip() + (window.GWizard ? GWizard.laterHTML() : '') + dashCard();
         }
         if (prefs.dayCloseOn && P && new Date().getHours() >= 18 && !D.dayCloses.has(T.key)) h += `<div class="banner"><span>Close today? ${D.streak ? `Streak: ${plural(D.streak, 'day')}.` : ''}</span><span class="b-act"><button class="on" data-act="dayclose">Close day</button></span></div>`;
         else if (D.streak > 1) h += `<div class="streak" data-sec="today:streak" style="margin:0 0 10px 4px">🔥 ${plural(D.streak, 'day')} of closed days</div>`;
@@ -529,7 +530,7 @@
     const ledTime = ts => new Date(ts).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' am', ' am').replace(' pm', ' pm');
     function ledgerEntries() { const out = []; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'import') out.push(e); })); return out.sort((a, b) => b.ts - a.ts); }
     function monthLedger() {
-        const all = ledgerEntries(); if (!all.length) return '<p class="hint">Nothing yet.</p>';
+        const all = ledgerEntries(); if (!all.length) return '<div class="empty"><span class="em-ico">🌱</span><b>No entries yet</b><p>Tap Add to write your first spend.</p></div>';
         const t0 = E.startOfDay(Date.now()), shown = all.filter(e => e.ts >= t0 - (ledDays - 1) * 864e5), older = all.length - shown.length;
         if (!shown.length) return `<p class="hint">Nothing in the last ${ledDays} days.</p><button type="button" class="btn-line" data-act="led-more">Show older (${older})</button>`;
         const days = []; shown.forEach(e => { const k = E.dateKey(e.ts); let d = days[days.length - 1]; if (!d || d.k !== k) { d = { k, ts: e.ts, list: [], sum: 0 }; days.push(d); } d.list.push(e); if (e.kind !== 'adjust') d.sum += e.amt; });
@@ -574,7 +575,7 @@
             const due = D.purchases.filter(x => !x.review && Date.now() - x.ts >= 30 * DAY);
             if (due.length) h += `<div class="card"><h3>Still glad?</h3>${due.slice(0, 3).map(x => `<div class="want"><div class="row"><span>${esc(x.icon)} ${esc(x.catName)} · ${fmtDay(x.ts)}</span><b class="priv">${money(x.total)}</b></div><div class="p-reason">“${esc(x.reason)}”</div><div class="review-row"><button data-act="rev" data-id="${x.id}" data-v="yes">Yes</button><button data-act="rev" data-id="${x.id}" data-v="meh">Meh</button><button data-act="rev" data-id="${x.id}" data-v="no">No</button></div></div>`).join('')}</div>`;
         }
-        h += `<div class="card"><h3>Purchases</h3>${D.purchases.slice(0, 30).map(x => `<div class="pitem"><div class="pi-top"><span>${esc(x.icon)} ${esc(x.catName)}</span><b class="priv">${money(x.total)}</b></div><div class="meta muted">${fmtDay(x.ts)}${x.emg ? ' · emergency' : ''}${x.review ? ' · ' + ({ yes: 'glad', meh: 'unsure', no: 'regret' })[x.review] : ''}</div>${x.reason ? `<div class="p-reason">“${esc(x.reason)}”</div>` : ''}</div>`).join('') || '<p class="hint">No big purchases yet.</p>'}</div>`;
+        h += `<div class="card"><h3>Purchases</h3>${D.purchases.slice(0, 30).map(x => `<div class="pitem"><div class="pi-top"><span>${esc(x.icon)} ${esc(x.catName)}</span><b class="priv">${money(x.total)}</b></div><div class="meta muted">${fmtDay(x.ts)}${x.emg ? ' · emergency' : ''}${x.review ? ' · ' + ({ yes: 'glad', meh: 'unsure', no: 'regret' })[x.review] : ''}</div>${x.reason ? `<div class="p-reason">“${esc(x.reason)}”</div>` : ''}</div>`).join('') || '<div class="empty"><b>No big purchases yet</b><p>Large buys will appear here with your reason.</p></div>'}</div>`;
         put($('s-mind'), h);
     }
 
@@ -679,9 +680,25 @@
         if (cheap.length >= 15) out.push(`In the last 30 days you made <b>${cheap.length} small payments</b> of ₹50 or less, about ${mh(cheap.reduce((s, e) => s + e.amt, 0))} in all. Small payments add up quietly.`);
         return `<div class="card"><h3>What the app has learned</h3>${out.length ? out.map(t => `<div class="learn-row">${t}</div>`).join('') : '<p class="hint">Your spending looks steady. Nothing needs attention.</p>'}<div class="hint mt">These come from your own entries. They stay on this phone.</div></div>`;
     }
+
+    /* ===== Recently deleted: entries removed in the last 30 days can be put back ===== */
+    function deletedList() {
+        const lim = Date.now() - 30 * 864e5;
+        return events.filter(v => v.t === 'void' && v.del && v.ts >= lim && !events.some(r => r.t === 'restored' && r.target === v.id))
+            .map(v => ({ v, e: events.find(x => x.id === v.target) })).filter(x => x.e).reverse();
+    }
+    function deletedSheet() {
+        const L = deletedList();
+        sheet(`<h2>Recently deleted</h2><p>Entries you deleted in the last 30 days. Restore puts one back exactly where it was.</p>${L.length ? `<div style="max-height:52vh;overflow:auto">${L.map(x => `<div class="ledger-row"><div style="min-width:0"><div>${esc((x.e.icon||'')+' '+x.e.name+', '+money(x.e.amt))}</div><div class="meta">${esc(fmtDay(x.e.ts)+' · '+(x.e.acct==='cash'?'Cash':'Bank'))}</div></div><button type="button" class="mini-btn" data-rest="${x.v.id}">Restore</button></div>`).join('')}</div>` : '<div class="empty"><b>Nothing deleted</b><p>Deleted entries will wait here for 30 days.</p></div>'}<div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button></div>`, box => {
+            box.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => {
+                const v = events.find(x => x.id === +b.dataset.rest), e0 = v && events.find(x => x.id === v.target); if (!e0) return;
+                add(ledCopy(e0), e0.ts); add({ t: 'restored', target: v.id }); render(); deletedSheet(); toast('Restored');
+            });
+        });
+    }
     function dataCard() {
         let kb = 0; try { kb = Math.round((localStorage.getItem(K_EV) || '').length / 1024); } catch (e) {}
-        return `<div class="card"><h3>Your data</h3><p class="hint">Every entry is saved on this phone only: ${events.length} entries, about ${kb} KB. The app learns from them here. Nothing is sent anywhere. Use Backup to keep a safe copy.</p>${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}</div>`;
+        return `<div class="card"><h3>Your data</h3><p class="hint">Every entry is saved on this phone only: ${events.length} entries, about ${kb} KB. The app learns from them here. Nothing is sent anywhere. Use Backup to keep a safe copy.</p><button type="button" class="btn-line" data-act="deleted">Recently deleted (${deletedList().length})</button>${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}</div>`;
     }
     function renderIns() {
         const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], names = ['S', 'M', 'T', 'W', 'T', 'F', 'S'], order = [1, 2, 3, 4, 5, 6, 0];
@@ -751,14 +768,16 @@
     function renderSet() {
         let hasBg = false; try { hasBg = !!localStorage.getItem(K_BG); } catch (e) {}
         let h = lookCard();
-        h += foldCard(dataCard(), 'set-data', false);
-        if (window.GCompanion) h += window.GCompanion.settingsHTML();
-        if (window.GFeel) h += window.GFeel.settingsHTML();
-        h += foldCard(`<div class="card"><h3>Experience</h3>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Tips in the top banner', 'Proverbs and tips slide in now and then.')}${sw('smartOn', 'Smart sections', 'Sections you rarely open fold under More. The app learns for two weeks first.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}${sw('remindOn', 'Backup reminder', 'A banner in the app. A web app cannot ring while closed.')}</div>`, 'set-exp', false);
         h += foldCard(`<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`, 'set-cat', true);
         const pin = pinOn();
         h += foldCard(`<div class="card"><h3>Security</h3><p class="hint">The PIN keeps people out of the app. Backups are encrypted with their own password.</p>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<button class="btn-line" data-act="pin-off">Remove PIN</button>' : ''}</div>`, 'set-sec', false);
         h += foldCard(`<div class="card"><h3>Backup</h3><p class="hint">${prefs.lastBackup ? 'Last backup ' + fmtDT(prefs.lastBackup) : 'Not backed up yet.'} Share opens your phone's share sheet: choose Google Drive or Proton Drive.</p><button class="btn-line btn-accent" data-act="backup" data-m="share">Back up now (share)</button><button class="btn-line" data-act="backup" data-m="download">Save to Downloads</button><button class="btn-line" data-act="backup" data-m="plain">Share unencrypted copy</button><button class="btn-line" data-act="restore">Restore from a file</button>${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}<button class="btn-line" data-act="erase" style="color:var(--warning)">Erase everything</button></div>`, 'set-bak', true);
+        let adv = '';
+        adv += foldCard(dataCard(), 'set-data', false);
+        if (window.GCompanion) adv += window.GCompanion.settingsHTML();
+        if (window.GFeel) adv += window.GFeel.settingsHTML();
+        adv += foldCard(`<div class="card"><h3>Experience</h3><div class="wz-chips" style="margin:4px 0 10px"><button type="button" class="wz-chip" data-wrun="setup">Run setup again</button><button type="button" class="wz-chip" data-wrun="tour">Replay the tour</button></div>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Tips in the top banner', 'Proverbs and tips slide in now and then.')}${sw('smartOn', 'Smart sections', 'Sections you rarely open fold under More. The app learns for two weeks first.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}${sw('remindOn', 'Backup reminder', 'A banner in the app. A web app cannot ring while closed.')}</div>`, 'set-exp', false);
+        h += `<details class="gacc" data-gacc="set-adv" ${window.GAcc && GAcc.open('set-adv', false) ? 'open' : ''}><summary><h3>Advanced</h3><span class="gacc-n">Sound, Companion, data, setup</span></summary><div class="gacc-body">${adv}</div></details>`;
         put($('s-set'), h);
         const bb = $('bg-blur'), gb = $('glass-blur');
         if (bb) bb.oninput = () => { prefs.bgBlur = +bb.value; $('bg-blur-v').textContent = bb.value; applyBackground(); applyTheme(); persist(); };
@@ -990,7 +1009,7 @@
         const nav = ev.target.closest('.nav-item');
         if (nav) { screen = nav.dataset.s; render(); window.scrollTo(0, 0); return; }
         const tg = ev.target.closest('[data-tell]'); if (tg && (!ev.target.closest('[data-act]') || ev.target.closest('[data-tell-first]'))) { ev.stopPropagation(); if (GC && GC.tell) GC.tell(tg.dataset.tell, tg.dataset.tone); else toast(tg.dataset.tell); return; }
-        const el = ev.target.closest('[data-act]'); if (!el) { if (ev.target === $('sheet-bg')) closeSheet(); return; }
+        const el = ev.target.closest('[data-act]'); if (!el) { if (ev.target === $('sheet-bg')) { const dirty = [].some.call($('sheet').querySelectorAll('input:not([type=checkbox]):not([type=range]),textarea'), i => i.value !== i.defaultValue && !i.classList.contains('hl-in')); if (dirty && !$('sheet').querySelector('[data-r]')) { toast('Your changes are not saved yet. Use Cancel to leave.'); return; } closeSheet(); } return; }
         const act = el.dataset.act, id = el.dataset.id;
         if (el.matches('button.add-btn')) ev.stopPropagation();
         switch (act) {
@@ -1020,11 +1039,12 @@
                 toast(`Changed ${money(e0.amt)} to ${money(v)}.`, () => { add({ t: 'void', target: ne.id }); add(ledCopy(e0), e0.ts); render(); });
                 break;
             }
+            case 'deleted': deletedSheet(); break;
             case 'led-del': {
                 const e0 = ledFind(+id); if (!e0) break;
                 confirmSheet({ title: 'Delete this entry?', sub: `${e0.name}, ${money(e0.amt)} will be removed and your totals recalculated. You can undo straight after.`, ok: 'Delete', danger: true }).then(yes => {
                     if (!yes) return;
-                    add({ t: 'void', target: e0.id }); render(); fx('down');
+                    add({ t: 'void', target: e0.id, del: 1 }); render(); fx('down');
                     toast(`Deleted ${e0.name}, ${money(e0.amt)}.`, () => { add(ledCopy(e0), e0.ts); render(); });
                 });
                 break;
@@ -1104,7 +1124,15 @@
         initStore();
         refresh(); applyTheme();
         const locked = pinOn() && hasCrypto() ? showLock() : Promise.resolve();
-        render(); companionReturns();
+        if (window.GWizard) GWizard.config({ app: 'budget', brand: "Rustam's Budget Manager", prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, apply: () => { applyTheme(); followNow(); }, render: () => { if (D) render(); }, hasData: () => events.some(e => e.t !== 'cat'),
+          tour: [["Tap to learn", "Tap any graphic or number. The Companion explains it in simple words."], ["Add spending", "Tap + on a category, type the amount, then tap Add. Your usual amounts appear as quick buttons."], ["Fix a mistake", "Open Month, then Ledger. Tap the pen to change an entry or the bin to delete it. You can always Undo."], ["The top banner", "It shows your last entry, and now and then a tip. Tap a tip to see the next one."], ["More", "Categories and sections you rarely use fold under More. They come back when you open them."], ["Keep a copy", "Settings, then Backup, saves a copy of your data. You can run setup again or replay this tour in Settings."]],
+          later: [
+            { id: 'pin', after: 2, text: "Do you want a PIN to keep this app private?", opts: [["set", "Set a PIN"], ["no", "No thanks"]], apply: v => { if (v === 'set') pinSheet(); }, when: () => !pinOn() },
+            { id: 'dayclose', after: 4, text: "Remind me each evening to close the day?", opts: [["1", "Yes"], ["0", "No"]], apply: v => { prefs.dayCloseOn = v === '1'; persist(); } },
+            { id: 'wait', after: 5, text: "Wait 24 hours before buying things on your want list?", opts: [["1", "Yes, wait a day"], ["0", "No"]], apply: v => { prefs.waitOn = v === '1'; persist(); } },
+            { id: 'lite', after: 6, text: "This phone may be slow. Use Lite mode? It removes blur and motion. You can switch it back any time.", opts: [["1", "Use Lite"], ["0", "Keep the glass"]], apply: v => { prefs.lite = v === '1'; persist(); applyTheme(); }, when: () => !prefs.lite && window.GResume && GResume.weakPhone() }
+          ] });
+        const y0 = GResume.init({ key: 'bm2_resume', screens: ['today','ins','life','mind','month','out','plan'], get: () => screen, set: s => { screen = s; } }); render(); GResume.restoreScroll(y0); companionReturns();
         if (window.GFeel) GFeel.saveButton({ save: () => { persist(); try { return !events.length || localStorage.getItem(K_EV) !== null; } catch (e) { return false; } }, backup: () => backupSheet('share') });
         locked.then(() => { showSplash(); setTimeout(() => { if (GC && !GC.state().action) GC.do('hello', { force: true }); }, 3600); });
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
