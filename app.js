@@ -700,6 +700,102 @@
         let kb = 0; try { kb = Math.round((localStorage.getItem(K_EV) || '').length / 1024); } catch (e) {}
         return `<div class="card"><h3>Your data</h3><p class="hint">Every entry is saved on this phone only: ${events.length} entries, about ${kb} KB. The app learns from them here. Nothing is sent anywhere. Use Backup to keep a safe copy.</p><button type="button" class="btn-line" data-act="deleted">Recently deleted (${deletedList().length})</button>${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}</div>`;
     }
+
+    /* ================= Weekly and monthly report (Insights) ================= */
+    let repKind = 'week', repBack = 0, repTouched = false, repSel = 0;
+    const RPAL = ['#e0679a', '#4f8cff', '#f09a3e', '#7a64f0', '#2fb58a', '#e5b92b', '#d9534f', '#4cb8c4'];
+    const rfd = ts => new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const rfw = ts => new Date(ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    // one marker for every rise and fall: a small triangle. For spending, a rise is red and a fall is green.
+    const rf = (d, text) => d === 0 ? `<span class="rf flat">– ${text || 'no change'}</span>` : `<span class="rf ${d > 0 ? 'up' : 'down'}"><i aria-hidden="true">${d > 0 ? '▲' : '▼'}</i> ${text}</span>`;
+    const catCol = id => { const i = D.cats.slice().sort((a, b) => a.id - b.id).findIndex(c => c.id === id); return RPAL[(i >= 0 ? i : id) % RPAL.length]; };
+    const catTile = (id, icon, sz) => `<span class="rp-ic${sz ? ' big' : ''}" style="background:${catCol(id)}" aria-hidden="true">${esc(icon)}</span>`;
+    function allExps() { const a = []; D.months.forEach(m => m.exps.forEach(x => a.push(x))); return a; }
+    function habitName(h) { const n = (prefs.habitNames || {})[h.key]; if (n) return n; return h.text ? h.text.replace(/^./, c => c.toUpperCase()) : h.cname; }
+    function donut(r) {
+        const R = 46, L = 2 * Math.PI * R, top = r.cats.filter(c => c.cur > 0), shown = top.slice(0, 5), rest = top.slice(5).reduce((s, c) => s + c.cur, 0);
+        const seg = shown.map(c => ({ id: c.id, v: c.cur, col: catCol(c.id) })); if (rest > 0) seg.push({ id: -1, v: rest, col: '#8a96ad' });
+        let o = 0, s = `<circle cx="65" cy="65" r="${R}" fill="none" stroke="var(--track)" stroke-width="17"/>`;
+        seg.forEach(g => { const f = g.v / r.spent, d = Math.max(0.5, f * L - (seg.length > 1 ? 3 : 0)), sel = repSel === g.id;
+            s += `<circle class="rp-dn-seg" data-act="rep-cat" data-id="${g.id}" cx="65" cy="65" r="${R}" fill="none" stroke="${g.col}" stroke-width="${sel ? 22 : 17}" stroke-dasharray="${d} ${L - d}" stroke-dashoffset="${-o * L}" transform="rotate(-90 65 65)"/>`; o += f; });
+        const sc = r.cats.find(c => c.id === repSel), mid = sc ? sc.cur : r.spent, lab = sc ? sc.name : 'Total';
+        s += `<text x="65" y="60" text-anchor="middle" font-size="10" fill="var(--text-muted)">${esc(lab.length > 12 ? lab.slice(0, 11) + '…' : lab)}</text><text class="priv" x="65" y="80" text-anchor="middle" font-size="${mid >= 10000 ? 15 : 18}" font-weight="700" fill="var(--text-main)">${money(mid)}</text>`;
+        return `<svg class="rp-dn" viewBox="0 0 130 130" role="img" aria-label="Spending by category">${s}</svg>`;
+    }
+    function dayStrip(r) {
+        const wk = r.kind === 'week', mx = Math.max(1, ...r.day.map(v => v || 0), ...r.dayPrev), today = r.running ? r.elapsed - 1 : -1;
+        if (wk) {
+            const L = ['M', 'T', 'W', 'T', 'F', 'S', 'S'], WD = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+            return `<div class="rp-wkb">${r.day.map((v, i) => { const fut = v === null, val = fut ? r.dayPrev[i] : v, h = Math.max(4, val / mx * 70);
+                return `<div class="${fut ? 'f' : ''}${i === today ? ' td' : ''}"${tl(`${WD[i]}: ${fut ? 'last ' + r.kind + ' this day was ' : ''}${prefs.privacy ? 'hidden' : money(val)}`)}><span style="height:${h}px"></span><em>${L[i]}</em></div>`; }).join('')}</div>`;
+        }
+        const off = (r.firstDow + 6) % 7; let cells = '<i class="rp-mo-b"></i>'.repeat(off);
+        r.day.forEach((v, i) => { const fut = v === null, a = fut ? 0 : Math.min(1, (v || 0) / mx);
+            cells += `<b class="${fut ? 'f' : v ? '' : 'z'}${i === today ? ' td' : ''}" style="${!fut && v ? `--a:${a.toFixed(2)};--o:1` : ''}"${tl(`${rfd(r.start + i * 864e5 + 12 * 36e5)}: ${fut ? 'still to come' : prefs.privacy ? 'hidden' : money(v || 0)}`)}>${i + 1}</b>`; });
+        return `<div class="rp-mo-h">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(x => `<em>${x}</em>`).join('')}</div><div class="rp-mo-g">${cells}</div>`;
+    }
+    function spark(vals, col) {
+        const mx = Math.max(1, ...vals), n = vals.length; if (n < 2) return '';
+        const pts = vals.map((v, i) => `${(2 + i * 66 / (n - 1)).toFixed(1)},${(26 - v / mx * 22).toFixed(1)}`).join(' ');
+        return `<svg class="rp-spark" viewBox="0 0 70 30" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    }
+    function habitCard(h, r) {
+        const unit = h.marker ? 'person' : 'each', per = h.marker ? (h.unitsAvg > 1.05 ? `${Math.round(h.unitsAvg * 10) / 10 === Math.round(h.unitsAvg) ? Math.round(h.unitsAvg) : Math.round(h.unitsAvg * 10) / 10} persons · ` : '1 person · ') : '';
+        const rh = h.rhythm === 'weekdays' ? 'most weekdays' : h.rhythm === 'daily' ? 'daily' : h.rhythm === 'weekly' ? 'weekly' : h.rhythm === 'monthly' ? 'monthly' : h.rhythm === 'irregular' ? 'no fixed rhythm' : h.rhythm;
+        const dots = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x, i) => `<i class="${h.share[i] >= 0.5 ? 'on' : ''}" title="${x}"></i>`).join('');
+        const price = h.priceMove ? rf(h.priceMove, `${money(Math.abs(h.dPrice))} ${h.marker ? 'per person' : 'each'}, was ${money(h.pricePrev)}`) : `<span class="rf flat">– price steady</span>`;
+        const cnt = h.countMove ? rf(h.countMove, `${h.countCur} ${h.countCur === 1 ? 'time' : 'times'} ${r.running ? 'so far' : 'in all'}, was ${h.countPrev}`) : '';
+        const col = h.countMove > 0 ? 'var(--warning)' : h.countMove < 0 ? '#1f9d63' : 'var(--blue-b)';
+        return `<div class="rp-hab" data-act="hab-name" data-k="${esc(h.key)}" role="button" tabindex="0">${catTile(h.cat, h.icon, 1)}<div class="rp-hb"><div class="rp-hn"><b>${esc(habitName(h))}</b><span class="rp-chip">${h.sure ? 'sure' : 'likely'}</span></div><div class="rp-dots" aria-hidden="true">${dots}</div><div class="hint">${per}<span class="priv">${money(h.perUnit)}</span> ${h.marker ? 'per person' : 'each'} · ${rh}</div><div class="rp-hl">${price}${cnt ? '<br>' + cnt : ''}</div></div>${spark(h.weeks, col)}</div>`;
+    }
+    function repNote(r, hs) {
+        const up = r.cats.filter(c => c.diff > 0 && c.prev > 0 && c.diff >= Math.max(50, c.prev * 0.25)).sort((a, b) => b.diff - a.diff)[0];
+        const hp = hs.filter(h => h.priceMove > 0).sort((a, b) => b.dPrice / b.pricePrev - a.dPrice / a.pricePrev)[0];
+        if (hp) return `${esc(habitName(hp))} now costs ${mh(hp.pricePerUnitNow)} ${hp.marker ? 'a person' : 'each time'}, up from ${mh(hp.pricePrev)}. Small things add up, so it is good to know.`;
+        if (up) return `${esc(up.name)} is the biggest rise so far: ${mh(up.diff)} more than the same days last ${r.kind}.`;
+        if (r.prevSpent > 0 && r.diff < 0) return `Spending is lower than the same days last ${r.kind}. Steady work.`;
+        return '';
+    }
+    function reportHTML() {
+        const now = Date.now(), ex = allExps(), k = repKind, w = k === 'week';
+        let back = repBack, auto = false;
+        const r0 = Report.report(ex, now, k, 0);
+        if (!repTouched && back === 0 && r0.elapsed <= 1 && r0.count === 0 && Report.report(ex, now, k, 1).spent > 0) { back = 1; auto = true; }
+        const r = back === 0 ? r0 : Report.report(ex, now, k, back), noun = w ? 'week' : 'month';
+        const real = ex.filter(e => e.kind !== 'import' && e.kind !== 'adjust' && e.amt > 0);
+        const segs = `<div class="seg" role="group" aria-label="Report period"><button type="button" class="${w ? 'on' : ''}" data-act="rep-kind" data-v="week" aria-pressed="${w}">Week</button><button type="button" class="${!w ? 'on' : ''}" data-act="rep-kind" data-v="month" aria-pressed="${!w}">Month</button></div>`
+            + `<div class="seg mt" role="group" aria-label="Which ${noun}"><button type="button" class="${back === 0 ? 'on' : ''}" data-act="rep-back" data-v="0" aria-pressed="${back === 0}">This ${noun}</button><button type="button" class="${back === 1 ? 'on' : ''}" data-act="rep-back" data-v="1" aria-pressed="${back === 1}">Last ${noun}</button></div>`;
+        let h = `<div class="card" data-sec="ins:report"><h3>Report</h3>${segs}</div>`;
+        if (!real.length) return h + `<div class="card"><p class="hint">Your report appears here after your first entries. It shows where the money went, compared with the ${noun} before.</p></div>`;
+        const when = w ? (r.running ? `${rfw(r.start)} to ${rfw(r.start + (r.elapsed - 1) * 864e5 + 12 * 36e5)}` : `${rfw(r.start)} to ${rfw(r.end - 12 * 36e5)}`) : (r.running ? `1 to ${rfd(r.start + (r.elapsed - 1) * 864e5 + 12 * 36e5)}` : new Date(r.start).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }));
+        const vs = r.running ? `than the same days last ${noun}` : `than the ${noun} before`;
+        const frac = r.elapsed / r.days, C = 2 * Math.PI * 26;
+        const ring = `<svg class="rp-ring" viewBox="0 0 64 64" role="img" aria-label="Day ${r.elapsed} of ${r.days}"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--track)" stroke-width="7"/><circle cx="32" cy="32" r="26" fill="none" stroke="var(--blue-b)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(frac * C).toFixed(1)} ${C}" transform="rotate(-90 32 32)"/><text x="32" y="${w ? 36 : 35}" text-anchor="middle" font-size="${w ? 13 : 12}" font-weight="700" fill="var(--text-main)">${r.elapsed}/${r.days}</text></svg>`;
+        const cmp = r.prevSpent === 0 && r.spent === 0 ? 'Nothing spent yet.' : r.prevSpent === 0 ? `Nothing to compare with last ${noun}.` : `${rf(r.diff, `${mh(Math.abs(r.diff))}`)} ${vs}`;
+        h += `<div class="card" data-sec="ins:spent"><div class="row" style="align-items:center;gap:12px"><div style="flex:1"><div class="label">${r.running ? 'Spent this ' + noun : 'Spent last ' + noun}</div><div class="rp-big">${mh(r.spent)}</div><div class="rp-cmp">${cmp}</div></div>${ring}</div><div class="hint mt">${esc(when)}.${auto ? ` A new ${noun} has just begun, so here is last ${noun} in full.` : r.running ? ` Day ${r.elapsed} of ${r.days}. When the ${noun} ends, it shows the full ${noun} against the one before.` : ` The full ${noun} against the ${noun} before it.`}</div></div>`;
+        if (r.spent > 0) {
+            const lg = r.cats.filter(c => c.cur > 0).slice(0, 6).map(c => `<div class="rp-leg${repSel === c.id ? ' sel' : ''}" data-act="rep-cat" data-id="${c.id}" role="button" tabindex="0">${catTile(c.id, c.icon)}<span class="rp-ln">${esc(c.name)}</span><b class="priv">${money(c.cur)}</b></div>`).join('');
+            h += `<div class="card" data-sec="ins:where-it-went"><h3>Where it went</h3><div class="row" style="align-items:center;gap:10px">${donut(r)}<div class="rp-legs">${lg}</div></div><div class="hint mt">Tap a slice or a name to see one category.</div></div>`;
+        }
+        const mx = Math.max(1, ...r.cats.map(c => Math.max(c.cur, c.prev)));
+        h += `<div class="card" data-sec="ins:this-vs-last"><h3>${r.running ? 'This ' + noun + ' and last, same days' : 'Last ' + noun + ' and the one before'}</h3>${r.cats.length ? r.cats.slice(0, 8).map(c => `<div class="rp-pb">${catTile(c.id, c.icon)}<div class="rp-bars2"><div class="rp-pt"><span>${esc(c.name)}</span>${c.cur === 0 && c.prev === 0 ? '' : rf(c.diff, mh(Math.abs(c.diff)))}</div><div class="rp-bar"><i style="width:${c.cur / mx * 100}%;background:${catCol(c.id)}"></i></div><div class="rp-bar old"><i style="width:${c.prev / mx * 100}%;background:${catCol(c.id)}"></i></div></div></div>`).join('') + `<div class="hint mt">Solid bar: ${r.running ? 'this' : 'last'} ${noun}. Pale bar: ${r.running ? 'same days last' : 'the'} ${noun}${r.running ? '' : ' before'}.</div>` : '<p class="hint">Nothing to show yet.</p>'}</div>`;
+        const peak = r.peak >= 0 ? (w ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][r.peak] : rfd(r.start + r.peak * 864e5 + 12 * 36e5)) : '';
+        h += `<div class="card" data-sec="ins:your-days"><h3>${w ? 'Your days' : 'Your month'}</h3>${dayStrip(r)}<div class="hint mt">${peak ? `Most spent: ${peak}. ` : ''}${r.running ? (w ? 'Dashed bars are days to come, drawn at last week’s amount.' : 'Dashed days are still to come.') : ''}</div></div>`;
+        let hs = [];
+        if (prefs.learnOn !== false) {
+            hs = Report.habits(ex, now, k, back);
+            h += `<div class="card" data-sec="ins:habits"><h3>Habits I noticed</h3>${hs.length ? hs.map(x => habitCard(x, r)).join('') + `<div class="hint">Tap a habit to give it your own name. <b>Sure</b> means three or more clues agree; <b>likely</b> means two.</div>` : `<p class="hint">After about three entries of the same kind, such as the same category, note and price, they show here as a habit. So far none stand out. Notes like 2N (two persons) are understood.</p>`}</div>`;
+        }
+        const note = repNote(r, hs); if (note) h += `<div class="card rp-note" data-sec="ins:a-small-note"><span aria-hidden="true">🌤</span><span>${note}</span></div>`;
+        return h;
+    }
+    function habitSheet(key) {
+        const h = Report.habits(allExps(), Date.now(), repKind, repBack).find(x => x.key === key); if (!h) return;
+        const cur = (prefs.habitNames || {})[key] || '';
+        sheet(`<h2>Name this habit</h2><p class="hint">${esc(h.cname)} · ${money(h.perUnit)} ${h.marker ? 'per person' : 'each'}. Your name appears only in this report.</p><label class="field"><span>Name</span><input type="text" id="hb-n" maxlength="30" value="${esc(cur)}" placeholder="${esc(habitName(Object.assign({}, h, { key: '' })))}" autofocus></label><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="hb-go">Save</button></div>`, box => {
+            box.querySelector('#hb-go').onclick = () => { const v = val(box, '#hb-n').trim(); prefs.habitNames = prefs.habitNames || {}; if (v) prefs.habitNames[key] = v; else delete prefs.habitNames[key]; persist(); closeSheet(); render(); toast(v ? 'Name saved' : 'Name cleared'); };
+        });
+    }
     function renderIns() {
         const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], names = ['S', 'M', 'T', 'W', 'T', 'F', 'S'], order = [1, 2, 3, 4, 5, 6, 0];
         const allx = []; D.months.forEach(m => m.exps.forEach(x => allx.push(x)));
@@ -722,7 +818,7 @@
         const resisted = D.wants.filter(w => w.status === 'dropped').reduce((s, w) => s + w.price, 0);
         h += `<div class="card" data-sec="ins:resisted"><h3>Resisted</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(resisted)}</b><span class="hint">in wants you let go</span></div></div>`;
         h += `<div class="card" data-sec="ins:closed-months"><h3>Closed months</h3>${D.months.filter(m => m.close).slice(-6).reverse().map(m => `<div class="ledger-row"><span>${MONTHS[m.m]} ${m.y}</span><span class="priv">saved ${money(m.close.toSave)} · pool +${money(m.close.toPool)}</span></div>`).join('') || '<p class="hint">None yet.</p>'}</div>`;
-        put($('s-ins'), learnInsights() + h);
+        put($('s-ins'), reportHTML() + learnInsights() + h);
     }
 
     const sw = (k, t, d) => `<div class="sw-row"><div><div>${t}</div>${d ? `<div class="set-meta">${d}</div>` : ''}</div><label class="switch"><input type="checkbox" data-pref="${k}" ${prefs[k] ? 'checked' : ''}><i></i></label></div>`;
@@ -1026,6 +1122,10 @@
             case 'line': lineBump++; renderToday(); break;
             case 'entry': if (!D.P) planSheet(); else entrySheet(+id); break;
             case 'quick': quickAdd(+id); break;
+            case 'rep-kind': repKind = el.dataset.v === 'month' ? 'month' : 'week'; repBack = 0; repTouched = false; repSel = 0; renderIns(); break;
+            case 'rep-back': repBack = +el.dataset.v ? 1 : 0; repTouched = true; repSel = 0; renderIns(); break;
+            case 'rep-cat': { const v = +el.dataset.id; repSel = repSel === v ? 0 : v; renderIns(); break; }
+            case 'hab-name': habitSheet(el.dataset.k); break;
             case 'led-more': ledShow += 10; renderMonth(); break;
             case 'led-edit': ledEdit = +id; renderMonth(); { const i = $('led-amt'); if (i) { i.focus(); i.select(); } } break;
             case 'led-cancel': ledEdit = 0; renderMonth(); break;

@@ -103,3 +103,4 @@ The same gesture or word means the same thing everywhere.
 - Real-phone checks by Rustam: heat, TalkBack, swipe feel.
 - 18 Oct 2026: Liquid glass style added (Goal v5.32, Budget v2.30), opt-in beside Frosted. Audit with Liquid on: 0 flags on all 10 themes. Refraction dropped.
 - 18 Oct 2026: Liquid fixes, ledger limited to 5 entries, glass Saved and Undo messages, swipe between tabs (Goal v5.34, Budget v2.32). Next: weekly and monthly report (Budget), after a design talk.
+- 2026-10-19: Budget v2.34 - weekly and monthly report with habits (same-days comparison, triangle marker, 2N persons). Goal unchanged (v5.35); shared CSS gained the rise/fall colours.

@@ -405,3 +405,9 @@ html[data-glass="liquid"] .toast, html[data-glass="liquid"] .gc-bubble, html[dat
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, calc(.9 * var(--lq-shine))), inset 0 3px 6px -1px rgba(255, 255, 255, calc(.6 * var(--lq-shine))), inset 2px 2px 2px -1px rgba(255, 255, 255, calc(.9 * var(--lq-rim))), 0 0 2px rgba(15, 25, 55, calc(.28 * var(--lq-rim))), 2px 2.5px 3px rgba(15, 25, 55, calc(.3 * var(--lq-rim))), 0 18px 30px -14px rgba(var(--lq-shrgb), calc(.55 * var(--lq-shadow))) !important;
 }
 html[data-glass="liquid"][data-scheme="dark"] .toast, html[data-glass="liquid"][data-scheme="dark"] .gc-bubble, html[data-glass="liquid"][data-scheme="dark"] .gc-ask { box-shadow: inset 0 1px 0 rgba(255, 255, 255, calc(.5 * var(--lq-shine))), inset 2px 2px 2px -1px rgba(255, 255, 255, calc(.4 * var(--lq-rim))), 0 0 2px rgba(0, 0, 0, calc(.5 * var(--lq-rim))), 2px 2.5px 3px rgba(0, 0, 0, calc(.5 * var(--lq-rim))), 0 18px 30px -14px rgba(0, 0, 0, calc(.8 * var(--lq-shadow))) !important; }
+
+/* Rise and fall marker (Budget report): readable on light pages */
+html[data-scheme="light"] .rf.up { color: color-mix(in srgb, var(--warning, #d63a34) 72%, #000); }
+html[data-scheme="light"] .rf.down { color: color-mix(in srgb, var(--good, #2da872) 66%, #000); }
+html[data-scheme="dark"] .rf.down { color: #4fd896; }
+html[data-scheme="dark"] .rf.up { color: #ff8f86; }

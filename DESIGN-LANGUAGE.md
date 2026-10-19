@@ -88,3 +88,15 @@ The progress on the ten humane-design aspects lives in HUMANE-TRACKER.md. Read i
 - Rule: every interface change is audited with Liquid on as well as Frosted, on all 10 themes (buttons and text contrast).
 - Messages after an action (toast with Undo, Companion bubble, question card) use the chosen glass style.
 - Gestures: swipe a row left (delete, asks first) or right (edit); press and hold a row to edit; swipe anywhere else to change tab (not from the 24 px screen edges, not on sliders, inputs or sideways-scrolling strips).
+
+## 12 Rise and fall marker
+- One marker everywhere: a small triangle, ▲ for a rise and ▼ for a fall, always followed by the amount ("▲ ₹3", "▼ ₹180"). The app already uses it ("▼ ₹40 below your average"). Never mix in arrows (↑ ↓).
+- Colour for spending: ▲ red, ▼ green. For saving or goals the colours are swapped. The triangle carries the meaning, so colour is never the only signal.
+- Neutral or "no change": a flat dash "–".
+
+## 13 Budget report (v2.34)
+- Lives at the top of Insights: Week/Month switch, This/Last switch, total with a day ring, donut, paired bars, day strip (calendar for months), habits, one small note.
+- Running periods use the same days of the last period; closed periods use full against full. A brand-new period with no entries shows the last one in full.
+- Habits: category + note words + price per person + rhythm. "sure" = 3 or more clues, "likely" = 2, never fewer than 3 entries. A number plus N in a note ("2N") means persons; price is judged per person.
+- Calendar cells show spend as a dot, never a coloured fill, so the day number keeps full contrast.
+- All class names start with rp-; rise and fall always use the .rf triangle marker.

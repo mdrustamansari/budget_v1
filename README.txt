@@ -150,3 +150,5 @@ Bundle G (Budget v2.32) - The ledger shows the five most recent entries; Show ol
 Bundle G (Goal v5.34 / Budget v2.32) - Saved and Undo messages now use glass (Frosted or Liquid, to match your Glass style); swipe left or right anywhere (not on rows, sliders or sideways strips, and not from the screen edges) to change tab.
 
 v2.33 fix: Liquid rim light — white part inside the hairline, dark part outside it.
+
+v2.34 New: weekly and monthly report on the Insights tab. Weeks run Monday to Sunday. While a week or month is running it is compared with the same days of the last one; a closed one is compared in full. Donut of spending by category, paired bars, a day strip (calendar for months), and "Habits I noticed", found by comparing category, note words, price per person and rhythm. Notes like 2N are read as 2 persons. Tap a habit to name it. One triangle marker for every rise and fall.
