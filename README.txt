@@ -152,3 +152,7 @@ Bundle G (Goal v5.34 / Budget v2.32) - Saved and Undo messages now use glass (Fr
 v2.33 fix: Liquid rim light — white part inside the hairline, dark part outside it.
 
 v2.34 New: weekly and monthly report on the Insights tab. Weeks run Monday to Sunday. While a week or month is running it is compared with the same days of the last one; a closed one is compared in full. Donut of spending by category, paired bars, a day strip (calendar for months), and "Habits I noticed", found by comparing category, note words, price per person and rhythm. Notes like 2N are read as 2 persons. Tap a habit to name it. One triangle marker for every rise and fall.
+
+v2.35 Fixed: tab swipe no longer jitters (transform-only slide). Danger text buttons have a hairline.
+
+v2.35 Fixed: tab swipe jitter (the browser back-swipe was fighting with ours). Liquid: separate Light rim and Dark rim sliders (brightness and blur), crisper white inner rim. Screens refresh only when you look at them; no minute timer, and no timers while the app is hidden.

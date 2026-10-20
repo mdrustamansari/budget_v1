@@ -164,7 +164,7 @@
         if (onMount) onMount(box);
         const first = box.querySelector('[autofocus]'); if (first && !(opts && opts.noFocus)) setTimeout(() => { try { first.focus(); } catch (e) {} }, 60);
     }
-    function closeSheet() { if (GC) GC.pose('none'); $('sheet-bg').classList.remove('show'); const f = sheetCloser; sheetCloser = null; if (f) f(); }
+    function closeSheet() { if (GC) GC.pose('none'); $('sheet-bg').classList.remove('show'); const f = sheetCloser; sheetCloser = null; if (f) f(); if (window.GFresh) setTimeout(GFresh.afterBusy, 60); }
     // Icon-only Edit (Lucide square-pen) and Delete (Lucide trash-2): same size, tooltip and spoken label
     const ICO = { edit: '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>', del: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/>' };
     const icoBtn = (kind, attrs, what) => `<button type="button" class="ico-btn ico-${kind}" ${attrs} title="${kind === 'edit' ? 'Edit' : 'Delete'}" aria-label="${kind === 'edit' ? 'Edit' : 'Delete'} ${what}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICO[kind]}</svg></button>`;
@@ -882,6 +882,7 @@
     }
 
     function render() {
+        if (window.GFresh) GFresh.touch();
         if (!render.gs && window.GSections) { render.gs = 1; GSections.init({ app: 'budget', enabled: () => prefs.smartOn !== false }); }
         if (!$('lock').classList.contains('show') || !pinOn()) { /* render underneath too */ }
         refresh(); applyTheme(); renderBanner();
@@ -1219,7 +1220,8 @@
         if (hiddenAt && Date.now() - hiddenAt > 5 * 60000) render();
         hiddenAt = 0;
     });
-    setInterval(() => { if (!document.hidden && !$('sheet-bg').classList.contains('show') && !$('lock').classList.contains('show')) render(); }, 60000);
+    // Refresh only when you look at the app: when it comes back to the front, or at the next full hour while it is in view. No timer ticks.
+    GFresh.init({ busy: () => document.hidden || $('sheet-bg').classList.contains('show') || $('lock').classList.contains('show'), render: render });
 
     async function init() {
         initStore();

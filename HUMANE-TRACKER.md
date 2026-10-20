@@ -104,3 +104,5 @@ The same gesture or word means the same thing everywhere.
 - 18 Oct 2026: Liquid glass style added (Goal v5.32, Budget v2.30), opt-in beside Frosted. Audit with Liquid on: 0 flags on all 10 themes. Refraction dropped.
 - 18 Oct 2026: Liquid fixes, ledger limited to 5 entries, glass Saved and Undo messages, swipe between tabs (Goal v5.34, Budget v2.32). Next: weekly and monthly report (Budget), after a design talk.
 - 2026-10-19: Budget v2.34 - weekly and monthly report with habits (same-days comparison, triangle marker, 2N persons). Goal unchanged (v5.35); shared CSS gained the rise/fall colours.
+- 2026-10-19: Goal v5.36 - the word Task replaces Piece; speed (pages an hour) learned from optional timed logs, confident = adapts quietly with history and Undo, still learning = asks; Budget v2.35 and Goal: tab swipe jitter fixed (transform-only slide); danger text buttons got a hairline.
+- 2026-10-20: Goal v5.36 / Budget v2.35 - tab-swipe jitter fixed (browser back-swipe and pull-to-refresh switched off, no slide), separate Light and Dark rim sliders (brightness and blur), no timed refresh (GFresh), Companion timers stop when hidden (5a).
