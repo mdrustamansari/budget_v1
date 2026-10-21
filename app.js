@@ -88,11 +88,16 @@
         const h = new Date().getHours();
         return h >= 5 && h < 12 ? 'sky' : (h >= 12 && h < 17 ? 'marigold' : 'dusk');
     }
+    // Nothing to redo when nothing about the look changed. Redoing it on every tab switch made the glass layers draw again (a blink).
+    let themeSig = '';
     function applyTheme() {
+        let bgLen = 0; try { bgLen = (localStorage.getItem(K_BG) || '').length; } catch (e) {}
+        const sig = JSON.stringify([prefs.look, prefs.accent, prefs.glow, prefs.flFont, prefs.lite, prefs.privacy, prefs.glassBlur, prefs.bgBlur, prefs.theme, prefs.p, prefs.glassStyle, prefs.lqFrost, prefs.lqTint, prefs.lqLight, prefs.lqLightBlur, prefs.lqDark, prefs.lqDarkBlur, prefs.lqShadow, prefs.lqShine, prefs.lqStreak, bgLen, document.documentElement.getAttribute('data-look') === null]);
+        if (sig === themeSig) return; themeSig = sig;
         const id = themeId(), root = document.documentElement;
         root.setAttribute('data-theme', id);
         const fx = GLook.FIXED[prefs.look], base = !fx ? null : ({ flagship: prefs.accent === 'gold' ? '#f7f6f2' : '#f6f7fa', flagshipd: prefs.accent === 'gold' ? '#18181a' : '#17191d', royal: '#0e0b17', midnight: '#07130e', deepocean: '#04121f', ember: '#170c0b', graphite: '#131415' })[prefs.look];
-        document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.setAttribute('content', base || THEMES[id].mL));
+        document.querySelectorAll('meta[name="theme-color"]').forEach(m => { const v = base || THEMES[id].mL; if (m.getAttribute('content') !== v) m.setAttribute('content', v); });
         root.classList.toggle('lite', !!prefs.lite);
         root.classList.toggle('pm', !!prefs.privacy);
         root.style.setProperty('--glass-blur', prefs.glassBlur + 'px');

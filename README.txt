@@ -158,3 +158,5 @@ v2.35 Fixed: tab swipe no longer jitters (transform-only slide). Danger text but
 v2.35 Fixed: tab swipe jitter (the browser back-swipe was fighting with ours). Liquid: separate Light rim and Dark rim sliders (brightness and blur), crisper white inner rim. Screens refresh only when you look at them; no minute timer, and no timers while the app is hidden.
 
 Version 2.36: one button language, the same as Goal v5.39 (full pill shape; pale glass and filled accent; crisp white top shine, soft dark bottom shadow). Look settings can be saved to a file and restored (Settings, My look settings). First frame matches your theme and phone mode. Fixed the blink after a tab swipe.
+
+Version 2.37: less work on every tab switch (the look is only applied again when something about it changed), to stop the blink after a swipe.
