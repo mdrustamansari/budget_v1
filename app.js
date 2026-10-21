@@ -865,6 +865,7 @@
         let hasBg = false; try { hasBg = !!localStorage.getItem(K_BG); } catch (e) {}
         let h = lookCard();
         if (window.GLiquid) h += GLiquid.settingsHTML();
+        h += `<div class="card" data-sec="set:look-file"><h3>My look settings</h3><p class="hint">Keep your refined choices safe: themes, accents, glass, rim sliders, fonts, paper, sounds and the Companion. Restore them any time, so you never set them up again. Your entries and PIN are not in this file.</p><div class="grid2"><button type="button" class="btn-line" data-act="look-save">Save my look settings</button><button type="button" class="btn-line" data-act="look-load">Restore my look settings</button></div></div>`;
         h += foldCard(`<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`, 'set-cat', true);
         const pin = pinOn();
         h += foldCard(`<div class="card"><h3>Security</h3><p class="hint">The PIN keeps people out of the app. Backups are encrypted with their own password.</p>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<button class="btn-line" data-act="pin-off">Remove PIN</button>' : ''}</div>`, 'set-sec', false);
@@ -1170,6 +1171,13 @@
             case 'pin-off': if (await confirmSheet({ title: 'Remove PIN?', ok: 'Remove' })) { try { localStorage.removeItem(K_PIN); } catch (e) {} render(); } break;
             case 'backup': backupSheet(el.dataset.m); break;
             case 'restore': $('file-restore').click(); break;
+            case 'look-save': {
+                const skip = ['pass', 'rememberPass', 'lastBackup', 'remindSnooze', 'open', 'lastLight', 'lastDark', 'habitNames'], pr = {};
+                Object.keys(prefs).forEach(k => { if (skip.indexOf(k) < 0) pr[k] = prefs[k]; });
+                const rd = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
+                downloadText(JSON.stringify({ app: 'budget-manager', kind: 'look-settings', v: 1, at: Date.now(), prefs: pr, companion: rd('gc_prefs'), feel: rd('gf_prefs2') }, null, 1), 'budget-look-settings-' + new Date().toISOString().slice(0, 10) + '.json');
+                toast('Look settings saved'); break; }
+            case 'look-load': $('file-look').click(); break;
             case 'erase': if (await confirmSheet({ title: 'Erase everything?', sub: 'All entries and settings on this phone are deleted. Back up first if unsure.', ok: 'Erase', danger: true })) {
                 ['bm2_events', 'bm2_prefs', 'bm2_pin', 'budgetApp_state', 'budgetApp_history', 'budgetApp_purch', 'budgetApp_meta'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
                 prefs = PREF_DEFAULT(); firstRun(); screen = 'today'; render(); toast('Erased'); } break;
@@ -1201,6 +1209,16 @@
     }, true);
     try { const mq = matchMedia('(prefers-color-scheme: dark)'); (mq.addEventListener ? mq.addEventListener('change', () => followNow()) : mq.addListener(() => followNow())); } catch (e) {}
     $('file-bg').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) processWallpaper(f); };
+    $('file-look').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+        const r = new FileReader(); r.onload = async () => {
+            let o = null; try { o = JSON.parse(String(r.result)); } catch (x) {}
+            if (!o || o.kind !== 'look-settings' || !o.prefs) { toast('That is not a look settings file'); return; }
+            if (!(await confirmSheet({ title: 'Restore look settings?', sub: 'Your themes, glass, fonts, sounds and Companion choices are replaced by the ones in this file. Entries stay as they are.', ok: 'Restore' }))) return;
+            const skip = ['pass', 'rememberPass', 'lastBackup', 'remindSnooze', 'open', 'lastLight', 'lastDark', 'habitNames'];
+            Object.keys(o.prefs).forEach(k => { if (skip.indexOf(k) < 0) prefs[k] = o.prefs[k]; });
+            try { if (o.companion) localStorage.setItem('gc_prefs', JSON.stringify(o.companion)); if (o.feel) localStorage.setItem('gf_prefs2', JSON.stringify(o.feel)); } catch (x) {}
+            persist(); toast('Look settings restored'); setTimeout(() => location.reload(), 700);
+        }; r.readAsText(f); };
     $('file-restore').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) restoreFile(f); };
 
     /* ---------- Opening moments ---------- */
