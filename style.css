@@ -577,3 +577,4 @@ html.lite #scene-fx { display: none !important; }
 .si-erase { text-align: center; margin: 24px 0 30px; } .si-erase .danger { color: var(--warning); }
 .si-prev { text-align: center; } .si-prevbtns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; } .si-prevbtns button { flex: 1 1 0; min-width: 0; }
 .si-l { white-space: nowrap; } .si-v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; } .si-prev .hint { margin-top: 10px; }
+.modal-actions { align-items: center; } .modal-actions .ico-del { margin-left: auto; order: 9; }

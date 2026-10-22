@@ -125,3 +125,4 @@ The same gesture or word means the same thing everywhere.
 - 2026-10-22 (Goal v5.45 / Budget v2.39): buttons narrower than 60 px are 28 px tall (btnlook.js sets class b-sm); all others stay 40 px.
 - 2026-10-22 (Goal v5.46 / Budget v2.40): outline pills have no underline; info chips (pace, kept) are 30 px; small buttons 28 px.
 - 2026-10-22 (Goal v5.47 / Budget v2.41): button size by role, not width. Standard 40 px: main actions and Week/Month style switches. Compact 28 px: Done, chips, mini buttons, icon buttons, banner and pop-up buttons.
+- 2026-10-22 (Goal v5.49 / Budget v2.42): edit and delete icon buttons show their icons again (28 px circles, delete in red); every Delete in a sheet is a round trash button on the right.
