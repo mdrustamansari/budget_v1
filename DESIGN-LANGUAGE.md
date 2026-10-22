@@ -125,3 +125,21 @@ Look settings can be exported and restored as a file (themes, glass, rim, fonts,
 
 ## 18. Liquid body tone (Goal v5.40, trial; Budget and later apps wait for approval)
 A flat tone over the body of each Liquid glass object: dark navy on light themes (slider "Body tone", default 15%), white at 60% of that on dark themes. The rim light and top shine stay as they were, so they read against the body. Files: flagship.css (end), liquid.js (lqBody).
+
+## 19. Three kinds of button (Goal v5.41; replaces the single-style rule in 17)
+Distraction and focus. All pills, one height (40 px), only the primary has bold text.
+1. PRIMARY: filled accent, bold. The thing you most likely want here. Also the selected choice in a segmented control or chip row.
+2. GLASS: tinted glass (accent 9%, black 0% by default, sliders in Settings), crisp white top shine (65%, no blur), soft dark bottom shadow (3 px blur). Actions that belong to the task in hand.
+3. OUTLINE: hollow glass, hairline only, no fill, shine or shadow. Something you may start that is not part of the task (Add, Select a task, Choose another task), and the unselected choice in a segmented control.
+4. LINK: underlined text, no button. Reveals more or goes somewhere else (13 more).
+Rule of thumb: a link goes somewhere, an outline starts something, glass continues the task, primary completes it. Files: buttons.css, btnlook.js.
+
+## 20. Glass tint (Goal v5.42; replaces the Liquid body tone in 18)
+Glass buttons and Liquid cards share one tint: the theme's accent (darker on light themes, lighter on dark ones), 9% by default, plus optional black (0% by default, 10% at most). No flat black or white layer. Sliders: Settings, Glass tint (btnlook.js).
+
+## 21. Settings (Goal v5.44)
+- Top page shows state before it asks for choices: two tiles with one big number or picture and small words beside it (Backup: days since the last copy; Look: theme swatches), then three groups of rows. Each row: coloured icon tile, label, current value, chevron. Rows need no explanation.
+- A page opens from a row and returns with "‹ Settings". Tapping the Settings tab again goes back to the top.
+- Hero first: a ring or a big number says the state; the action follows (Back up now = primary, Save to Downloads = glass). Rare or risky things are links; "Erase everything…" stands alone, in red, at the end.
+- Nothing is repeated on a page without a reason; switches live with the thing they change.
+- Row, tile and link edges are exempt from the button audit: rows sit inside a bordered group, links are underlined text.

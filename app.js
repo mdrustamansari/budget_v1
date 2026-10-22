@@ -102,7 +102,7 @@
         root.classList.toggle('pm', !!prefs.privacy);
         root.style.setProperty('--glass-blur', prefs.glassBlur + 'px');
         applyBackground();
-        try { GLook.apply(prefs, { hasBg: root.classList.contains('has-bg'), lite: !!prefs.lite }); } catch (e) {} if (window.GLiquid) GLiquid.apply();
+        try { GLook.apply(prefs, { hasBg: root.classList.contains('has-bg'), lite: !!prefs.lite }); } catch (e) {} if (window.GLiquid) GLiquid.apply(); if (window.GBtnLook) GBtnLook.apply();
     }
     // "Follow my phone": only when the phone changes (or on switching it on, or at start) do we go to the last light or last dark theme used
     function phoneDark() { try { return !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); } catch (e) { return false; } }
@@ -356,12 +356,16 @@
         }
         return { ok: false, why };
     }
+    function toastAsk(msg, label, fn) {
+        const t = $('toast'); t.innerHTML = `<span>${esc(msg)}</span><button class="mini-btn" data-act="toast-undo">${esc(label)}</button>`;
+        t.classList.add('act', 'show'); t._undo = fn; clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 12000);
+    }
     async function runBackup(mode, pass) {
         if (mode !== 'plain' && !hasCrypto()) { toast('Encryption needs the https page'); return; }
         const text = await buildBackupText(mode === 'plain' ? '' : pass);
         if (mode === 'download') { downloadText(text, backupBase() + '.json'); markBackedUp(); toast('Saved to your downloads'); return; }
         const r = await shareText(text, backupBase());
-        if (r.cancelled) return;
+        if (r.cancelled) { toastAsk('Share closed. If you saved the backup, tap here.', 'I saved it', markBackedUp); return; }
         if (r.ok) { markBackedUp(); toast('Backup shared'); return; }
         downloadText(text, backupBase() + '.json'); markBackedUp();
         toast(`Share sheet could not open (${r.why}). Saved to Downloads; upload it from your Files app.`);
@@ -751,7 +755,7 @@
         const price = h.priceMove ? rf(h.priceMove, `${money(Math.abs(h.dPrice))} ${h.marker ? 'per person' : 'each'}, was ${money(h.pricePrev)}`) : `<span class="rf flat">– price steady</span>`;
         const cnt = h.countMove ? rf(h.countMove, `${h.countCur} ${h.countCur === 1 ? 'time' : 'times'} ${r.running ? 'so far' : 'in all'}, was ${h.countPrev}`) : '';
         const col = h.countMove > 0 ? 'var(--warning)' : h.countMove < 0 ? '#1f9d63' : 'var(--blue-b)';
-        return `<div class="rp-hab" data-act="hab-name" data-k="${esc(h.key)}" role="button" tabindex="0">${catTile(h.cat, h.icon, 1)}<div class="rp-hb"><div class="rp-hn"><b>${esc(habitName(h))}</b><span class="rp-chip">${h.sure ? 'sure' : 'likely'}</span></div><div class="rp-dots" aria-hidden="true">${dots}</div><div class="hint">${per}<span class="priv">${money(h.perUnit)}</span> ${h.marker ? 'per person' : 'each'} · ${rh}</div><div class="rp-hl">${price}${cnt ? '<br>' + cnt : ''}</div></div>${spark(h.weeks, col)}</div>`;
+        return `<div class="rp-hab" data-act="hab-name" data-k="${esc(h.key)}" role="button" tabindex="0">${catTile(h.cat, h.icon, 1)}<div class="rp-hb"><div class="rp-hn"><b>${esc(habitName(h))}</b><span class="rp-chip">${h.sure ? 'confident' : 'likely'}</span></div><div class="rp-dots" aria-hidden="true">${dots}</div><div class="hint">${per}<span class="priv">${money(h.perUnit)}</span> ${h.marker ? 'per person' : 'each'} · ${rh}</div><div class="rp-hl">${price}${cnt ? '<br>' + cnt : ''}</div></div>${spark(h.weeks, col)}</div>`;
     }
     function repNote(r, hs) {
         const up = r.cats.filter(c => c.diff > 0 && c.prev > 0 && c.diff >= Math.max(50, c.prev * 0.25)).sort((a, b) => b.diff - a.diff)[0];
@@ -789,7 +793,7 @@
         let hs = [];
         if (prefs.learnOn !== false) {
             hs = Report.habits(ex, now, k, back);
-            h += `<div class="card" data-sec="ins:habits"><h3>Habits I noticed</h3>${hs.length ? hs.map(x => habitCard(x, r)).join('') + `<div class="hint">Tap a habit to give it your own name. <b>Sure</b> means three or more clues agree; <b>likely</b> means two.</div>` : `<p class="hint">After about three entries of the same kind, such as the same category, note and price, they show here as a habit. So far none stand out. Notes like 2N (two persons) are understood.</p>`}</div>`;
+            h += `<div class="card" data-sec="ins:habits"><h3>Habits I noticed</h3>${hs.length ? hs.map(x => habitCard(x, r)).join('') + `<div class="hint">Tap a habit to give it your own name. <b>Confident</b> means three or more clues agree; <b>likely</b> means two.</div>` : `<p class="hint">After about three entries of the same kind, such as the same category, note and price, they show here as a habit. So far none stand out. Notes like 2N (two persons) are understood.</p>`}</div>`;
         }
         const note = repNote(r, hs); if (note) h += `<div class="card rp-note" data-sec="ins:a-small-note"><span aria-hidden="true">🌤</span><span>${note}</span></div>`;
         return h;
@@ -866,21 +870,65 @@
         const m = html.match(/^<div class="card([^"]*)">\s*<h3>([\s\S]*?)<\/h3>([\s\S]*)<\/div>\s*$/); if (!m || !window.GAcc) return html;
         return `<div class="card${m[1]}"><details class="gacc fc" data-gacc="${key}" ${GAcc.open(key, open) ? 'open' : ''}><summary><h3>${m[2]}</h3>${note ? `<span class="gacc-n">${note}</span>` : ''}</summary><div class="gacc-body">${m[3]}</div></details></div>`;
     }
+    /* ---- Settings: a calm top page, then one page for each group ---- */
+    let setPage = '';
+    const SI = {
+        look: '<path d="M12 3a9 9 0 1 0 0 18c1.7 0 2-1.2 1.3-2.2-.8-1.2 0-2.3 1.4-2.3H17a4 4 0 0 0 4-4C21 6.8 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/>',
+        snd: '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16.5 8.5a5 5 0 0 1 0 7"/>',
+        comp: '<circle cx="12" cy="12" r="8"/><circle cx="9.3" cy="11" r="1"/><circle cx="14.7" cy="11" r="1"/><path d="M9.5 14.5c1.4 1 3.6 1 5 0"/>',
+        home: '<path d="M4 11l8-7 8 7v8a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/>',
+        bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+        cal: '<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+        lock: '<rect x="5" y="10" width="14" height="10" rx="3"/><path d="M8 10V8a4 4 0 0 1 8 0v2"/>',
+        disk: '<path d="M12 4v10"/><path d="M8 10l4 4 4-4"/><path d="M5 18h14"/>',
+        chev: '<path d="M9 6l6 6-6 6"/>', back: '<path d="M15 6l-6 6 6 6"/>'
+    };
+    const sIco = (k, c) => `<span class="si-tile" style="--c:${c}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${SI[k]}</svg></span>`;
+    const sRow = (page, ico, col, label, val) => `<button type="button" class="si-row" data-act="set-go" data-p="${page}">${sIco(ico, col)}<span class="si-l">${label}</span><span class="si-v">${val}</span><svg class="si-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${SI.chev}</svg></button>`;
+    const sHead = t => `<button type="button" class="si-back" data-act="set-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${SI.back}</svg>Settings</button><h2 class="si-title">${t}</h2>`;
+    function setBackupFacts() {
+        const lb = prefs.lastBackup; if (!lb) return { n: '—', u: 'Not backed up yet', ok: false, short: 'Not yet' };
+        const days = Math.floor(Math.round((new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()) - new Date(new Date(lb).getFullYear(), new Date(lb).getMonth(), new Date(lb).getDate())) / 864e5));
+        const when = days <= 0 ? ['Today', ''] : days === 1 ? ['Yesterday', ''] : [String(days), 'days ago'];
+        return { n: when[0], u: when[1], ok: days < 7, short: days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days + ' days ago', days };
+    }
     function renderSet() {
-        let hasBg = false; try { hasBg = !!localStorage.getItem(K_BG); } catch (e) {}
-        let h = lookCard();
-        if (window.GLiquid) h += GLiquid.settingsHTML();
-        h += `<div class="card" data-sec="set:look-file"><h3>My look settings</h3><p class="hint">Keep your refined choices safe: themes, accents, glass, rim sliders, fonts, paper, sounds and the Companion. Restore them any time, so you never set them up again. Your entries and PIN are not in this file.</p><div class="grid2"><button type="button" class="btn-line" data-act="look-save">Save my look settings</button><button type="button" class="btn-line" data-act="look-load">Restore my look settings</button></div></div>`;
-        h += foldCard(`<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`, 'set-cat', true);
-        const pin = pinOn();
-        h += foldCard(`<div class="card"><h3>Security</h3><p class="hint">The PIN keeps people out of the app. Backups are encrypted with their own password.</p>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<button class="btn-line" data-act="pin-off">Remove PIN</button>' : ''}</div>`, 'set-sec', false);
-        h += foldCard(`<div class="card"><h3>Backup</h3><p class="hint">${prefs.lastBackup ? 'Last backup ' + fmtDT(prefs.lastBackup) : 'Not backed up yet.'} Share opens your phone's share sheet: choose Google Drive or Proton Drive.</p><button class="btn-line btn-accent" data-act="backup" data-m="share">Back up now (share)</button><button class="btn-line" data-act="backup" data-m="download">Save to Downloads</button><button class="btn-line" data-act="backup" data-m="plain">Share unencrypted copy</button><button class="btn-line" data-act="restore">Restore from a file</button>${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}<button class="btn-line" data-act="erase" style="color:var(--warning)">Erase everything</button></div>`, 'set-bak', true);
-        let adv = '';
-        adv += foldCard(dataCard(), 'set-data', false);
-        if (window.GCompanion) adv += window.GCompanion.settingsHTML();
-        if (window.GFeel) adv += window.GFeel.settingsHTML();
-        adv += foldCard(`<div class="card"><h3>Experience</h3><div class="wz-chips" style="margin:4px 0 10px"><button type="button" class="wz-chip" data-wrun="setup">Run setup again</button><button type="button" class="wz-chip" data-wrun="tour">Replay the tour</button></div>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Tips in the top banner', 'Proverbs and tips slide in now and then.')}${sw('smartOn', 'Smart sections', 'Sections you rarely open fold under More. The app learns for two weeks first.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}${sw('remindOn', 'Backup reminder', 'A banner in the app. A web app cannot ring while closed.')}</div>`, 'set-exp', false);
-        h += `<details class="gacc" data-gacc="set-adv" ${window.GAcc && GAcc.open('set-adv', false) ? 'open' : ''}><summary><h3>Advanced</h3><span class="gacc-n">Sound, Companion, data, setup</span></summary><div class="gacc-body">${adv}</div></details>`;
+        const pin = pinOn(), look = prefs.look || 'flagship', lk = (GLook.FIXED[look] || {}).label || (GLook.NATURE[look] || {}).label || (look === 'paper' ? 'Paper' : look === 'aurora' ? 'Aurora' : look);
+        const dark = GLook.isDarkLook(look), isFl = look === 'flagship' || look === 'flagshipd';
+        const accN = isFl ? (prefs.accent === 'gold' ? 'Gold' : 'Sapphire') : '';
+        const bk = setBackupFacts();
+        const sty = prefs.glassStyle === 'liquid' ? 'Liquid glass' : 'Frosted glass';
+        let h = '';
+        if (!setPage) {
+            const sws = [...LIGHT_LOOKS().slice(0, 2), ...DARK_LOOKS().slice(0, 2)];
+            h += `<h2 class="si-title big">Settings</h2><div class="si-tiles">
+                <button type="button" class="si-tile2" data-act="set-go" data-p="backup"><span class="si-cap">Backup</span><span class="si-big ${bk.ok ? '' : 'warn'}">${bk.n}</span><span class="si-small">${bk.u || '&nbsp;'}</span><span class="si-foot">${prefs.remindOn ? 'Reminder at 11 pm' : 'Reminder off'}</span></button>
+                <button type="button" class="si-tile2" data-act="set-go" data-p="look"><span class="si-cap">Look</span><span class="si-dots">${sws.map(x => `<i style="background:${x[2]}"></i>`).join('')}</span><span class="si-small">${lk}</span><span class="si-foot">${sty}</span></button></div>
+                <div class="si-group">${sRow('look', 'look', '#4f8fe8', 'Appearance', `${dark ? 'Dark' : 'Light'}${accN ? ' · ' + accN : ''}`)}${sRow('feel', 'snd', '#e8706a', 'Sound and feel', (window.GFeel && GFeel.prefs.get().snd) ? 'Sound on' : 'Sound off')}${sRow('comp', 'comp', '#8e6fe0', 'Companion', window.GCompanion ? ({ header: 'Header', snap: 'Floating', free: 'Floating', off: 'Hidden' }[GCompanion.prefs.get().place] || 'Header') : '')}</div>
+                <div class="si-group">${sRow('cats', 'cal', '#5b8def', 'Categories and rules', D.cats.length + ' in all')}${sRow('home', 'home', '#3fb6a8', 'Home screens', 'Tips, warnings')}</div>
+                <div class="si-group">${sRow('priv', 'lock', '#6b7a90', 'Privacy and security', pin ? 'PIN on' : 'PIN off')}${sRow('backup', 'disk', '#34b36b', 'Backup and data', 'Last: ' + bk.short)}</div>
+                <p class="si-foot-note">Budget Manager ${(($('app-ver') || {}).textContent || '').replace('Version ', '')}</p>`;
+        } else if (setPage === 'look') {
+            h += sHead('Appearance') + `<div class="card si-prev"><div class="si-prevbtns"><button type="button" class="btn-line btn-accent">Primary</button><button type="button" class="btn-line">Glass</button><button type="button" class="btn-line btn-quiet">Outline</button></div><p class="hint">This is how your buttons look now.</p></div>`;
+            h += lookCard();
+            if (window.GLiquid) h += GLiquid.settingsHTML();
+            if (window.GBtnLook) h += GBtnLook.settingsHTML();
+            h += `<div class="card" data-sec="set:look-file"><h3>My look settings</h3><p class="hint">Keep your refined choices safe: themes, accents, glass, rim sliders, fonts, paper, sounds and the Companion. Restore them any time, so you never set them up again. Your entries and PIN are not in this file.</p><div class="grid2"><button type="button" class="btn-line" data-act="look-save">Save my look settings</button><button type="button" class="btn-line" data-act="look-load">Restore my look settings</button></div></div>`;
+        } else if (setPage === 'feel') { h += sHead('Sound and feel') + (window.GFeel ? GFeel.settingsHTML() : '');
+        } else if (setPage === 'comp') { h += sHead('Companion') + (window.GCompanion ? GCompanion.settingsHTML() : '');
+        } else if (setPage === 'cats') { h += sHead('Categories and rules') + `<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`;
+        } else if (setPage === 'home') { h += sHead('Home screens') + `<div class="card"><h3>Experience</h3><div class="wz-chips" style="margin:4px 0 10px"><button type="button" class="wz-chip" data-wrun="setup">Run setup again</button><button type="button" class="wz-chip" data-wrun="tour">Replay the tour</button></div>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Tips in the top banner', 'Proverbs and tips slide in now and then.')}${sw('smartOn', 'Smart sections', 'Sections you rarely open fold under More. The app learns for two weeks first.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}</div>`;
+        } else if (setPage === 'priv') {
+            h += sHead('Privacy and security') + `<div class="card"><div class="si-hero"><span class="si-big ${pin ? '' : 'warn'}">${pin ? 'PIN on' : 'PIN off'}</span><span class="si-small">The PIN keeps people out of the app. Backups have their own password.</span></div>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line btn-accent" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<div class="si-links"><button type="button" class="link-btn" data-act="pin-off">Remove PIN</button></div>' : ''}</div>`;
+        } else if (setPage === 'backup') {
+            let kb = 0; try { kb = Math.round((localStorage.getItem(K_EV) || '').length / 1024); } catch (e) {}
+            h += sHead('Backup and data') + `<div class="card si-bk"><div class="si-ring ${bk.ok ? '' : 'warn'}"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="35" fill="none" stroke-width="5" class="rt"/><circle cx="40" cy="40" r="35" fill="none" stroke-width="5" stroke-linecap="round" class="ra" stroke-dasharray="${bk.ok ? 220 : 60} 220" transform="rotate(-90 40 40)"/>${bk.ok ? '<path d="M28 41l9 9 16-18" fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="rk"/>' : '<path d="M40 27v16M40 52v1" fill="none" stroke-width="5" stroke-linecap="round" class="rk"/>'}</svg></div>
+                <div class="si-hero"><span class="si-big ${bk.ok ? '' : 'warn'}">${bk.n}${bk.u ? `<small> ${bk.u}</small>` : ''}</span><span class="si-small">${bk.ok ? 'Your data is safe.' : (prefs.lastBackup ? 'A fresh backup is due.' : 'Back up once, to be safe.')} About ${kb} KB, kept on this phone.</span></div>
+                <button class="btn-line btn-accent" data-act="backup" data-m="share">Back up now</button><button class="btn-line" data-act="backup" data-m="download">Save to Downloads</button></div>
+                <div class="card">${sw('remindOn', 'Daily reminder at 11 pm', 'A banner late in the evening, only if there is no backup in 18 hours.')}${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}</div>
+                <div class="si-links"><button type="button" class="link-btn" data-act="restore">Restore from a file</button><button type="button" class="link-btn" data-act="backup" data-m="plain">Share unencrypted copy</button><button type="button" class="link-btn" data-act="deleted">Recently deleted (${deletedList().length})</button></div>
+                <div class="si-erase"><button type="button" class="link-btn danger" data-act="erase">Erase everything…</button><p class="hint">Always asks first. Back up before you erase.</p></div>`;
+        }
         put($('s-set'), h);
         const bb = $('bg-blur'), gb = $('glass-blur');
         if (bb) bb.oninput = () => { prefs.bgBlur = +bb.value; $('bg-blur-v').textContent = bb.value; applyBackground(); applyTheme(); persist(); };
@@ -1111,7 +1159,7 @@
     function nextTodayCat(id) { return id; }
     document.addEventListener('click', async ev => {
         const nav = ev.target.closest('.nav-item');
-        if (nav) { screen = nav.dataset.s; render(); window.scrollTo(0, 0); return; }
+        if (nav) { if (nav.dataset.s === 'set' && screen === 'set') setPage = ''; screen = nav.dataset.s; render(); window.scrollTo(0, 0); return; }
         const tg = ev.target.closest('[data-tell]'); if (tg && (!ev.target.closest('[data-act]') || ev.target.closest('[data-tell-first]'))) { ev.stopPropagation(); if (GC && GC.tell) GC.tell(tg.dataset.tell, tg.dataset.tone); else toast(tg.dataset.tell); return; }
         const el = ev.target.closest('[data-act]'); if (!el) { if (ev.target === $('sheet-bg')) { const dirty = [].some.call($('sheet').querySelectorAll('input:not([type=checkbox]):not([type=range]),textarea'), i => i.value !== i.defaultValue && !i.classList.contains('hl-in')); if (dirty && !$('sheet').querySelector('[data-r]')) { toast('Your changes are not saved yet. Use Cancel to leave.'); return; } closeSheet(); } return; }
         const act = el.dataset.act, id = el.dataset.id;
@@ -1171,6 +1219,8 @@
             case 'pr-set': prefs.p = Object.assign({}, prefs.p, { [el.dataset.k]: el.dataset.v }); persist(); render(); break;
             case 'clear-bg': try { localStorage.removeItem(K_BG); } catch (e) {} render(); toast('Default sky restored'); break;
             case 'cat-edit': catSheet(+id); break;
+            case 'set-go': setPage = el.dataset.p; render(); window.scrollTo(0, 0); break;
+            case 'set-back': setPage = ''; render(); window.scrollTo(0, 0); break;
             case 'cat-add': catSheet(0); break;
             case 'pin-set': pinSheet(); break;
             case 'pin-off': if (await confirmSheet({ title: 'Remove PIN?', ok: 'Remove' })) { try { localStorage.removeItem(K_PIN); } catch (e) {} render(); } break;
@@ -1250,6 +1300,7 @@
         initStore();
         refresh(); applyTheme();
         const locked = pinOn() && hasCrypto() ? showLock() : Promise.resolve();
+        if (window.GBtnLook) GBtnLook.config({ prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, render: () => { if (D) render(); } });
         if (window.GLiquid) GLiquid.config({ prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, render: () => { if (D) render(); } });
         if (window.GWizard) GWizard.config({ app: 'budget', brand: "Rustam's Budget Manager", prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, apply: () => { applyTheme(); followNow(); }, render: () => { if (D) render(); }, hasData: () => events.some(e => e.t !== 'cat'),
           tour: [["Tap to learn", "Tap any graphic or number. The Companion explains it in simple words."], ["Add spending", "Tap + on a category, type the amount, then tap Add. Your usual amounts appear as quick buttons."], ["Fix a mistake", "Open Month, then Ledger. Tap the pen to change an entry or the bin to delete it. You can always Undo."], ["The top banner", "It shows your last entry, and now and then a tip. Tap a tip to see the next one."], ["More", "Categories and sections you rarely use fold under More. They come back when you open them."], ["Keep a copy", "Settings, then Backup, saves a copy of your data. You can run setup again or replay this tour in Settings."]],

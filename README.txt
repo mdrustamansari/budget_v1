@@ -160,3 +160,5 @@ v2.35 Fixed: tab swipe jitter (the browser back-swipe was fighting with ours). L
 Version 2.36: one button language, the same as Goal v5.39 (full pill shape; pale glass and filled accent; crisp white top shine, soft dark bottom shadow). Look settings can be saved to a file and restored (Settings, My look settings). First frame matches your theme and phone mode. Fixed the blink after a tab swipe.
 
 Version 2.37: less work on every tab switch (the look is only applied again when something about it changed), to stop the blink after a swipe.
+
+v2.38 (2026-10-22): the Goal design arrives: three kinds of button (primary, glass, outline) plus links, one 40 px height, Glass tint sliders, Liquid cards with the accent tint, bipolar Liquid Tint, backup reminder fix ("I saved it"), and the new Settings (top page with Backup and Look tiles, one page per group). "13 more" and similar are links by design. Close and open the app twice to update.
