@@ -1083,7 +1083,7 @@
             }, true);
             box.querySelectorAll('#e-acct button').forEach(b => b.onclick = () => { acct = b.dataset.a; upd(); });
             const qa = quickAmounts(c.id), qbox = box.querySelector('#e-q');
-            qbox.innerHTML = qa.length ? qa.map(v => `<button type="button" data-v="${v}">₹${fmt2(v)}</button>`).join('') : '';
+            qbox.innerHTML = qa.length ? qa.map(v => `<button type="button" class="qa-btn" data-v="${v}">₹${fmt2(v)}</button>`).join('') : '';
             qbox.querySelectorAll('button').forEach(b => b.onclick = () => { amt = String(b.dataset.v); upd(); });
             upd();
             go.onclick = () => {
