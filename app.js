@@ -32,7 +32,21 @@
     });
     let events = [], prefs = PREF_DEFAULT(), nextId = 1, D = null, screen = 'today', storageOK = true;
 
+    /* Each theme keeps its own look: glass, rim, tint, accent, letters and paper are saved per theme, and choosing a theme loads that theme's own saved look. A theme never touched starts from its defaults. */
+    const LOOK_KEYS = ['glassBlur', 'bgBlur', 'glassStyle', 'lqFrost', 'lqTint', 'lqTone', 'lqLight', 'lqLightBlur', 'lqDark', 'lqDarkBlur', 'lqShadow', 'lqShine', 'lqStreak', 'btnAccent', 'btnBlack', 'accent', 'glow', 'flFont', 'p', 'theme'];
+    function snapLook() {
+        const o = {}; LOOK_KEYS.forEach(k => { if (prefs[k] !== undefined) o[k] = JSON.parse(JSON.stringify(prefs[k])); });
+        prefs.lookSet = Object.assign({}, prefs.lookSet || {}); prefs.lookSet[prefs.look || 'flagship'] = o;
+    }
+    function setLook(l) {
+        if (l === (prefs.look || 'flagship')) return;
+        snapLook(); const s = (prefs.lookSet || {})[l], d = PREF_DEFAULT();
+        LOOK_KEYS.forEach(k => { delete prefs[k]; if (d[k] !== undefined) prefs[k] = JSON.parse(JSON.stringify(d[k])); });
+        if (s) Object.keys(s).forEach(k => { prefs[k] = JSON.parse(JSON.stringify(s[k])); });
+        prefs.look = l;
+    }
     function persist() {
+        try { snapLook(); } catch (e) {}
         storageOK = save(K_EV, events) && save(K_PREF, prefs);
         if (!storageOK) toast('Could not save: the phone storage may be full');
     }
@@ -108,7 +122,7 @@
     function phoneDark() { try { return !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); } catch (e) { return false; } }
     function followNow() {
         if (!prefs.follow) return; GLook.remember(prefs);
-        const t = GLook.followTarget(prefs, phoneDark()); if (t !== prefs.look) { prefs.look = t; persist(); applyTheme(); if (D) render(); }
+        const t = GLook.followTarget(prefs, phoneDark()); if (t !== prefs.look) { setLook(t); persist(); applyTheme(); if (D) render(); }
     }
     const hex2rgb = h => { h = h.trim().replace('#', ''); if (h.length === 3) h = h.split('').map(x => x + x).join(''); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
     const mixRGB = (x, y, t) => x.map((v, i) => Math.round(v + (y[i] - v) * t));
@@ -1215,7 +1229,7 @@
             case 'rev': add({ t: 'rev', pid: +id, v: el.dataset.v }); render(); break;
             case 'pick-bg': $('file-bg').click(); break;
             case 'accent': prefs.accent = el.dataset.v === 'gold' ? 'gold' : 'sapphire'; persist(); render(); break;
-            case 'look': prefs.look = el.dataset.v; GLook.remember(prefs); persist(); render(); break;
+            case 'look': setLook(el.dataset.v); GLook.remember(prefs); persist(); render(); break;
             case 'pr-set': prefs.p = Object.assign({}, prefs.p, { [el.dataset.k]: el.dataset.v }); persist(); render(); break;
             case 'clear-bg': try { localStorage.removeItem(K_BG); } catch (e) {} render(); toast('Default sky restored'); break;
             case 'cat-edit': catSheet(+id); break;

@@ -158,3 +158,15 @@ The single source of truth is `shared/buttons.css` (shape, kinds, sizes, glow) a
 - Shape: full pill (999 px). Height by role: 40 px standard (main actions, Week/Month style switches), 28 px compact (Done, chips, mini and icon buttons, pop-up buttons), 52 px number keys.
 - Specificity trap: the shared shape rule ends with `:not(.link-btn)`, so any override of height must also end with `:not(.link-btn)` and use an element or class selector, never an ID.
 - Every new button gets one of the kinds above through a class; check it with the glow scan (`gl2.js`) and the audit.
+
+## 24. Hour slots (Goal v5.55)
+A task counted in hours, or with sub-tasks counted in hours, shows a row of 24 px round slots on its Working-on card, one per sub-task (or per hour). The day's logged hours fill them in order: empty (translucent track), half (left-to-right blue fill), full (green with a white check, 3.4 px stroke). One line below says "2 of 4 done today · 2 h 30 min of 4 h". A newly completed slot plays the soft "glad" sound; the last one plays the goal-met sound. The slots and the Today plan card read the same hour record.
+
+## 25. One action, one record (Goal v5.57)
+A button that completes something also records the time it took, in the same tap, on the same record every screen reads. Done = finish day + sitting (start pre-filled from the last sitting, end = now). Anything it created is removed by its undo and by Reopen. Bulk "already done" ticks never invent hours.
+
+## 26. A card must change what you do (Goal v5.58)
+A card that only repeats numbers is removed or merged. Every card says what a figure means for the goal (from the engine, not a copy) and ends in one button that does the single most useful next thing. Text that sits on a round icon or chip takes its colours from the theme (text on glass, never a fixed white), so it reads in light and dark.
+
+## 27. One look per theme (Goal v5.58 / Budget v2.45)
+Glass, rim, tint, button tint, accent, letters, paper and palette belong to the theme they were set in. Choosing a theme loads that theme's saved look; a theme never customised starts from its own defaults. Nothing carries over from the last theme used.
