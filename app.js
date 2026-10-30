@@ -551,7 +551,7 @@
     // The ledger: every day with its total, then that day's entries. Each entry can be fixed or deleted (and both can be undone).
     let ledShow = 5, ledEdit = 0;
     const ledTime = ts => new Date(ts).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' am', ' am').replace(' pm', ' pm');
-    function ledgerEntries() { const out = []; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'import') out.push(e); })); return out.sort((a, b) => b.ts - a.ts); }
+    function ledgerEntries() { const out = []; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'import' && !e.share) out.push(e); })); (D.lasting || []).forEach(l => { const ev = ledFind(l.id); if (ev) out.push(Object.assign({}, ev, { cover: l })); }); return out.sort((a, b) => b.ts - a.ts); }
     function monthLedger() {
         const all = ledgerEntries(); if (!all.length) return '<div class="empty"><span class="em-ico">🌱</span><b>No entries yet</b><p>Tap Add to write your first spend.</p></div>';
         const shown = all.slice(0, ledShow), older = all.length - shown.length;
@@ -559,7 +559,7 @@
         const days = []; shown.forEach(e => { const k = E.dateKey(e.ts); let d = days[days.length - 1]; if (!d || d.k !== k) { d = { k, ts: e.ts, list: [], sum: dSum[k] || 0, cnt: dCnt[k] }; days.push(d); } d.list.push(e); });
         const dn = ts => new Date(ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '');
         const row = e => {
-            const meta = `${ledTime(e.ts)} · ${e.acct === 'cash' ? 'Cash' : 'Bank'}${e.note ? ' · ' + esc(e.note) : ''}${e.kind === 'adjust' ? ' · adjustment' : ''}`;
+            const meta = `${ledTime(e.ts)} · ${e.acct === 'cash' ? 'Cash' : 'Bank'}${e.note ? ' · ' + esc(e.note) : ''}${e.kind === 'adjust' ? ' · adjustment' : ''}${e.cover ? ` · lasts ${plural(e.cover.days, 'day')}, until ${fmtDay(e.cover.end)}` : ''}${e.pur && e.pur.emg ? ' · emergency: ' + esc(e.pur.reason || '') : ''}`;
             if (ledEdit === e.id) return `<div class="ledger-row led-edit" data-id="${e.id}"><div style="min-width:0;flex:1"><div>${esc(e.icon)} ${esc(e.name)}</div>
                 <div class="led-form"><input type="number" inputmode="decimal" step="any" id="led-amt" value="${e.amt}" aria-label="Amount"><select id="led-acct" aria-label="Paid from"><option value="bank"${e.acct !== 'cash' ? ' selected' : ''}>Bank</option><option value="cash"${e.acct === 'cash' ? ' selected' : ''}>Cash</option></select><input type="text" id="led-note" value="${esc(e.note || '')}" placeholder="Note" aria-label="Note"></div>
                 <div class="led-btns"><button type="button" class="mini-btn btn-accent" data-act="led-save" data-id="${e.id}">Save</button><button type="button" class="mini-btn" data-act="led-cancel">Cancel</button></div></div></div>`;
@@ -568,7 +568,7 @@
         return days.map(d => `<div class="led-day"><span>${dn(d.ts)}</span><span class="priv">${money(d.sum)} · ${plural(d.cnt, 'entry').replace('entrys', 'entries')}</span></div>${d.list.map(row).join('')}`).join('')
             + (older > 0 ? `<button type="button" class="btn-line" data-act="led-more">Show older (${older})</button>` : '');
     }
-    const ledFind = id => { let f = null; D.months.forEach(r => r.exps.forEach(e => { if (e.id === id) f = e; })); return f; };
+    const ledFind = id => (D.events || []).find(x => x.id === id && x.t === 'exp' && !(D.voided && D.voided.has(id))) || null;
     const ledCopy = (e, over) => { const c = Object.assign({}, e, over || {}); delete c.id; delete c.ts; return c; };
     function renderMonth() {
         const P = D.P, c = D.cur;
@@ -582,6 +582,8 @@
         h += `<div class="card" data-sec="month:savings"><h3>Savings</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(D.savings)}</b><span class="hint">stays in your bank</span></div><div class="grid2 mt"><button class="btn-line" data-act="sav" data-dir="in">Add</button><button class="btn-line" data-act="sav" data-dir="out">Withdraw</button></div>
             ${D.savLog.slice(-4).reverse().map(s => `<div class="ledger-row"><span class="meta">${fmtDay(s.ts)} · ${esc(s.note || (s.amt > 0 ? 'Deposit' : 'Withdrawal'))}</span><b class="priv">${money(s.amt)}</b></div>`).join('')}</div>`;
         h += `<div class="card"><h3>Envelopes</h3>${D.cats.map(k => { const r = k.limit > 0 ? k.spent / k.limit : 0, g = statusGrad(r); return `<div class="env"${tl(catTell(k, r), k.spent > k.limit ? 'bad' : '')}><div class="top"><span>${esc(k.icon)} ${esc(k.name)}</span><span class="priv ${k.spent > k.limit ? 'bad' : ''}">${money(k.spent)} / ${money(k.limit)}</span></div><div class="cat-bar"><div style="width:${Math.min(100, r * 100)}%;background:linear-gradient(90deg,${rgb(g.g1)},${rgb(g.g2)})"></div></div></div>`; }).join('')}</div>`;
+        { const act = (D.lasting || []).filter(l => l.end > D.now);
+          if (act.length) h += `<div class="card"><h3>Lasting items</h3><p class="hint">Paid once, counted over the days they last. Your balance already dropped; the budget takes a share each month.</p>${act.map(l => { const used = Math.min(1, (D.now - l.ts) / (l.end - l.ts)); return `<div class="ledger-row"><div style="min-width:0;flex:1"><div>${esc(l.icon)} ${esc(l.item || l.name)} <span class="meta">· ${plural(Math.max(0, Math.ceil((l.end - D.now) / DAY)), 'day')} left, until ${fmtDay(l.end)}</span></div><div class="ls-bar"><i style="width:${(used * 100).toFixed(0)}%"></i></div></div><b class="num priv">${money(l.amt)}</b></div>`; }).join('')}${(D.ahead || []).length ? `<div class="hint mt">Already counted for the months ahead: ${money(D.ahead.reduce((t, x) => t + x.spent, 0))}.</div>` : ''}</div>`; }
         h += `<div class="card"><h3>Ledger</h3>${monthLedger()}</div>`;
         put($('s-month'), h);
     }
@@ -1045,9 +1047,22 @@
         sheet(`<h2>${esc(c.icon)} ${esc(c.name)}</h2><div class="amt-disp priv" id="e-amt"></div><div class="qchips" id="e-q"></div><div id="e-pv"></div>
             <div class="seg" id="e-acct"><button data-a="bank">Bank (UPI)</button><button data-a="cash">Cash</button></div>
             <div class="keypad" id="e-pad"></div><label class="field"><span>Note (optional)</span><input type="text" id="e-note" maxlength="60"></label>
-            <div id="e-pur"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="e-go">Add</button></div>`, box => {
+            <div id="e-ls"></div><div id="e-pur"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="e-go">Add</button></div>`, box => {
             const disp = box.querySelector('#e-amt'), pv = box.querySelector('#e-pv'), purBox = box.querySelector('#e-pur'), go = box.querySelector('#e-go');
-            let purReady = false;
+            let purReady = false, lasts = 0, lsTouched = false, lsOther = false;
+            const lsBox = box.querySelector('#e-ls');
+            const lsOpts = [[0, 'One-off'], [30, '1 month'], [60, '2 months'], [90, '3 months']];
+            const drawLs = () => {
+                const note = val(box, '#e-note'), L = prefs.learnOn === false ? null : E.learnLasts(D, c.id, note), cv = E.coverOf(D, c.id, note, D.now);
+                const opts = lsOpts.slice(); if (L && !opts.some(o => o[0] === L.d)) opts.splice(1, 0, [L.d, plural(L.d, 'day')]);
+                lsBox.innerHTML = `<div class="set-title">Lasts…</div><div class="ls-chips">${opts.map(o => `<button type="button" class="ls-chip ${!lsOther && lasts === o[0] ? 'on' : ''}" data-d="${o[0]}">${o[1]}${L && L.d === o[0] ? ' ✦' : ''}</button>`).join('')}<button type="button" class="ls-chip ${lsOther ? 'on' : ''}" data-d="x">Other</button></div>
+                    ${lsOther ? `<label class="field"><span>Number of days</span><input type="number" inputmode="numeric" id="e-lsd" min="2" value="${lasts || ''}"></label>` : ''}
+                    ${L ? `<div class="hint">✦ ${L.how === 'last' ? `You said ${esc(note.trim())} lasts ${plural(L.d, 'day')} last time.` : `Your ${esc(note.trim())} is usually bought every ${plural(L.d, 'day')}.`}</div>` : (note.trim() ? '' : '<div class="hint">Write what it is in the note (for example Perfume). The app then learns how long it lasts.</div>')}
+                    ${cv ? `<div class="pinfo">Your ${esc(note.trim())} bought on ${fmtDay(cv.l.ts)} still lasts until ${fmtDay(cv.end)} (${plural(cv.left, 'day')}).</div>` : ''}`;
+                lsBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { lsTouched = true; if (b.dataset.d === 'x') { lsOther = true; } else { lsOther = false; lasts = +b.dataset.d; } drawLs(); upd(); });
+                const o = lsBox.querySelector('#e-lsd'); if (o) o.oninput = () => { lsTouched = true; lasts = Math.max(0, Math.round(parseFloat(o.value) || 0)); upd(); };
+            };
+            const learnPick = () => { if (lsTouched) return; const L = prefs.learnOn === false ? null : E.learnLasts(D, c.id, val(box, '#e-note')); lasts = L ? L.d : 0; };
             const buildPur = a => {
                 const cnt = E.counted(D, c, a);
                 if (!prefs.purchOn || !cnt) { purBox.innerHTML = ''; purReady = false; return cnt; }
@@ -1072,8 +1087,10 @@
                 box.querySelectorAll('#e-acct button').forEach(b => b.classList.toggle('on', b.dataset.a === acct));
                 let ok = a > 0, label = 'Add';
                 if (a > 0 && D.P) {
-                    const p = E.preview(D, c.id, a), lv = p.level;
+                    const dd = new Date(D.now), dleft = new Date(dd.getFullYear(), dd.getMonth() + 1, 0).getDate() - dd.getDate() + 1, eff = lasts >= 2 ? a * Math.min(lasts, dleft) / lasts : a;
+                    const p = E.preview(D, c.id, eff), lv = p.level;
                     const msgs = [`${money(p.leftAfter)} left in the month after this.`];
+                    if (lasts >= 2) msgs.unshift(`It lasts ${plural(lasts, 'day')}, so this month counts ${money(eff)} and the rest is spread over the next months.`);
                     if (p.overLimit > 0) msgs.push(`${esc(c.name)} passes its limit by ${money(p.overLimit)}.`);
                     if (lv === 'broken') msgs.push('This breaks your monthly budget: it is more than what is left.'); else if (lv === 'risk') msgs.push('Risky: you would be well ahead of the calendar.'); else if (lv === 'tight') msgs.push('A little ahead of the calendar.');
                     pv.innerHTML = `<div class="pv ${prefs.warnOn ? lv : 'ok'}">${msgs.join(' ')}</div>`;
@@ -1082,9 +1099,10 @@
                 const cnt = a > 0 ? buildPur(a) : (purBox.innerHTML = '', purBox.dataset.cnt = '', 0);
                 if (cnt && prefs.purchOn) {
                     const as = E.assess(D, c, cnt), emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked, rs = (val(box, '#e-reason') || '').trim();
-                    if (as.blocked && !emg) { ok = false; if (!waitShown) { waitShown = true; fx('stop'); if (GC) { GC.pose('none'); GC.do('wait', { force: true }); } } }
+                    if (as.blocked && !emg && need === 'want') { ok = false; if (!waitShown) { waitShown = true; fx('stop'); if (GC) { GC.pose('none'); GC.do('wait', { force: true }); } } }
                     if (rs.length < 5) ok = false;
-                    if (as.blocked && !emg) label = 'Blocked';
+                    
+                    if (as.blocked && !emg && need === 'want') label = 'Blocked';
                 }
                 go.disabled = !ok; go.style.opacity = ok ? '' : '0.45'; go.textContent = label;
             };
@@ -1099,10 +1117,12 @@
             const qa = quickAmounts(c.id), qbox = box.querySelector('#e-q');
             qbox.innerHTML = qa.length ? qa.map(v => `<button type="button" class="qa-btn" data-v="${v}">₹${fmt2(v)}</button>`).join('') : '';
             qbox.querySelectorAll('button').forEach(b => b.onclick = () => { amt = String(b.dataset.v); upd(); });
-            upd();
+            const noteIn = box.querySelector('#e-note'); noteIn.addEventListener('input', () => { learnPick(); drawLs(); upd(); });
+            learnPick(); drawLs(); upd();
             go.onclick = () => {
                 const a = parseFloat(amt); if (!(a > 0) || go.disabled) return;
                 const e = { t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: a, acct, note: val(box, '#e-note'), kind: 'add' };
+                if (lasts >= 2) e.lasts = { d: lasts };
                 const cnt = prefs.purchOn ? E.counted(D, c, a) : 0;
                 if (cnt) { const emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked; e.pur = { c: cnt, need, reason: (val(box, '#e-reason') || '').trim(), emg: !!emg }; }
                 const ev = add(e); closeSheet(); render(); const brk = !!(D.P && D.P - D.cur.spent < 0); fx(brk || (e.pur && e.pur.emg) ? 'stop' : 'save');   // a spend is confirmed softly, never cheered

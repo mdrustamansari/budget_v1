@@ -118,6 +118,7 @@
         const wants = new Map();
         const dayCloses = new Set();
         const savLog = [];
+        const ahead = new Map(), lasting = [];
         const saveByMonth = {};
         let bank = 0, cash = 0, hasBal = false, saved = 0;
         let pool = { init: false, key: 0, bal: 0, allow: 0, min: 500 };
@@ -223,9 +224,23 @@
                     const d = new Date(e.ts);
                     const r = M(d.getFullYear(), d.getMonth());
                     const acct = e.acct === 'cash' ? 'cash' : 'bank';
-                    r.exps.push(e);
-                    r.spent += e.amt;
-                    r.byCat[e.cat] = (r.byCat[e.cat] || 0) + e.amt;
+                    const LD = e.kind !== 'adjust' && e.lasts && num(e.lasts.d, 0) >= 2 ? Math.round(num(e.lasts.d, 0)) : 0;
+                    if (!LD) {
+                        r.exps.push(e);
+                        r.spent += e.amt;
+                        r.byCat[e.cat] = (r.byCat[e.cat] || 0) + e.amt;
+                    } else {
+                        // a lasting expense: the cash leaves today, but the cost is shared over the days it lasts (by days, month by month)
+                        const per = e.amt / LD, d0 = new Date(e.ts); let y0 = d0.getFullYear(), m0 = d0.getMonth(), dd = d0.getDate(), left = LD, i = 0;
+                        const curKey = keyOfTs(now), parts = [];
+                        while (left > 0) { const take = Math.min(left, dim(y0, m0) - dd + 1); parts.push({ y: y0, m: m0, days: take, share: per * take }); left -= take; dd = 1; m0++; if (m0 > 11) { m0 = 0; y0++; } if (++i > 400) break; }
+                        parts.forEach((p, n) => {
+                            const share = Object.assign({}, e, { amt: p.share, share: true, full: e.amt, part: n + 1, parts: parts.length, ts: n === 0 ? e.ts : new Date(p.y, p.m, 1, 12).getTime() });
+                            if (ymKey(p.y, p.m) <= curKey) { const rr = M(p.y, p.m); rr.exps.push(share); rr.spent += p.share; rr.byCat[e.cat] = (rr.byCat[e.cat] || 0) + p.share; snap(rr); }
+                            else { const k = ymKey(p.y, p.m); const a = ahead.get(k) || { k, y: p.y, m: p.m, spent: 0, byCat: {} }; a.spent += p.share; a.byCat[e.cat] = (a.byCat[e.cat] || 0) + p.share; ahead.set(k, a); }
+                        });
+                        lasting.push({ id: e.id, ts: e.ts, cat: e.cat, name: e.name, icon: e.icon, item: String(e.note || '').trim(), amt: e.amt, days: LD, end: e.ts + LD * DAY, parts: parts.length, acct });
+                    }
                     r.byAcct[acct] += e.amt;
                     if (acct === 'cash') cash -= e.amt; else bank -= e.amt;
                     if (e.pur) {
@@ -348,6 +363,7 @@
             savings: saved, savLog,
             pool: { init: pool.init, bal: pool.bal, allow: pool.allow, min: pool.min, used: poolUsed, carried: Math.max(0, pool.bal + poolUsed - pool.allow) },
             purchases: purchases.sort((a, b) => b.ts - a.ts),
+            lasting: lasting.sort((a, b) => b.ts - a.ts), ahead: Array.from(ahead.values()).sort((a, b) => a.k - b.k),
             wants: Array.from(wants.values()).sort((a, b) => b.ts - a.ts),
             dayCloses, pendingClose, priceHist
         };
@@ -370,6 +386,28 @@
         const m = Math.max(1, Math.ceil((price - D.pool.bal) / al - 1e-9));
         const d = new Date(D.now);
         return { m, ts: new Date(d.getFullYear(), d.getMonth() + m, 1).getTime(), bal: D.pool.bal + m * D.pool.allow };
+    }
+    // Lasting items: what an item usually lasts (from your own entries), and whether a bought one still covers you
+    const itemKey = t => String(t || '').trim().toLowerCase();
+    function learnLasts(D, catId, item) {
+        const k = itemKey(item); if (!k) return null;
+        const list = [];
+        D.months.forEach(r => r.exps.forEach(e => { if (!e.share && e.cat === catId && e.kind !== 'adjust' && e.kind !== 'import' && itemKey(e.note) === k) list.push({ ts: e.ts, d: 0 }); }));
+        (D.lasting || []).forEach(l => { if (l.cat === catId && itemKey(l.item) === k) list.push({ ts: l.ts, d: l.days }); });
+        list.sort((a, b) => a.ts - b.ts);
+        const declared = list.filter(x => x.d >= 2).pop();
+        if (declared) return { d: declared.d, how: 'last', n: list.length };
+        if (list.length >= 2) {
+            const gaps = []; for (let i = 1; i < list.length; i++) gaps.push(Math.round((list[i].ts - list[i - 1].ts) / DAY));
+            gaps.sort((a, b) => a - b); const med = gaps[Math.floor(gaps.length / 2)];
+            if (med >= 20) return { d: med, how: 'gap', n: list.length };
+        }
+        return null;
+    }
+    function coverOf(D, catId, item, now) {
+        const k = itemKey(item); if (!k) return null;
+        const l = (D.lasting || []).filter(x => x.cat === catId && itemKey(x.item) === k && x.end > (now || D.now)).sort((a, b) => b.end - a.end)[0];
+        return l ? { l, left: Math.ceil((l.end - (now || D.now)) / DAY), end: l.end } : null;
     }
     function assess(D, cat, price) {
         const b = cat.bucket;
@@ -479,7 +517,7 @@
 
     const E = {
         DAY, ymKey, keyOfTs, dateKey, dim, startOfDay, ICONS, guessIcon, defaultPur, normPur, normCat, defaultLump,
-        DEFAULT_CATS, bootstrapEvents, derive, weekdayStats, counted, assess, poolOpensFor, preview, migrateV1
+        DEFAULT_CATS, bootstrapEvents, derive, weekdayStats, counted, assess, learnLasts, coverOf, poolOpensFor, preview, migrateV1
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = E;
     else root.Engine = E;

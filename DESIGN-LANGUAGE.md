@@ -170,3 +170,18 @@ A card that only repeats numbers is removed or merged. Every card says what a fi
 
 ## 27. One look per theme (Goal v5.58 / Budget v2.45)
 Glass, rim, tint, button tint, accent, letters, paper and palette belong to the theme they were set in. Choosing a theme loads that theme's saved look; a theme never customised starts from its own defaults. Nothing carries over from the last theme used.
+
+## 28. Move, order, and show-don't-tell (Goal v5.59)
+Any item can be moved by a "Move to…" sheet or by dragging its grip; both write the same event and show a preview first. Adding offers "same for similar chapters". Today's card uses bars and a timeline instead of sentences. Text next to a ring is clipped with a soft fade and slides when too long.
+
+## 29. Every graphic explains itself (Goal v5.60)
+A graphic is never left to be guessed. Each part carries data-tell with one line built from the engine's numbers; the companion speaks it (or a glass note shows it when it is hidden). A short pulse on the icons teaches the habit, then stops.
+
+## 30. Your choice wins; only the end stage is locked (Goal v5.61)
+A lock protects the one thing that truly needs order (editing). Everything else guides and never blocks. Rows in lists swipe for Edit and Delete in every app, with one shared gesture (swipe.js).
+
+## 31. An action must show its result (Goal v5.62)
+After adding, the app opens the path, scrolls to the new row and lets it glow, and the note names the place. "Added" alone is never enough.
+
+## 32. One payment, many months (Budget v2.46)
+Money moves once; cost is shared across the days it serves. Cash and balances read the payment, budgets and learning read the shares. A lasting item shows a countdown bar, never a spike.

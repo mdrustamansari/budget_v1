@@ -578,3 +578,8 @@ html.lite #scene-fx { display: none !important; }
 .si-prev { text-align: center; } .si-prevbtns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; } .si-prevbtns button { flex: 1 1 0; min-width: 0; }
 .si-l { white-space: nowrap; } .si-v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; } .si-prev .hint { margin-top: 10px; }
 .modal-actions { align-items: center; } .modal-actions .ico-del { margin-left: auto; order: 9; }
+/* lasting expenses: the "Lasts…" choice */
+.ls-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 8px; }
+.ls-chip { min-height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--glass-border, rgba(255,255,255,.25)); background: var(--glass, rgba(255,255,255,.08)); color: inherit; font: inherit; font-size: .82rem; cursor: pointer; }
+.ls-chip.on { background: var(--accent, #4a8cf0); color: #fff; border-color: transparent; }
+.ls-bar { height: 6px; border-radius: 6px; background: color-mix(in srgb, currentColor 14%, transparent); margin-top: 6px; overflow: hidden; } .ls-bar i { display: block; height: 100%; border-radius: 6px; background: var(--accent, #4a8cf0); }
