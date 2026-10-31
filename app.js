@@ -1039,6 +1039,7 @@
     }
 
     /* expense entry */
+    let backdated = null;
     function entrySheet(catId, preset) {
         const c = D.catsById[catId]; if (!c) return;
         if (GC) GC.pose('calc');
@@ -1046,10 +1047,25 @@
         let amt = preset ? String(preset) : '', acct = c.lastAcct || 'bank', need = 'want';
         sheet(`<h2>${esc(c.icon)} ${esc(c.name)}</h2><div class="amt-disp priv" id="e-amt"></div><div class="qchips" id="e-q"></div><div id="e-pv"></div>
             <div class="seg" id="e-acct"><button data-a="bank">Bank (UPI)</button><button data-a="cash">Cash</button></div>
-            <div class="keypad" id="e-pad"></div><label class="field"><span>Note (optional)</span><input type="text" id="e-note" maxlength="60"></label>
+            <div id="e-dt"></div><div class="keypad" id="e-pad"></div><label class="field"><span>Note (optional)</span><input type="text" id="e-note" maxlength="60"></label>
             <div id="e-ls"></div><div id="e-pur"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="e-go">Add</button></div>`, box => {
             const disp = box.querySelector('#e-amt'), pv = box.querySelector('#e-pv'), purBox = box.querySelector('#e-pur'), go = box.querySelector('#e-go');
-            let purReady = false, lasts = 0, lsTouched = false, lsOther = false;
+            let purReady = false, lasts = 0, lsTouched = false, lsOther = false, when = 0, dtOpen = false;
+            // paid earlier? "When" lets you record it on the day it really happened (noon of that day); the entry then sits in that day's month
+            const dtBox = box.querySelector('#e-dt');
+            const noon = (y, m, d) => new Date(y, m, d, 12).getTime();
+            const todayD = new Date(D.now), yest = new Date(todayD.getFullYear(), todayD.getMonth(), todayD.getDate() - 1);
+            const keyIso = ts => { const d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+            const firstTs = (D.events || []).reduce((m, x) => x.t === 'exp' || x.t === 'plan' ? Math.min(m, x.ts) : m, D.now);
+            const drawDt = () => {
+                const yTs = noon(yest.getFullYear(), yest.getMonth(), yest.getDate()), last = backdated && D.now - backdated.at < 20 * 60000 ? backdated.ts : 0;
+                const chip = (v, t, on) => `<button type="button" class="ls-chip ${on ? 'on' : ''}" data-w="${v}">${t}</button>`;
+                dtBox.innerHTML = `<div class="set-title">When</div><div class="ls-chips">${chip(0, 'Today', !when && !dtOpen)}${chip(yTs, 'Yesterday', when === yTs && !dtOpen)}${last && last !== yTs ? chip(last, fmtDay(last), when === last && !dtOpen) : ''}${chip('x', 'Another day', dtOpen || (when && when !== yTs && when !== last))}</div>
+                    ${dtOpen || (when && when !== yTs && when !== last) ? `<label class="field"><input type="date" id="e-dti" value="${when ? keyIso(when) : ''}" max="${keyIso(D.now)}" min="${keyIso(firstTs)}"></label>` : ''}
+                    ${when ? `<div class="hint">It will be saved on ${fmtDay(when)}, in that month.</div>` : ''}`;
+                dtBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { if (b.dataset.w === 'x') { dtOpen = true; } else { dtOpen = false; when = +b.dataset.w; } drawDt(); upd(); });
+                const i = dtBox.querySelector('#e-dti'); if (i) i.onchange = () => { if (!i.value) return; const [y, m, d] = i.value.split('-').map(Number); const t = noon(y, m - 1, d); when = t >= noon(todayD.getFullYear(), todayD.getMonth(), todayD.getDate()) ? 0 : t; dtOpen = false; drawDt(); upd(); };
+            };
             const lsBox = box.querySelector('#e-ls');
             const lsOpts = [[0, 'One-off'], [30, '1 month'], [60, '2 months'], [90, '3 months']];
             const drawLs = () => {
@@ -1086,7 +1102,8 @@
                 disp.textContent = amt ? '₹' + amt : '₹0';
                 box.querySelectorAll('#e-acct button').forEach(b => b.classList.toggle('on', b.dataset.a === acct));
                 let ok = a > 0, label = 'Add';
-                if (a > 0 && D.P) {
+                if (a > 0 && D.P && when) pv.innerHTML = `<div class="pv ok">Saved on ${fmtDay(when)}. It counts in that month, and your balance drops now.</div>`;
+                else if (a > 0 && D.P) {
                     const dd = new Date(D.now), dleft = new Date(dd.getFullYear(), dd.getMonth() + 1, 0).getDate() - dd.getDate() + 1, eff = lasts >= 2 ? a * Math.min(lasts, dleft) / lasts : a;
                     const p = E.preview(D, c.id, eff), lv = p.level;
                     const msgs = [`${money(p.leftAfter)} left in the month after this.`];
@@ -1118,16 +1135,16 @@
             qbox.innerHTML = qa.length ? qa.map(v => `<button type="button" class="qa-btn" data-v="${v}">₹${fmt2(v)}</button>`).join('') : '';
             qbox.querySelectorAll('button').forEach(b => b.onclick = () => { amt = String(b.dataset.v); upd(); });
             const noteIn = box.querySelector('#e-note'); noteIn.addEventListener('input', () => { learnPick(); drawLs(); upd(); });
-            learnPick(); drawLs(); upd();
+            learnPick(); drawLs(); drawDt(); upd();
             go.onclick = () => {
                 const a = parseFloat(amt); if (!(a > 0) || go.disabled) return;
                 const e = { t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: a, acct, note: val(box, '#e-note'), kind: 'add' };
                 if (lasts >= 2) e.lasts = { d: lasts };
                 const cnt = prefs.purchOn ? E.counted(D, c, a) : 0;
                 if (cnt) { const emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked; e.pur = { c: cnt, need, reason: (val(box, '#e-reason') || '').trim(), emg: !!emg }; }
-                const ev = add(e); closeSheet(); render(); const brk = !!(D.P && D.P - D.cur.spent < 0); fx(brk || (e.pur && e.pur.emg) ? 'stop' : 'save');   // a spend is confirmed softly, never cheered
+                const ev = add(e, when || undefined); if (when) backdated = { ts: when, at: Date.now() }; closeSheet(); render(); const brk = !!(D.P && D.P - D.cur.spent < 0); fx(brk || (e.pur && e.pur.emg) ? 'stop' : 'save');   // a spend is confirmed softly, never cheered
                 if (GC) GC.do(brk ? 'warn' : 'yes', { force: true });
-                                toast(`${money(a)} added to ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
+                                toast(`${money(a)} added to ${c.name}${when ? ' on ' + fmtDay(when) : ''}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
                 if (D.P && D.P - D.cur.spent < 0 && prefs.warnOn) setTimeout(() => toast(`Over the monthly budget by ${money(D.cur.spent - D.P)}.`), 6200);
             };
         });
