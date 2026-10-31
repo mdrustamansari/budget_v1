@@ -185,3 +185,6 @@ After adding, the app opens the path, scrolls to the new row and lets it glow, a
 
 ## 32. One payment, many months (Budget v2.46)
 Money moves once; cost is shared across the days it serves. Cash and balances read the payment, budgets and learning read the shares. A lasting item shows a countdown bar, never a spike.
+
+## 33. Neon accent, calm surface (v5.63 / v2.47)
+In the dark themes the accent is vivid; everything around it stays soft, so the accent is the only thing that shouts.
