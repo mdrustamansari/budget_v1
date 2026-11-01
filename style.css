@@ -657,3 +657,4 @@ html body .e-pills .ls-chip { flex: 0 0 auto; }
 /* long-press must never select the interface; text boxes stay editable */
 html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 input, textarea, [contenteditable="true"], .selectable, pre, code { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.wz-bg { overflow: hidden; }

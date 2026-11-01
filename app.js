@@ -1052,6 +1052,13 @@
         });
     }
 
+    // layers above the sheet follow the visible screen, so the keyboard or a panned page can never push them out of view
+    function fitLayer(el) {
+        const vv = window.visualViewport; if (!vv) return;
+        const f = () => { el.style.left = vv.offsetLeft + 'px'; el.style.top = vv.offsetTop + 'px'; el.style.width = vv.width + 'px'; el.style.height = vv.height + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto'; };
+        f(); vv.addEventListener('resize', f); vv.addEventListener('scroll', f);
+        new MutationObserver(() => { if (!el.isConnected) { vv.removeEventListener('resize', f); vv.removeEventListener('scroll', f); } }).observe(document.body, { childList: true });
+    }
     /* expense entry */
     let backdated = null;
     function entrySheet(catId, preset) {
@@ -1187,7 +1194,7 @@
             const openMore = o => {
                 closeMore(); const m = document.createElement('div'); m.className = 'modal bk-more';
                 m.innerHTML = `<h2>${esc(o.title)}</h2>${o.search ? `<input type="text" id="bm-q" placeholder="${esc(o.ph || 'Search')}" autocomplete="off" maxlength="40">` : ''}<div class="bm-list" id="bm-l"></div><div class="modal-actions"><button class="btn-secondary" id="bm-x">Back</button></div>`;
-                const wrap = document.createElement('div'); wrap.className = 'wz-bg more'; wrap.appendChild(m); document.body.appendChild(wrap);
+                const wrap = document.createElement('div'); wrap.className = 'wz-bg more'; wrap.appendChild(m); document.body.appendChild(wrap); fitLayer(wrap);
                 const q = m.querySelector('#bm-q'), list = m.querySelector('#bm-l'); let shown = [];
                 const draw = () => { const t = q ? q.value.trim().toLowerCase() : ''; shown = o.rows.filter(r => !t || r.t.toLowerCase().includes(t));
                     const exact = o.rows.some(r => r.t.toLowerCase() === t);
@@ -1207,7 +1214,7 @@
                 bk.wz = true; bk.step = 1; bk.cur = null; bk.typed = '';
                 wz = document.createElement('div'); wz.className = 'wz-bg';
                 wz.innerHTML = `<div class="modal wz"><div class="wz-top"><b>${esc(c.icon)} ${esc(c.name)}</b><span id="wz-tot" class="priv"></span></div><div class="bk-strip" id="bk-strip"></div><div class="bk-steps" id="bk-steps"></div><div class="bk-area" id="bk-area"></div><div class="e-msg" id="wz-msg" aria-live="polite"></div><div class="keypad k4 wzpad" id="wz-pad">${padKeys('wz-kn')}</div><div class="modal-actions"><button class="btn-secondary" id="wz-x">Cancel</button><button class="btn-primary" id="wz-done">Done</button></div></div>`;
-                document.body.appendChild(wz);
+                document.body.appendChild(wz); fitLayer(wz);
                 strip = wz.querySelector('#bk-strip'); stepsEl = wz.querySelector('#bk-steps'); area = wz.querySelector('#bk-area'); kn = wz.querySelector('#wz-kn');
                 wz.querySelector('#wz-pad').onclick = ev => { const b = ev.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k; if (k === 'next') return nextKey(); if (k === '⌫') return backKey(); if (bk.step === 1) return; bk.typed = typeInto(bk.typed, k, 6); drawBk(); upd(); };
                 wz.querySelector('#wz-x').onclick = () => closeWizard(false); wz.querySelector('#wz-done').onclick = () => closeWizard(true);
