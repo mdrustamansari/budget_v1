@@ -1045,11 +1045,14 @@
         if (GC) GC.pose('calc');
         let waitShown = false;
         let amt = preset ? String(preset) : '', acct = c.lastAcct || 'bank', need = 'want';
-        sheet(`<h2>${esc(c.icon)} ${esc(c.name)}</h2><div class="amt-disp priv" id="e-amt"></div><div class="qchips" id="e-q"></div><div id="e-pv"></div>
+        sheet(`<h2>${esc(c.icon)} ${esc(c.name)}</h2><div class="eamt" id="e-row"><span class="eamt-n priv" id="e-amt"></span><i class="eamt-line"></i><div class="eamt-r" id="e-rest"><b id="e-left"></b><small>left this month</small></div></div>
+            <div class="qchips" id="e-q"></div><div class="e-msg" id="e-pv" aria-live="polite"></div>
             <div class="seg" id="e-acct"><button data-a="bank">Bank (UPI)</button><button data-a="cash">Cash</button></div>
-            <div id="e-dt"></div><div class="keypad" id="e-pad"></div><label class="field"><span>Note (optional)</span><input type="text" id="e-note" maxlength="60"></label>
-            <div id="e-ls"></div><div id="e-pur"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="e-go">Add</button></div>`, box => {
-            const disp = box.querySelector('#e-amt'), pv = box.querySelector('#e-pv'), purBox = box.querySelector('#e-pur'), go = box.querySelector('#e-go');
+            <div class="ls-chips e-pills"><button type="button" class="ls-chip" id="e-pdt">When: Today ▾</button><button type="button" class="ls-chip" id="e-pls">Lasts: One-off ▾</button></div>
+            <div id="e-dt" class="e-panel" hidden></div><div id="e-ls" class="e-panel" hidden></div>
+            <div class="keypad" id="e-pad"></div><label class="field"><span>Note (optional)</span><input type="text" id="e-note" maxlength="60" autocomplete="off"></label>
+            <div class="ls-chips" id="e-ns"></div><div id="e-pur"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="e-go">Add</button></div>`, box => {
+            const disp = box.querySelector('#e-amt'), pv = box.querySelector('#e-pv'), rowEl = box.querySelector('#e-row'), restEl = box.querySelector('#e-rest'), purBox = box.querySelector('#e-pur'), go = box.querySelector('#e-go');
             let purReady = false, lasts = 0, lsTouched = false, lsOther = false, when = 0, dtOpen = false;
             // paid earlier? "When" lets you record it on the day it really happened (noon of that day); the entry then sits in that day's month
             const dtBox = box.querySelector('#e-dt');
@@ -1060,25 +1063,26 @@
             const drawDt = () => {
                 const yTs = noon(yest.getFullYear(), yest.getMonth(), yest.getDate()), last = backdated && D.now - backdated.at < 20 * 60000 ? backdated.ts : 0;
                 const chip = (v, t, on) => `<button type="button" class="ls-chip ${on ? 'on' : ''}" data-w="${v}">${t}</button>`;
-                dtBox.innerHTML = `<div class="set-title">When</div><div class="ls-chips">${chip(0, 'Today', !when && !dtOpen)}${chip(yTs, 'Yesterday', when === yTs && !dtOpen)}${last && last !== yTs ? chip(last, fmtDay(last), when === last && !dtOpen) : ''}${chip('x', 'Another day', dtOpen || (when && when !== yTs && when !== last))}</div>
+                dtBox.innerHTML = `<div class="ls-chips">${chip(0, 'Today', !when && !dtOpen)}${chip(yTs, 'Yesterday', when === yTs && !dtOpen)}${last && last !== yTs ? chip(last, fmtDay(last), when === last && !dtOpen) : ''}${chip('x', 'Another day', dtOpen || (when && when !== yTs && when !== last))}</div>
                     ${dtOpen || (when && when !== yTs && when !== last) ? `<label class="field"><input type="date" id="e-dti" value="${when ? keyIso(when) : ''}" max="${keyIso(D.now)}" min="${keyIso(firstTs)}"></label>` : ''}
-                    ${when ? `<div class="hint">It will be saved on ${fmtDay(when)}, in that month.</div>` : ''}`;
-                dtBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { if (b.dataset.w === 'x') { dtOpen = true; } else { dtOpen = false; when = +b.dataset.w; } drawDt(); upd(); });
-                const i = dtBox.querySelector('#e-dti'); if (i) i.onchange = () => { if (!i.value) return; const [y, m, d] = i.value.split('-').map(Number); const t = noon(y, m - 1, d); when = t >= noon(todayD.getFullYear(), todayD.getMonth(), todayD.getDate()) ? 0 : t; dtOpen = false; drawDt(); upd(); };
+                    ${when ? `<div class="hint">It will be saved on ${fmtDay(when)}, in that month.${new Date(when).getMonth() !== todayD.getMonth() || new Date(when).getFullYear() !== todayD.getFullYear() ? ' That month has ended, so its total will change.' : ''}</div>` : ''}`;
+                dtBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { if (b.dataset.w === 'x') { dtOpen = true; } else { dtOpen = false; when = +b.dataset.w; dtBox.hidden = true; } drawDt(); upd(); });
+                const i = dtBox.querySelector('#e-dti'); if (i) i.onchange = () => { if (!i.value) return; const [y, m, d] = i.value.split('-').map(Number); const t = noon(y, m - 1, d); when = t >= noon(todayD.getFullYear(), todayD.getMonth(), todayD.getDate()) ? 0 : t; dtOpen = false; dtBox.hidden = true; drawDt(); upd(); };
             };
             const lsBox = box.querySelector('#e-ls');
             const lsOpts = [[0, 'One-off'], [30, '1 month'], [60, '2 months'], [90, '3 months']];
+            const lcache = new Map(), learned = note => { const k = note.trim().toLowerCase(); if (!lcache.has(k)) lcache.set(k, [prefs.learnOn === false ? null : E.learnLasts(D, c.id, note), E.coverOf(D, c.id, note, D.now)]); return lcache.get(k); };
             const drawLs = () => {
-                const note = val(box, '#e-note'), L = prefs.learnOn === false ? null : E.learnLasts(D, c.id, note), cv = E.coverOf(D, c.id, note, D.now);
+                const note = val(box, '#e-note'), [L, cv] = learned(note);
                 const opts = lsOpts.slice(); if (L && !opts.some(o => o[0] === L.d)) opts.splice(1, 0, [L.d, plural(L.d, 'day')]);
-                lsBox.innerHTML = `<div class="set-title">Lasts…</div><div class="ls-chips">${opts.map(o => `<button type="button" class="ls-chip ${!lsOther && lasts === o[0] ? 'on' : ''}" data-d="${o[0]}">${o[1]}${L && L.d === o[0] ? ' ✦' : ''}</button>`).join('')}<button type="button" class="ls-chip ${lsOther ? 'on' : ''}" data-d="x">Other</button></div>
+                lsBox.innerHTML = `<div class="ls-chips">${opts.map(o => `<button type="button" class="ls-chip ${!lsOther && lasts === o[0] ? 'on' : ''}" data-d="${o[0]}">${o[1]}${L && L.d === o[0] ? ' ✦' : ''}</button>`).join('')}<button type="button" class="ls-chip ${lsOther ? 'on' : ''}" data-d="x">Other</button></div>
                     ${lsOther ? `<label class="field"><span>Number of days</span><input type="number" inputmode="numeric" id="e-lsd" min="2" value="${lasts || ''}"></label>` : ''}
                     ${L ? `<div class="hint">✦ ${L.how === 'last' ? `You said ${esc(note.trim())} lasts ${plural(L.d, 'day')} last time.` : `Your ${esc(note.trim())} is usually bought every ${plural(L.d, 'day')}.`}</div>` : (note.trim() ? '' : '<div class="hint">Write what it is in the note (for example Perfume). The app then learns how long it lasts.</div>')}
                     ${cv ? `<div class="pinfo">Your ${esc(note.trim())} bought on ${fmtDay(cv.l.ts)} still lasts until ${fmtDay(cv.end)} (${plural(cv.left, 'day')}).</div>` : ''}`;
-                lsBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { lsTouched = true; if (b.dataset.d === 'x') { lsOther = true; } else { lsOther = false; lasts = +b.dataset.d; } drawLs(); upd(); });
+                lsBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { lsTouched = true; if (b.dataset.d === 'x') { lsOther = true; } else { lsOther = false; lasts = +b.dataset.d; lsBox.hidden = true; } drawLs(); upd(); });
                 const o = lsBox.querySelector('#e-lsd'); if (o) o.oninput = () => { lsTouched = true; lasts = Math.max(0, Math.round(parseFloat(o.value) || 0)); upd(); };
             };
-            const learnPick = () => { if (lsTouched) return; const L = prefs.learnOn === false ? null : E.learnLasts(D, c.id, val(box, '#e-note')); lasts = L ? L.d : 0; };
+            const learnPick = () => { if (lsTouched) return; const L = learned(val(box, '#e-note'))[0]; lasts = L ? L.d : 0; };
             const buildPur = a => {
                 const cnt = E.counted(D, c, a);
                 if (!prefs.purchOn || !cnt) { purBox.innerHTML = ''; purReady = false; return cnt; }
@@ -1100,19 +1104,27 @@
             const upd = () => {
                 const a = parseFloat(amt) || 0;
                 disp.textContent = amt ? '₹' + amt : '₹0';
+                const showRest = a > 0 && !!D.P && !when; rowEl.classList.toggle('on', showRest);
+                box.querySelector('#e-pdt').textContent = 'When: ' + (when ? fmtDay(when) : 'Today') + ' ▾'; box.querySelector('#e-pdt').classList.toggle('on', !!when);
+                box.querySelector('#e-pls').textContent = 'Lasts: ' + (lasts >= 2 ? (lsOpts.find(o => o[0] === lasts) || [0, plural(lasts, 'day')])[1] : 'One-off') + ' ▾'; box.querySelector('#e-pls').classList.toggle('on', lasts >= 2);
                 box.querySelectorAll('#e-acct button').forEach(b => b.classList.toggle('on', b.dataset.a === acct));
                 let ok = a > 0, label = 'Add';
-                if (a > 0 && D.P && when) pv.innerHTML = `<div class="pv ok">Saved on ${fmtDay(when)}. It counts in that month, and your balance drops now.</div>`;
+                const slot = (t, lv) => { pv.className = 'e-msg ' + (t ? 'on ' : '') + (lv || ''); if (t) pv.textContent = t; };
+                const cvr = learned(val(box, '#e-note'))[1], cvTxt = cvr ? `Your ${val(box, '#e-note').trim()} still lasts until ${fmtDay(cvr.end)} (${plural(cvr.left, 'day')}).` : '';
+                if (a > 0 && D.P && when) slot(`Saved on ${fmtDay(when)}. It counts in that month, and your balance drops now.`, 'ok');
                 else if (a > 0 && D.P) {
                     const dd = new Date(D.now), dleft = new Date(dd.getFullYear(), dd.getMonth() + 1, 0).getDate() - dd.getDate() + 1, eff = lasts >= 2 ? a * Math.min(lasts, dleft) / lasts : a;
                     const p = E.preview(D, c.id, eff), lv = p.level;
-                    const msgs = [`${money(p.leftAfter)} left in the month after this.`];
-                    if (lasts >= 2) msgs.unshift(`It lasts ${plural(lasts, 'day')}, so this month counts ${money(eff)} and the rest is spread over the next months.`);
+                    const msgs = [];
+                    box.querySelector('#e-left').textContent = (p.leftAfter < 0 ? '−' : '') + money(Math.abs(p.leftAfter)); restEl.className = 'eamt-r ' + (p.leftAfter < 0 ? 'bad' : lv === 'risk' || lv === 'tight' ? 'warn' : 'ok');
+                    if (lasts >= 2) msgs.push(`Lasts ${plural(lasts, 'day')}: this month counts ${money(eff)}, the rest is spread ahead.`);
+                    if (cvTxt) msgs.push(cvTxt);
                     if (p.overLimit > 0) msgs.push(`${esc(c.name)} passes its limit by ${money(p.overLimit)}.`);
                     if (lv === 'broken') msgs.push('This breaks your monthly budget: it is more than what is left.'); else if (lv === 'risk') msgs.push('Risky: you would be well ahead of the calendar.'); else if (lv === 'tight') msgs.push('A little ahead of the calendar.');
-                    pv.innerHTML = `<div class="pv ${prefs.warnOn ? lv : 'ok'}">${msgs.join(' ')}</div>`;
+                    slot(msgs.join(' '), prefs.warnOn ? lv : 'ok');
                     if (lv === 'broken') label = 'Add anyway';
-                } else pv.innerHTML = '';
+                } else slot(a > 0 ? '' : cvTxt, 'ok');
+                if (rowEl.classList.contains('on')) requestAnimationFrame(() => { disp.style.transform = `translateX(${-(restEl.getBoundingClientRect().width + 40) / 2}px)`; }); else disp.style.transform = '';
                 const cnt = a > 0 ? buildPur(a) : (purBox.innerHTML = '', purBox.dataset.cnt = '', 0);
                 if (cnt && prefs.purchOn) {
                     const as = E.assess(D, c, cnt), emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked, rs = (val(box, '#e-reason') || '').trim();
@@ -1130,11 +1142,20 @@
                 if (amt === '0' || amt === '00') amt = '';
                 upd();
             }, true);
+            { const bs = box.querySelector('#e-pad [data-k="⌫"]'); let t = 0; if (bs) { bs.addEventListener('pointerdown', () => { t = setTimeout(() => { amt = ''; t = -1; upd(); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => bs.addEventListener(ev, () => clearTimeout(t))); bs.addEventListener('click', ev => { if (t === -1) { ev.stopImmediatePropagation(); t = 0; } }, true); } }
+            const toggleP = (which) => { const p = which === 'dt' ? dtBox : lsBox, o = which === 'dt' ? lsBox : dtBox; o.hidden = true; p.hidden = !p.hidden; };
+            box.querySelector('#e-pdt').onclick = () => toggleP('dt'); box.querySelector('#e-pls').onclick = () => toggleP('ls');
             box.querySelectorAll('#e-acct button').forEach(b => b.onclick = () => { acct = b.dataset.a; upd(); });
             const qa = quickAmounts(c.id), qbox = box.querySelector('#e-q');
             qbox.innerHTML = qa.length ? qa.map(v => `<button type="button" class="qa-btn" data-v="${v}">₹${fmt2(v)}</button>`).join('') : '';
             qbox.querySelectorAll('button').forEach(b => b.onclick = () => { amt = String(b.dataset.v); upd(); });
-            const noteIn = box.querySelector('#e-note'); noteIn.addEventListener('input', () => { learnPick(); drawLs(); upd(); });
+            // earlier notes in this category, with the amount you usually paid: one tap fills the note (and the amount, if empty)
+            const bank = (() => { const m = new Map(); D.months.forEach(r => r.exps.forEach(e => { if (e.share || e.cat !== c.id || !e.note || e.kind === 'adjust' || e.kind === 'import') return; const k = e.note.trim().toLowerCase(); const o = m.get(k) || { note: e.note.trim(), n: 0, ts: 0, amts: {} }; o.n++; if (e.ts > o.ts) { o.ts = e.ts; o.note = e.note.trim(); } const a2 = Math.round(e.amt * 100) / 100; o.amts[a2] = (o.amts[a2] || 0) + 1; m.set(k, o); })); return [...m.values()].map(o => ({ note: o.note, n: o.n, ts: o.ts, usual: +Object.keys(o.amts).sort((x, y) => o.amts[y] - o.amts[x] || y - x)[0] })).sort((a, b) => b.n - a.n || b.ts - a.ts); })();
+            const nsBox = box.querySelector('#e-ns');
+            const drawNs = () => { const q = val(box, '#e-note').trim().toLowerCase(); const hit = !q || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q)).slice(0, 3);
+                nsBox.innerHTML = hit.map((o, i) => `<button type="button" class="ls-chip" data-i="${i}">${esc(o.note)} · ₹${fmt2(o.usual)}</button>`).join('');
+                nsBox.querySelectorAll('button').forEach(b => b.onclick = () => { const o = hit[+b.dataset.i]; noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); }); };
+            const noteIn = box.querySelector('#e-note'); let nt = 0; noteIn.addEventListener('input', () => { clearTimeout(nt); nt = setTimeout(() => { learnPick(); drawLs(); drawNs(); upd(); }, 160); });
             learnPick(); drawLs(); drawDt(); upd();
             go.onclick = () => {
                 const a = parseFloat(amt); if (!(a > 0) || go.disabled) return;

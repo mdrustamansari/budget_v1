@@ -583,3 +583,16 @@ html.lite #scene-fx { display: none !important; }
 .ls-chip { min-height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--glass-border, rgba(255,255,255,.25)); background: var(--glass, rgba(255,255,255,.08)); color: inherit; font: inherit; font-size: .82rem; cursor: pointer; }
 .ls-chip.on { background: var(--accent, #4a8cf0); color: #fff; border-color: transparent; }
 .ls-bar { height: 6px; border-radius: 6px; background: color-mix(in srgb, currentColor 14%, transparent); margin-top: 6px; overflow: hidden; } .ls-bar i { display: block; height: 100%; border-radius: 6px; background: var(--accent, #4a8cf0); }
+/* the amount row: its height never changes, so the keypad never moves while you type */
+.eamt { height: 84px; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.eamt-n { font-size: 2.9rem; font-weight: 300; letter-spacing: .5px; white-space: nowrap; transition: transform .45s cubic-bezier(.2, .8, .25, 1); will-change: transform; font-variant-numeric: tabular-nums; }
+.eamt-line { position: absolute; left: 50%; top: 50%; width: 1.5px; height: 0; opacity: 0; transform: translate(-50%, -50%); background: linear-gradient(transparent, var(--blue-a, #4a8cf0), transparent); transition: height .5s .05s cubic-bezier(.2, .8, .25, 1), opacity .3s; }
+.eamt-r { position: absolute; left: calc(50% + 8px); top: 50%; transform: translate(14px, -50%); opacity: 0; transition: opacity .4s .12s, transform .45s .12s cubic-bezier(.2, .8, .25, 1); text-align: left; white-space: nowrap; pointer-events: none; }
+.eamt-r b { display: block; font-size: 1.25rem; font-weight: 600; color: var(--ok, #2e9d62); } .eamt-r small { font-size: .74rem; color: var(--text-muted, #6b7488); }
+.eamt-r.warn b { color: #d99a1c; } .eamt-r.bad b { color: var(--warning, #d2493f); }
+.eamt.on .eamt-line { height: 46px; opacity: 1; } .eamt.on .eamt-r { opacity: 1; transform: translate(0, -50%); }
+body.still .eamt-n, body.still .eamt-line, body.still .eamt-r { transition: none; }
+.qchips { min-height: 44px; }
+.e-msg { min-height: 2.7em; display: flex; align-items: center; justify-content: center; text-align: center; font-size: .8rem; line-height: 1.3; color: var(--text-muted); opacity: 0; transition: opacity .3s; }
+.e-msg.on { opacity: 1; } .e-msg.tight, .e-msg.risk { color: #d99a1c; } .e-msg.broken { color: var(--warning, #d2493f); }
+.e-pills { margin: 2px 0 6px; } .e-panel { margin-bottom: 6px; }

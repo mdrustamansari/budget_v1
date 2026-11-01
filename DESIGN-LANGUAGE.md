@@ -188,3 +188,6 @@ Money moves once; cost is shared across the days it serves. Cash and balances re
 
 ## 33. Neon accent, calm surface (v5.63 / v2.47)
 In the dark themes the accent is vivid; everything around it stays soft, so the accent is the only thing that shouts.
+
+## 34. Nothing moves under your finger (Budget v2.50)
+While someone types, the controls they are tapping never change position. New information fades in inside reserved space; it never pushes. A thin accent line separates what you type from what it leaves.
