@@ -559,11 +559,16 @@
         const days = []; shown.forEach(e => { const k = E.dateKey(e.ts); let d = days[days.length - 1]; if (!d || d.k !== k) { d = { k, ts: e.ts, list: [], sum: dSum[k] || 0, cnt: dCnt[k] }; days.push(d); } d.list.push(e); });
         const dn = ts => new Date(ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '');
         const row = e => {
-            const meta = `${ledTime(e.ts)} · ${e.acct === 'cash' ? 'Cash' : 'Bank'}${e.note ? ' · ' + esc(e.note) : ''}${e.kind === 'adjust' ? ' · adjustment' : ''}${e.cover ? ` · lasts ${plural(e.cover.days, 'day')}, until ${fmtDay(e.cover.end)}` : ''}${e.pur && e.pur.emg ? ' · emergency: ' + esc(e.pur.reason || '') : ''}`;
+            const bsk = E.basketOf(e), itx = it => `${it.n}${it.qn > 0 && it.qu ? ' ' + E.qLabel(it.qn, it.qu) : ''} ₹${fmt2(it.p)}`;
+            const tail = `${e.kind === 'adjust' ? ' · adjustment' : ''}${e.cover ? ` · lasts ${plural(e.cover.days, 'day')}, until ${fmtDay(e.cover.end)}` : ''}${e.pur && e.pur.emg ? ' · emergency: ' + esc(e.pur.reason || '') : ''}`;
+            const head = `${ledTime(e.ts)} · ${e.acct === 'cash' ? 'Cash' : 'Bank'}`;
+            const full = `${head}${bsk ? ' · ' + bsk.map(it => esc(itx(it))).join(' · ') : e.note ? ' · ' + esc(e.note) : ''}${tail}`;
+            const short = bsk && bsk.length > 2 ? `${head} · ${bsk.slice(0, 2).map(it => esc(itx(it))).join(' · ')} · +${bsk.length - 2} more${tail}` : full;
+            const meta = `<span class="led-meta" ${short !== full ? `data-full="${esc(full)}" data-short="${esc(short)}"` : ''}>${short}</span>`;
             if (ledEdit === e.id) return `<div class="ledger-row led-edit" data-id="${e.id}"><div style="min-width:0;flex:1"><div>${esc(e.icon)} ${esc(e.name)}</div>
                 <div class="led-form"><input type="number" inputmode="decimal" step="any" id="led-amt" value="${e.amt}" aria-label="Amount"><select id="led-acct" aria-label="Paid from"><option value="bank"${e.acct !== 'cash' ? ' selected' : ''}>Bank</option><option value="cash"${e.acct === 'cash' ? ' selected' : ''}>Cash</option></select><input type="text" id="led-note" value="${esc(e.note || '')}" placeholder="Note" aria-label="Note"></div>
                 <div class="led-btns"><button type="button" class="mini-btn btn-accent" data-act="led-save" data-id="${e.id}">Save</button><button type="button" class="mini-btn" data-act="led-cancel">Cancel</button></div></div></div>`;
-            return `<div class="ledger-row" data-id="${e.id}"><div style="min-width:0"><div>${esc(e.icon)} ${esc(e.name)}${e.pur ? ' · big' : ''}</div><div class="meta">${meta}</div></div><div class="row" style="gap:6px"><b class="num priv">${money(e.amt)}</b>${icoBtn('edit', `data-act="led-edit" data-id="${e.id}"`, esc(e.name))}${icoBtn('del', `data-act="led-del" data-id="${e.id}"`, esc(e.name))}</div></div>`;
+            return `<div class="ledger-row" data-id="${e.id}"><div style="min-width:0;flex:1"><div>${esc(e.icon)} ${esc(e.name)}${e.pur ? ' · big' : ''}</div><div class="meta">${meta}</div></div><div class="row" style="gap:6px;flex:none"><b class="num priv">${money(e.amt)}</b>${icoBtn('edit', `data-act="led-edit" data-id="${e.id}"`, esc(e.name))}${icoBtn('del', `data-act="led-del" data-id="${e.id}"`, esc(e.name))}</div></div>`;
         };
         return days.map(d => `<div class="led-day"><span>${dn(d.ts)}</span><span class="priv">${money(d.sum)} · ${plural(d.cnt, 'entry').replace('entrys', 'entries')}</span></div>${d.list.map(row).join('')}`).join('')
             + (older > 0 ? `<button type="button" class="btn-line" data-act="led-more">Show older (${older})</button>` : '');
@@ -1366,6 +1371,7 @@
     document.addEventListener('click', async ev => {
         const nav = ev.target.closest('.nav-item');
         if (nav) { if (nav.dataset.s === 'set' && screen === 'set') setPage = ''; screen = nav.dataset.s; render(); window.scrollTo(0, 0); return; }
+        const lm = ev.target.closest('.led-meta'); if (lm && !ev.target.closest('[data-act]')) { const open = lm.classList.toggle('open'); if (lm.dataset.full) lm.innerHTML = open ? lm.dataset.full : lm.dataset.short; return; }
         const tg = ev.target.closest('[data-tell]'); if (tg && (!ev.target.closest('[data-act]') || ev.target.closest('[data-tell-first]'))) { ev.stopPropagation(); if (GC && GC.tell) GC.tell(tg.dataset.tell, tg.dataset.tone); else toast(tg.dataset.tell); return; }
         const el = ev.target.closest('[data-act]'); if (!el) { if (ev.target === $('sheet-bg')) { const dirty = [].some.call($('sheet').querySelectorAll('input:not([type=checkbox]):not([type=range]),textarea'), i => i.value !== i.defaultValue && !i.classList.contains('hl-in')); if (dirty && !$('sheet').querySelector('[data-r]')) { toast('Your changes are not saved yet. Use Cancel to leave.'); return; } closeSheet(); } return; }
         const act = el.dataset.act, id = el.dataset.id;
