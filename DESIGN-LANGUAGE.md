@@ -191,3 +191,6 @@ In the dark themes the accent is vivid; everything around it stays soft, so the 
 
 ## 34. Nothing moves under your finger (Budget v2.50)
 While someone types, the controls they are tapping never change position. New information fades in inside reserved space; it never pushes. A thin accent line separates what you type from what it leaves.
+
+## 35. One question at a time (Budget v2.51)
+A multi-part entry is a short conversation, not a form. Three steps (item, quantity, price), each showing only the 2–3 best suggestions (mixed most used and most recent) plus "More…" for the full, searchable list. Any step also accepts a brand-new value, which the app learns. The keypad is a fixed 4×4 grid: ⌫ spans rows 1–2, the action key (+ item / Skip / Next / Add line) spans rows 3–4 and changes only its label. Only entering basket mode may shift the layout, once; after that every area has a fixed height. Lines are small cards in a fixed-height strip with ×. The same "2–3 and More…" rule applies to When, Lasts and note suggestions. "More…" opens a glass list above the sheet and never navigates away.

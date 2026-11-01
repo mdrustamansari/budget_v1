@@ -409,6 +409,110 @@
         const l = (D.lasting || []).filter(x => x.cat === catId && itemKey(x.item) === k && x.end > (now || D.now)).sort((a, b) => b.end - a.end)[0];
         return l ? { l, left: Math.ceil((l.end - (now || D.now)) / DAY), end: l.end } : null;
     }
+
+    /* ---------- Baskets: items bought together (name, quantity, price). What the app learns from them. ---------- */
+    const UNIT_BASE = { g: ['kg', 0.001], kg: ['kg', 1], ml: ['l', 0.001], l: ['l', 1], pc: ['pc', 1], dozen: ['pc', 12] };
+    const unitAlias = u => { u = String(u || '').toLowerCase().replace(/\.$/, ''); return ({ gm: 'g', gms: 'g', gram: 'g', grams: 'g', kgs: 'kg', kilo: 'kg', kilos: 'kg', lt: 'l', ltr: 'l', litre: 'l', liter: 'l', liters: 'l', litres: 'l', pcs: 'pc', piece: 'pc', pieces: 'pc', dz: 'dozen', doz: 'dozen' })[u] || u; };
+    const qLabel = (qn, qu) => qn > 0 && qu ? (Math.round(qn * 1000) / 1000) + ' ' + qu : '';
+    const titleCase = t => String(t || '').trim().replace(/\s+/g, ' ').replace(/^./, c => c.toUpperCase());
+    // "tea-leaves-450g-120, sugar-1kg-65, misc-20": split at commas; the last number is the price, a number with a unit is the quantity, the rest is the name.
+    // It counts as a basket only when the prices add up to the amount paid, so a wrong guess can never slip in.
+    function parseBasket(note, amt) {
+        const parts = String(note || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean); if (!parts.length) return null;
+        const out = [];
+        for (const part of parts) {
+            const tok = part.split(/[-\s]+/).filter(Boolean); if (tok.length < 2) return null;
+            const pm = tok[tok.length - 1].match(/^₹?(\d+(?:\.\d+)?)$/); if (!pm) return null;
+            tok.pop(); let qn = 0, qu = '';
+            for (let i = 0; i < tok.length; i++) {
+                const m = tok[i].match(/^(\d+(?:\.\d+)?)(g|gm|gms|gram|grams|kg|kgs|kilo|kilos|ml|l|lt|ltr|litre|litres|liter|liters|pc|pcs|piece|pieces|dozen|dz|doz)$/i);
+                if (m) { qn = +m[1]; qu = unitAlias(m[2]); tok.splice(i, 1); break; }
+                if (/^\d+(?:\.\d+)?$/.test(tok[i]) && tok[i + 1] && UNIT_BASE[unitAlias(tok[i + 1])]) { qn = +tok[i]; qu = unitAlias(tok[i + 1]); tok.splice(i, 2); break; }
+            }
+            const name = titleCase(tok.join(' ')); if (!name) return null;
+            out.push({ n: name, qn, qu, p: +pm[1] });
+        }
+        const sum = out.reduce((t, x) => t + x.p, 0);
+        return Math.abs(sum - amt) < 0.51 ? out : null;
+    }
+    function basketOf(e) {
+        if (!e || e.share || e.kind === 'adjust' || e.kind === 'import') return null;
+        if (Array.isArray(e.items) && e.items.length) return e.items;
+        return e.note ? parseBasket(e.note, e.full || e.amt) : null;
+    }
+    const bookCache = new WeakMap();
+    // every item you bought, by category and name, oldest first
+    function itemBook(D) {
+        if (bookCache.has(D)) return bookCache.get(D);
+        const book = new Map(), seen = new Set();
+        const take = e => {
+            if (seen.has(e.id)) return; seen.add(e.id);
+            const b = basketOf(e); if (!b) return;
+            b.forEach(it => {
+                const key = e.cat + '|' + it.n.toLowerCase(), o = book.get(key) || { key, cat: e.cat, name: it.n, buys: [] };
+                o.name = it.n; o.buys.push({ ts: e.ts, qn: +it.qn || 0, qu: it.qu || '', ql: qLabel(+it.qn || 0, it.qu), p: +it.p || 0 }); book.set(key, o);
+            });
+        };
+        D.months.forEach(r => r.exps.forEach(e => { if (!e.share) take(e); }));
+        (D.lasting || []).forEach(l => { const ev = (D.events || []).find(x => x.id === l.id); if (ev) take(ev); });
+        book.forEach(o => o.buys.sort((a, b) => a.ts - b.ts));
+        bookCache.set(D, book); return book;
+    }
+    const score = (n, ts, now) => n + 2 * Math.exp(-Math.max(0, now - ts) / (45 * DAY));
+    // the few best suggestions: most used and most recent mixed
+    function rank(map, now, k) { return [...map.values()].map(o => Object.assign(o, { sc: score(o.n, o.ts, now) })).sort((a, b) => b.sc - a.sc).slice(0, k || 99); }
+    function itemSuggest(D, catId, k) {
+        const m = new Map(); itemBook(D).forEach(o => { if (o.cat !== catId) return; m.set(o.key, { name: o.name, n: o.buys.length, ts: o.buys[o.buys.length - 1].ts }); });
+        return rank(m, D.now, k);
+    }
+    function qtySuggest(D, catId, name, k) {
+        const o = itemBook(D).get(catId + '|' + String(name).toLowerCase()), m = new Map(); if (!o) return [];
+        o.buys.forEach(b => { if (!b.ql) return; const x = m.get(b.ql) || { label: b.ql, qn: b.qn, qu: b.qu, n: 0, ts: 0 }; x.n++; x.ts = Math.max(x.ts, b.ts); m.set(b.ql, x); });
+        return rank(m, D.now, k);
+    }
+    function unitSuggest(D, catId, name) {
+        const o = itemBook(D).get(catId + '|' + String(name).toLowerCase()), m = new Map(); if (!o) return [];
+        o.buys.forEach(b => { if (!b.qu) return; const x = m.get(b.qu) || { u: b.qu, n: 0, ts: 0 }; x.n++; x.ts = Math.max(x.ts, b.ts); m.set(b.qu, x); });
+        return [...m.values()].sort((a, b) => b.n - a.n || b.ts - a.ts).map(x => x.u);
+    }
+    function priceSuggest(D, catId, name, label, k) {
+        const o = itemBook(D).get(catId + '|' + String(name).toLowerCase()), m = new Map(); if (!o) return [];
+        o.buys.forEach(b => { if (label && b.ql !== label) return; const x = m.get(b.p) || { p: b.p, n: 0, ts: 0 }; x.n++; x.ts = Math.max(x.ts, b.ts); m.set(b.p, x); });
+        const r = rank(m, D.now, k); if (r.length) { const top = r.slice().sort((a, b) => b.n - a.n || b.ts - a.ts)[0]; r.forEach(x => { x.usual = x === top; }); }
+        return r;
+    }
+    // price per kg, litre or piece
+    function unitPrice(b) { const u = UNIT_BASE[b.qu]; if (!u || !(b.qn > 0) || !(b.p > 0)) return null; return { v: b.p / (b.qn * u[1]), per: u[0] }; }
+    const median = a => { const s = a.slice().sort((x, y) => x - y); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : 0; };
+    // how a price compares with what you usually pay per unit: { pct, usual, per }
+    function priceNote(D, catId, name, qn, qu, p) {
+        const o = itemBook(D).get(catId + '|' + String(name).toLowerCase()); if (!o || !(p > 0)) return null;
+        const now = unitPrice({ qn, qu, p }); if (!now) return null;
+        const prev = o.buys.map(unitPrice).filter(x => x && x.per === now.per).map(x => x.v); if (prev.length < 2) return null;
+        const usual = median(prev), pct = (now.v - usual) / usual * 100; return Math.abs(pct) < 1 ? null : { pct, usual, per: now.per };
+    }
+    // what the baskets say: price moves, what is running out, what the rest of the month will cost, unnamed spending
+    function basketInsights(D) {
+        const now = D.now, out = { prices: [], due: [], forecast: [], misc: null };
+        const mEnd = new Date(new Date(now).getFullYear(), new Date(now).getMonth() + 1, 1).getTime();
+        const mStart = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), 1).getTime();
+        let basketTotal = 0, miscTotal = 0;
+        itemBook(D).forEach(o => {
+            const last = o.buys[o.buys.length - 1];
+            if (o.name.toLowerCase() === 'misc') { o.buys.forEach(b => { if (b.ts >= mStart) miscTotal += b.p; }); }
+            o.buys.forEach(b => { if (b.ts >= mStart) basketTotal += b.p; });
+            const ups = o.buys.map(unitPrice).filter(Boolean);
+            if (ups.length >= 3) { const per = ups[ups.length - 1].per, same = ups.filter(x => x.per === per).map(x => x.v); if (same.length >= 3) { const cur = same[same.length - 1], base = median(same.slice(0, -1)), pct = (cur - base) / base * 100; if (Math.abs(pct) >= 3) out.prices.push({ name: o.name, per, from: base, to: cur, pct }); } }
+            if (o.buys.length >= 3 && o.name.toLowerCase() !== 'misc') {
+                const gaps = []; for (let i = 1; i < o.buys.length; i++) gaps.push((o.buys[i].ts - o.buys[i - 1].ts) / DAY);
+                const gap = median(gaps); if (gap >= 5) { const dueTs = last.ts + gap * DAY, left = Math.round((dueTs - now) / DAY); out.due.push({ name: o.name, cat: o.cat, gap: Math.round(gap), left, frac: Math.max(0, Math.min(1, (now - last.ts) / (gap * DAY))), usual: median(o.buys.slice(-5).map(b => b.p)) });
+                    if (dueTs < mEnd) out.forecast.push({ name: o.name, cat: o.cat, p: median(o.buys.slice(-5).map(b => b.p)) }); }
+            }
+        });
+        out.due.sort((a, b) => a.left - b.left); out.prices.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+        if (basketTotal > 0 && miscTotal > 0) out.misc = { amt: miscTotal, share: miscTotal / basketTotal };
+        return out;
+    }
     function assess(D, cat, price) {
         const b = cat.bucket;
         const has = b.allow > 0;
@@ -517,7 +621,7 @@
 
     const E = {
         DAY, ymKey, keyOfTs, dateKey, dim, startOfDay, ICONS, guessIcon, defaultPur, normPur, normCat, defaultLump,
-        DEFAULT_CATS, bootstrapEvents, derive, weekdayStats, counted, assess, learnLasts, coverOf, poolOpensFor, preview, migrateV1
+        DEFAULT_CATS, bootstrapEvents, derive, weekdayStats, counted, assess, learnLasts, parseBasket, qLabel, titleCase, basketOf, itemBook, itemSuggest, qtySuggest, unitSuggest, priceSuggest, priceNote, unitPrice, basketInsights, coverOf, poolOpensFor, preview, migrateV1
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = E;
     else root.Engine = E;

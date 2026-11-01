@@ -821,6 +821,20 @@
             box.querySelector('#hb-go').onclick = () => { const v = val(box, '#hb-n').trim(); prefs.habitNames = prefs.habitNames || {}; if (v) prefs.habitNames[key] = v; else delete prefs.habitNames[key]; persist(); closeSheet(); render(); toast(v ? 'Name saved' : 'Name cleared'); };
         });
     }
+    // what the baskets teach: price moves, what runs out, the month ahead, unnamed spending
+    function basketCards() {
+        if (prefs.learnOn === false) return '';
+        let I; try { I = E.basketInsights(D); } catch (x) { return ''; }
+        let h = '';
+        if (I.prices.length) h += `<div class="card" data-sec="ins:prices-you-pay"><h3>Prices you pay</h3>${I.prices.slice(0, 4).map(p => `<div class="ledger-row"${tl(`${p.name}: you now pay ${money(p.to)} per ${p.per}. Your usual was ${money(p.from)}.`)}><span>${esc(p.name)}, per ${p.per}</span><span class="priv">${money(p.from)} → ${money(p.to)} <b style="color:var(${p.pct > 0 ? '--warning' : '--ok'})">${p.pct > 0 ? '▲' : '▼'} ${Math.abs(Math.round(p.pct))}%</b></span></div>`).join('')}</div>`;
+        const due = I.due.filter(d => d.left <= 14).slice(0, 4);
+        if (due.length) h += `<div class="card" data-sec="ins:running-out-soon"><h3>Running out soon</h3>${due.map(d => `<div class="bk-due"${tl(`${d.name} is bought about every ${plural(d.gap, 'day')}.`)}><div class="ledger-row"><span>${esc(d.name)} <small class="hint">every ~${d.gap} days</small></span><b>${d.left <= 0 ? 'due now' : 'in ' + plural(d.left, 'day')}</b></div><div class="bk-bar"><i style="width:${Math.round(d.frac * 100)}%"></i></div></div>`).join('')}</div>`;
+        const byCat = {}; I.forecast.forEach(f => { byCat[f.cat] = (byCat[f.cat] || 0) + f.p; });
+        const fc = Object.keys(byCat).map(id => D.cats.find(x => x.id === +id)).filter(Boolean);
+        if (fc.length) h += `<div class="card" data-sec="ins:rest-of-month"><h3>Rest of this month</h3>${fc.map(cat => { const exp = byCat[cat.id], left = Math.max(0, (cat.limit || 0) - cat.spent), ok = !cat.limit || exp <= left; return `<div class="ledger-row"${tl(`From the items you buy again, ${cat.name} needs about ${money(exp)} more this month. ${cat.limit ? `${money(left)} is left in the category.` : ''}`)}><span>${esc(cat.icon)} ${esc(cat.name)}: expected</span><span class="priv"><b>${money(Math.round(exp))}</b>${cat.limit ? ` of ${money(left)} left <b style="color:var(${ok ? '--ok' : '--warning'})">${ok ? '✓' : '!'}</b>` : ''}</span></div>`; }).join('')}</div>`;
+        if (I.misc && I.misc.share >= 0.15) h += `<div class="card" data-sec="ins:unnamed"><h3>Unnamed spending</h3><div class="ledger-row"${tl('Items called misc hide what you buy. When you name them, the app can learn prices and predict the month.')}><span>“misc” this month</span><span class="priv"><b>${money(Math.round(I.misc.amt))}</b> · ${Math.round(I.misc.share * 100)}%</span></div><p class="hint">Name these items when you add a basket. Then your reports stay honest.</p></div>`;
+        return h;
+    }
     function renderIns() {
         const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], names = ['S', 'M', 'T', 'W', 'T', 'F', 'S'], order = [1, 2, 3, 4, 5, 6, 0];
         const allx = []; D.months.forEach(m => m.exps.forEach(x => allx.push(x)));
@@ -843,7 +857,7 @@
         const resisted = D.wants.filter(w => w.status === 'dropped').reduce((s, w) => s + w.price, 0);
         h += `<div class="card" data-sec="ins:resisted"><h3>Resisted</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(resisted)}</b><span class="hint">in wants you let go</span></div></div>`;
         h += `<div class="card" data-sec="ins:closed-months"><h3>Closed months</h3>${D.months.filter(m => m.close).slice(-6).reverse().map(m => `<div class="ledger-row"><span>${MONTHS[m.m]} ${m.y}</span><span class="priv">saved ${money(m.close.toSave)} · pool +${money(m.close.toPool)}</span></div>`).join('') || '<p class="hint">None yet.</p>'}</div>`;
-        put($('s-ins'), reportHTML() + learnInsights() + h);
+        put($('s-ins'), reportHTML() + learnInsights() + basketCards() + h);
     }
 
     const sw = (k, t, d) => `<div class="sw-row"><div><div>${t}</div>${d ? `<div class="set-meta">${d}</div>` : ''}</div><label class="switch"><input type="checkbox" data-pref="${k}" ${prefs[k] ? 'checked' : ''}><i></i></label></div>`;
@@ -1046,14 +1060,22 @@
         let waitShown = false;
         let amt = preset ? String(preset) : '', acct = c.lastAcct || 'bank', need = 'want';
         sheet(`<h2>${esc(c.icon)} ${esc(c.name)}</h2><div class="eamt" id="e-row"><span class="eamt-n priv" id="e-amt"></span><i class="eamt-line"></i><div class="eamt-r" id="e-rest"><b id="e-left"></b><small>left this month</small></div></div>
-            <div class="qchips" id="e-q"></div><div class="e-msg" id="e-pv" aria-live="polite"></div>
+            <div class="qchips" id="e-q"></div><div class="bk" id="e-bk" hidden><div class="bk-strip" id="bk-strip"></div><div class="bk-steps" id="bk-steps"></div><div class="bk-area" id="bk-area"></div></div><div class="e-msg" id="e-pv" aria-live="polite"></div>
             <div class="seg" id="e-acct"><button data-a="bank">Bank (UPI)</button><button data-a="cash">Cash</button></div>
             <div class="ls-chips e-pills"><button type="button" class="ls-chip" id="e-pdt">When: Today ▾</button><button type="button" class="ls-chip" id="e-pls">Lasts: One-off ▾</button></div>
             <div id="e-dt" class="e-panel" hidden></div><div id="e-ls" class="e-panel" hidden></div>
-            <div class="keypad" id="e-pad"></div><label class="field"><span>Note (optional)</span><input type="text" id="e-note" maxlength="60" autocomplete="off"></label>
+            <div class="keypad k4" id="e-pad"></div><label class="field"><span>Note (optional)</span><input type="text" id="e-note" maxlength="60" autocomplete="off"></label>
             <div class="ls-chips" id="e-ns"></div><div id="e-pur"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="e-go">Add</button></div>`, box => {
             const disp = box.querySelector('#e-amt'), pv = box.querySelector('#e-pv'), rowEl = box.querySelector('#e-row'), restEl = box.querySelector('#e-rest'), purBox = box.querySelector('#e-pur'), go = box.querySelector('#e-go');
             let purReady = false, lasts = 0, lsTouched = false, lsOther = false, when = 0, dtOpen = false;
+            let lsAll = false, dtAll = false;
+            // basket: items bought together. One question at a time: item, quantity, price.
+            const bk = { on: false, lines: [], step: 1, cur: null, typed: '', unitsAll: false, noteAuto: true };
+            const bkSum = () => bk.lines.reduce((t, l) => t + l.p, 0), bkLive = () => bk.on && bk.step === 3 ? (parseFloat(bk.typed) || 0) : 0;
+            const A = () => bk.on ? bkSum() + bkLive() : (parseFloat(amt) || 0);
+            const slug = t => String(t).toLowerCase().replace(/\s+/g, '-');
+            const lineNote = l => slug(l.n) + (l.qn > 0 && l.qu ? '-' + (Math.round(l.qn * 1000) / 1000) + l.qu : '') + '-' + (Math.round(l.p * 100) / 100);
+            const dueHere = (() => { try { return prefs.learnOn === false ? [] : E.basketInsights(D).due.filter(d => d.cat === c.id && d.left <= 7); } catch (x) { return []; } })();
             // paid earlier? "When" lets you record it on the day it really happened (noon of that day); the entry then sits in that day's month
             const dtBox = box.querySelector('#e-dt');
             const noon = (y, m, d) => new Date(y, m, d, 12).getTime();
@@ -1063,10 +1085,11 @@
             const drawDt = () => {
                 const yTs = noon(yest.getFullYear(), yest.getMonth(), yest.getDate()), last = backdated && D.now - backdated.at < 20 * 60000 ? backdated.ts : 0;
                 const chip = (v, t, on) => `<button type="button" class="ls-chip ${on ? 'on' : ''}" data-w="${v}">${t}</button>`;
-                dtBox.innerHTML = `<div class="ls-chips">${chip(0, 'Today', !when && !dtOpen)}${chip(yTs, 'Yesterday', when === yTs && !dtOpen)}${last && last !== yTs ? chip(last, fmtDay(last), when === last && !dtOpen) : ''}${chip('x', 'Another day', dtOpen || (when && when !== yTs && when !== last))}</div>
+                const odd = when && when !== yTs && when !== last, more = dtAll || dtOpen || odd;
+                dtBox.innerHTML = `<div class="ls-chips">${chip(0, 'Today', !when && !dtOpen)}${chip(yTs, 'Yesterday', when === yTs && !dtOpen)}${more ? `${last && last !== yTs ? chip(last, fmtDay(last), when === last && !dtOpen) : ''}${chip('x', 'Another day', dtOpen || odd)}` : chip('more', 'More…', false)}</div>
                     ${dtOpen || (when && when !== yTs && when !== last) ? `<label class="field"><input type="date" id="e-dti" value="${when ? keyIso(when) : ''}" max="${keyIso(D.now)}" min="${keyIso(firstTs)}"></label>` : ''}
                     ${when ? `<div class="hint">It will be saved on ${fmtDay(when)}, in that month.${new Date(when).getMonth() !== todayD.getMonth() || new Date(when).getFullYear() !== todayD.getFullYear() ? ' That month has ended, so its total will change.' : ''}</div>` : ''}`;
-                dtBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { if (b.dataset.w === 'x') { dtOpen = true; } else { dtOpen = false; when = +b.dataset.w; dtBox.hidden = true; } drawDt(); upd(); });
+                dtBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { if (b.dataset.w === 'more') { dtAll = true; drawDt(); return; } if (b.dataset.w === 'x') { dtOpen = true; } else { dtOpen = false; when = +b.dataset.w; dtBox.hidden = true; } drawDt(); upd(); });
                 const i = dtBox.querySelector('#e-dti'); if (i) i.onchange = () => { if (!i.value) return; const [y, m, d] = i.value.split('-').map(Number); const t = noon(y, m - 1, d); when = t >= noon(todayD.getFullYear(), todayD.getMonth(), todayD.getDate()) ? 0 : t; dtOpen = false; dtBox.hidden = true; drawDt(); upd(); };
             };
             const lsBox = box.querySelector('#e-ls');
@@ -1075,11 +1098,14 @@
             const drawLs = () => {
                 const note = val(box, '#e-note'), [L, cv] = learned(note);
                 const opts = lsOpts.slice(); if (L && !opts.some(o => o[0] === L.d)) opts.splice(1, 0, [L.d, plural(L.d, 'day')]);
-                lsBox.innerHTML = `<div class="ls-chips">${opts.map(o => `<button type="button" class="ls-chip ${!lsOther && lasts === o[0] ? 'on' : ''}" data-d="${o[0]}">${o[1]}${L && L.d === o[0] ? ' ✦' : ''}</button>`).join('')}<button type="button" class="ls-chip ${lsOther ? 'on' : ''}" data-d="x">Other</button></div>
+                const topD = [0]; if (L) topD.push(L.d); [30, 90, 60].forEach(d => { if (topD.length < 3 && topD.indexOf(d) < 0) topD.push(d); });
+                if (lasts >= 2 && topD.indexOf(lasts) < 0 && !lsOther) topD[topD.length - 1] = lasts;
+                const shown = lsAll || lsOther ? opts : topD.map(d => opts.find(o => o[0] === d) || [d, plural(d, 'day')]);
+                lsBox.innerHTML = `<div class="ls-chips">${shown.map(o => `<button type="button" class="ls-chip ${!lsOther && lasts === o[0] ? 'on' : ''}" data-d="${o[0]}">${o[1]}${L && L.d === o[0] ? ' ✦' : ''}</button>`).join('')}${lsAll || lsOther ? `<button type="button" class="ls-chip ${lsOther ? 'on' : ''}" data-d="x">Other</button>` : '<button type="button" class="ls-chip" data-d="more">More…</button>'}</div>
                     ${lsOther ? `<label class="field"><span>Number of days</span><input type="number" inputmode="numeric" id="e-lsd" min="2" value="${lasts || ''}"></label>` : ''}
                     ${L ? `<div class="hint">✦ ${L.how === 'last' ? `You said ${esc(note.trim())} lasts ${plural(L.d, 'day')} last time.` : `Your ${esc(note.trim())} is usually bought every ${plural(L.d, 'day')}.`}</div>` : (note.trim() ? '' : '<div class="hint">Write what it is in the note (for example Perfume). The app then learns how long it lasts.</div>')}
                     ${cv ? `<div class="pinfo">Your ${esc(note.trim())} bought on ${fmtDay(cv.l.ts)} still lasts until ${fmtDay(cv.end)} (${plural(cv.left, 'day')}).</div>` : ''}`;
-                lsBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { lsTouched = true; if (b.dataset.d === 'x') { lsOther = true; } else { lsOther = false; lasts = +b.dataset.d; lsBox.hidden = true; } drawLs(); upd(); });
+                lsBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { if (b.dataset.d === 'more') { lsAll = true; drawLs(); return; } lsTouched = true; if (b.dataset.d === 'x') { lsOther = true; } else { lsOther = false; lasts = +b.dataset.d; lsBox.hidden = true; } drawLs(); upd(); });
                 const o = lsBox.querySelector('#e-lsd'); if (o) o.oninput = () => { lsTouched = true; lasts = Math.max(0, Math.round(parseFloat(o.value) || 0)); upd(); };
             };
             const learnPick = () => { if (lsTouched) return; const L = learned(val(box, '#e-note'))[0]; lasts = L ? L.d : 0; };
@@ -1102,20 +1128,21 @@
                 purReady = true; return cnt;
             };
             const upd = () => {
-                const a = parseFloat(amt) || 0;
-                disp.textContent = amt ? '₹' + amt : '₹0';
+                const a = A();
+                disp.textContent = bk.on ? '₹' + (Math.round(a * 100) / 100) : amt ? '₹' + amt : '₹0';
                 const showRest = a > 0 && !!D.P && !when; rowEl.classList.toggle('on', showRest);
                 box.querySelector('#e-pdt').textContent = 'When: ' + (when ? fmtDay(when) : 'Today') + ' ▾'; box.querySelector('#e-pdt').classList.toggle('on', !!when);
                 box.querySelector('#e-pls').textContent = 'Lasts: ' + (lasts >= 2 ? (lsOpts.find(o => o[0] === lasts) || [0, plural(lasts, 'day')])[1] : 'One-off') + ' ▾'; box.querySelector('#e-pls').classList.toggle('on', lasts >= 2);
                 box.querySelectorAll('#e-acct button').forEach(b => b.classList.toggle('on', b.dataset.a === acct));
                 let ok = a > 0, label = 'Add';
                 const slot = (t, lv) => { pv.className = 'e-msg ' + (t ? 'on ' : '') + (lv || ''); if (t) pv.textContent = t; };
+                let bkMsg = ''; if (bk.on) { if (bk.step === 3 && bk.cur && bkLive() > 0) { const pn = E.priceNote(D, c.id, bk.cur.n, bk.cur.qn, bk.cur.qu, bkLive()); if (pn) bkMsg = `${bk.cur.n} costs ${pn.pct > 0 ? 'more' : 'less'} than usual: ${Math.abs(Math.round(pn.pct))}% ${pn.pct > 0 ? 'above' : 'below'} your usual ₹${fmt2(Math.round(pn.usual))} per ${pn.per}.`; } else if (bk.step === 1 && dueHere.length) { const d = dueHere[0]; bkMsg = `${d.name} is usually bought every ${plural(d.gap, 'day')}: ${d.left <= 0 ? 'due now' : 'due in ' + plural(d.left, 'day')}.`; } }
                 const cvr = learned(val(box, '#e-note'))[1], cvTxt = cvr ? `Your ${val(box, '#e-note').trim()} still lasts until ${fmtDay(cvr.end)} (${plural(cvr.left, 'day')}).` : '';
                 if (a > 0 && D.P && when) slot(`Saved on ${fmtDay(when)}. It counts in that month, and your balance drops now.`, 'ok');
                 else if (a > 0 && D.P) {
                     const dd = new Date(D.now), dleft = new Date(dd.getFullYear(), dd.getMonth() + 1, 0).getDate() - dd.getDate() + 1, eff = lasts >= 2 ? a * Math.min(lasts, dleft) / lasts : a;
                     const p = E.preview(D, c.id, eff), lv = p.level;
-                    const msgs = [];
+                    const msgs = []; if (bkMsg) msgs.push(bkMsg);
                     box.querySelector('#e-left').textContent = (p.leftAfter < 0 ? '−' : '') + money(Math.abs(p.leftAfter)); restEl.className = 'eamt-r ' + (p.leftAfter < 0 ? 'bad' : lv === 'risk' || lv === 'tight' ? 'warn' : 'ok');
                     if (lasts >= 2) msgs.push(`Lasts ${plural(lasts, 'day')}: this month counts ${money(eff)}, the rest is spread ahead.`);
                     if (cvTxt) msgs.push(cvTxt);
@@ -1123,7 +1150,7 @@
                     if (lv === 'broken') msgs.push('This breaks your monthly budget: it is more than what is left.'); else if (lv === 'risk') msgs.push('Risky: you would be well ahead of the calendar.'); else if (lv === 'tight') msgs.push('A little ahead of the calendar.');
                     slot(msgs.join(' '), prefs.warnOn ? lv : 'ok');
                     if (lv === 'broken') label = 'Add anyway';
-                } else slot(a > 0 ? '' : cvTxt, 'ok');
+                } else slot(a > 0 ? bkMsg : (bkMsg || cvTxt), 'ok');
                 if (rowEl.classList.contains('on')) requestAnimationFrame(() => { disp.style.transform = `translateX(${-(restEl.getBoundingClientRect().width + 40) / 2}px)`; }); else disp.style.transform = '';
                 const cnt = a > 0 ? buildPur(a) : (purBox.innerHTML = '', purBox.dataset.cnt = '', 0);
                 if (cnt && prefs.purchOn) {
@@ -1135,14 +1162,91 @@
                 }
                 go.disabled = !ok; go.style.opacity = ok ? '' : '0.45'; go.textContent = label;
             };
-            buildPad(box.querySelector('#e-pad'), k => {
-                if (k === '⌫') amt = amt.slice(0, -1);
-                else if (k === '.') { if (amt.indexOf('.') < 0) amt = (amt || '0') + '.'; }
+            const padEl = box.querySelector('#e-pad');
+            padEl.innerHTML = ['1','2','3','4','5','6','7','8','9','.','0'].map(k => `<button type="button" data-k="${k}">${k}</button>`).join('') + '<span></span><button type="button" class="kb" data-k="⌫" aria-label="Delete">⌫</button><button type="button" class="kn btn-accent" data-k="next" id="e-kn">+ item</button>';
+            const kn = padEl.querySelector('#e-kn');
+            padEl.onclick = ev => { const b = ev.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k;
+                if (k === 'next') return nextKey();
+                if (k === '⌫') return backKey();
+                if (bk.on) { if (bk.step === 1) return; let t = bk.typed;
+                    if (k === '.') { if (t.indexOf('.') < 0 && bk.step === 3 || (bk.step === 2 && t.indexOf('.') < 0)) t = (t || '0') + '.'; }
+                    else if (t.replace('.', '').length < 6 && !/\.\d\d$/.test(t)) t += k;
+                    if (t === '0' || t === '00') t = ''; bk.typed = t; drawBk(); upd(); return; }
+                if (k === '.') { if (amt.indexOf('.') < 0) amt = (amt || '0') + '.'; }
                 else if (amt.replace('.', '').length < 7 && !/\.\d\d$/.test(amt)) amt += k;
                 if (amt === '0' || amt === '00') amt = '';
-                upd();
-            }, true);
-            { const bs = box.querySelector('#e-pad [data-k="⌫"]'); let t = 0; if (bs) { bs.addEventListener('pointerdown', () => { t = setTimeout(() => { amt = ''; t = -1; upd(); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => bs.addEventListener(ev, () => clearTimeout(t))); bs.addEventListener('click', ev => { if (t === -1) { ev.stopImmediatePropagation(); t = 0; } }, true); } }
+                upd(); };
+            { const bs = box.querySelector('#e-pad [data-k="⌫"]'); let t = 0; if (bs) { bs.addEventListener('pointerdown', () => { t = setTimeout(() => { if (bk.on) { bk.typed = ''; drawBk(); } else amt = ''; t = -1; upd(); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => bs.addEventListener(ev, () => clearTimeout(t))); bs.addEventListener('click', ev => { if (t === -1) { ev.stopImmediatePropagation(); t = 0; } }, true); } }
+            const bkBox = box.querySelector('#e-bk'), strip = box.querySelector('#bk-strip'), stepsEl = box.querySelector('#bk-steps'), area = box.querySelector('#bk-area'), noteIn0 = box.querySelector('#e-note');
+            const setNote = () => { if (bk.noteAuto) { noteIn0.value = bk.lines.map(lineNote).join(', '); noteIn0.maxLength = 200; } };
+            const closeMore = () => document.querySelectorAll('.bk-more').forEach(x => x.remove());
+            // "More…": the full list, newest and most used first, with search and "+ new"
+            const openMore = o => {
+                closeMore(); const m = document.createElement('div'); m.className = 'modal bk-more';
+                m.innerHTML = `<h2>${esc(o.title)}</h2>${o.search ? `<input type="text" id="bm-q" placeholder="${esc(o.ph || 'Search')}" autocomplete="off" maxlength="40">` : ''}<div class="bm-list" id="bm-l"></div><div class="modal-actions"><button class="btn-secondary" id="bm-x">Back</button></div>`;
+                $('sheet-bg').appendChild(m);
+                const q = m.querySelector('#bm-q'), list = m.querySelector('#bm-l'); let shown = [];
+                const draw = () => { const t = q ? q.value.trim().toLowerCase() : ''; shown = o.rows.filter(r => !t || r.t.toLowerCase().includes(t));
+                    const exact = o.rows.some(r => r.t.toLowerCase() === t);
+                    list.innerHTML = shown.map((r, i) => `<button type="button" class="bm-row" data-i="${i}"><span>${esc(r.t)}</span><small>${esc(r.s || '')}</small></button>`).join('') + (o.onNew && (!t ? !o.focus : !exact) ? `<button type="button" class="bm-row bm-new" data-n="1"><span>${t ? '+ Add “' + esc(q.value.trim()) + '”' : '+ new item'}</span></button>` : '');
+                    list.querySelectorAll('.bm-row').forEach(b => b.onclick = () => { if (b.dataset.n) { if (q && q.value.trim()) { const v = q.value.trim(); closeMore(); o.onNew(v); } else if (q) q.focus(); return; } const r = shown[+b.dataset.i]; closeMore(); o.onPick(r.v); }); };
+                if (q) { q.oninput = draw; q.onkeydown = ev => { if (ev.key === 'Enter' && q.value.trim() && o.onNew) { const v = q.value.trim(); closeMore(); o.onNew(v); } }; }
+                m.querySelector('#bm-x').onclick = closeMore; draw();
+                if (o.focus && q) setTimeout(() => q.focus(), 80);
+            };
+            const pushLine = () => { const p = parseFloat(bk.typed) || 0; if (!bk.cur || !(p > 0)) return false; bk.lines.push({ n: bk.cur.n, qn: bk.cur.qn || 0, qu: bk.cur.qu || '', ql: bk.cur.ql || '', p }); bk.cur = null; bk.typed = ''; bk.step = 1; bk.unitsAll = false; setNote(); return true; };
+            const pickItem = name => { const n = E.titleCase(name); if (!n) return; bk.cur = { n, qn: 0, qu: '', ql: '' }; bk.step = n.toLowerCase() === 'misc' ? 3 : 2; bk.typed = ''; bk.unitsAll = false; drawBk(); upd(); };
+            const toQty = (qn, qu) => { bk.cur.qn = qn; bk.cur.qu = qu; bk.cur.ql = E.qLabel(qn, qu); bk.step = 3; bk.typed = ''; drawBk(); upd(); };
+            function enterBasket() { if (bk.on) return; const a0 = parseFloat(amt) || 0; bk.on = true; bk.step = 1; bk.typed = ''; if (a0 > 0) { bk.lines.push({ n: 'Misc', qn: 0, qu: '', ql: '', p: a0 }); amt = ''; } bk.noteAuto = !noteIn0.value.trim(); box.querySelector('#e-q').hidden = true; bkBox.hidden = false; setNote(); drawBk(); drawNs(); upd(); }
+            function nextKey() {
+                if (!bk.on) { enterBasket(); return; }
+                if (bk.step === 1) return;
+                if (bk.step === 2) {
+                    const t = parseFloat(bk.typed) || 0;
+                    if (!t) { bk.step = 3; bk.typed = ''; drawBk(); upd(); return; }
+                    const us = E.unitSuggest(D, c.id, bk.cur.n); if (!us.length) { toast('Tap a unit: g, kg, ml, l, pc'); return; }
+                    toQty(t, us[0]); return;
+                }
+                if (pushLine()) { drawBk(); upd(); }
+            }
+            function backKey() {
+                if (!bk.on) { amt = amt.slice(0, -1); if (amt === '0' || amt === '00') amt = ''; upd(); return; }
+                if (bk.typed) { bk.typed = bk.typed.slice(0, -1); drawBk(); upd(); return; }
+                if (bk.step === 3) { bk.step = bk.cur && bk.cur.n.toLowerCase() === 'misc' ? 1 : 2; if (bk.step === 1) bk.cur = null; else { bk.cur.qn = 0; bk.cur.qu = ''; bk.cur.ql = ''; } }
+                else if (bk.step === 2) { bk.step = 1; bk.cur = null; }
+                else if (bk.lines.length) { bk.lines.pop(); setNote(); }
+                else { bk.on = false; box.querySelector('#e-q').hidden = false; bkBox.hidden = true; if (bk.noteAuto) noteIn0.value = ''; }
+                drawBk(); drawNs(); upd();
+            }
+            function drawBk() {
+                if (!bk.on) { kn.textContent = '+ item'; kn.classList.remove('dim'); return; }
+                const card = (l, i, live) => `<div class="bk-card ${live ? 'live' : ''}"><b>${esc(l.n)}</b><span>${l.ql ? esc(l.ql) + ' · ' : ''}${l.p ? '₹' + fmt2(l.p) : '…'}</span>${live ? '' : `<i data-rm="${i}" role="button" aria-label="Remove ${esc(l.n)}">×</i>`}</div>`;
+                strip.innerHTML = bk.lines.map((l, i) => card(l, i)).join('') + (bk.cur ? card(Object.assign({ p: bkLive() }, bk.cur), 0, true) : '') || '<span class="bk-empty">Your items appear here</span>';
+                strip.querySelectorAll('[data-rm]').forEach(x => x.onclick = () => { bk.lines.splice(+x.dataset.rm, 1); setNote(); drawBk(); upd(); });
+                stepsEl.innerHTML = ['Item', 'Quantity', 'Price'].map((t, i) => `<button type="button" class="${i + 1 === bk.step ? 'on' : i + 1 < bk.step ? 'done' : ''}" data-s="${i + 1}" ${i + 1 > bk.step ? 'disabled' : ''}>${i + 1} ${t}</button>`).join('');
+                stepsEl.querySelectorAll('button').forEach(b => b.onclick = () => { const s = +b.dataset.s; if (s >= bk.step) return; if (s === 1) bk.cur = null; bk.step = s; bk.typed = ''; drawBk(); upd(); });
+                const chip = (cls, attrs, t, sm) => `<button type="button" class="ls-chip ${cls}" ${attrs}>${t}${sm ? `<small>${sm}</small>` : ''}</button>`;
+                const bind = (sel, fn) => area.querySelectorAll(sel).forEach(b => b.onclick = () => fn(b));
+                if (bk.step === 1) {
+                    const all = E.itemSuggest(D, c.id, 99), top = all.slice(0, 3), has = all.some(x => x.name.toLowerCase() === 'misc');
+                    area.innerHTML = `<div class="bk-q">What did you buy?</div><div class="ls-chips">${top.map((x, i) => chip('', `data-i="${i}"`, esc(x.name))).join('')}${has || top.length >= 3 ? '' : chip('', 'data-m="1"', 'Misc')}${all.length > 3 ? chip('', 'data-more="1"', 'More…') : chip('new', 'data-new="1"', '+ new item')}</div>`;
+                    bind('[data-i]', b => pickItem(top[+b.dataset.i].name)); bind('[data-m]', () => pickItem('Misc'));
+                    bind('[data-more]', () => openMore({ title: 'Items', search: true, ph: 'Search or type a new item', rows: all.map(x => ({ t: x.name, s: x.n + '×', v: x.name })).concat(has ? [] : [{ t: 'Misc', s: 'unnamed', v: 'Misc' }]), onPick: pickItem, onNew: pickItem }));
+                    bind('[data-new]', () => openMore({ title: 'New item', search: true, ph: 'Type the item name', rows: [], onPick: pickItem, onNew: pickItem, focus: true }));
+                } else if (bk.step === 2) {
+                    const qs = E.qtySuggest(D, c.id, bk.cur.n, 3), us = E.unitSuggest(D, c.id, bk.cur.n), base = bk.unitsAll ? ['g', 'kg', 'ml', 'l', 'pc', 'dozen'] : us.length ? us.slice(0, 2) : ['kg', 'g', 'pc'];
+                    area.innerHTML = `<div class="bk-q">How much ${esc(bk.cur.n.toLowerCase())}? <b>${esc(bk.typed)}</b></div><div class="ls-chips">${qs.map((x, i) => chip('', `data-q="${i}"`, esc(x.label))).join('') || '<span class="bk-empty">New item: type a number, then tap its unit</span>'}</div><div class="ls-chips">${base.map(u => chip(bk.typed ? '' : 'dim', `data-u="${u}"`, u)).join('')}${bk.unitsAll ? '' : chip('', 'data-um="1"', 'More…')}</div>`;
+                    bind('[data-q]', b => { const x = qs[+b.dataset.q]; toQty(x.qn, x.qu); });
+                    bind('[data-u]', b => { const t = parseFloat(bk.typed) || 0; if (!t) { toast('Type the number first'); return; } toQty(t, b.dataset.u); });
+                    bind('[data-um]', () => { bk.unitsAll = true; drawBk(); });
+                } else {
+                    const ps = E.priceSuggest(D, c.id, bk.cur.n, bk.cur.ql, 99), top = ps.slice(0, 3);
+                    area.innerHTML = `<div class="bk-q">${esc(bk.cur.n)}${bk.cur.ql ? ', ' + esc(bk.cur.ql) : ''}. What did it cost? <b>${bk.typed ? '₹' + esc(bk.typed) : ''}</b></div><div class="ls-chips">${top.map((x, i) => chip(String(x.p) === bk.typed ? 'on' : '', `data-p="${i}"`, '₹' + fmt2(x.p), x.usual ? 'usual' : '')).join('') || '<span class="bk-empty">New to the app: type the price</span>'}${ps.length > 3 ? chip('', 'data-more="1"', 'More…') : ''}</div>`;
+                    bind('[data-p]', b => { bk.typed = String(top[+b.dataset.p].p); drawBk(); upd(); });
+                    bind('[data-more]', () => openMore({ title: 'Earlier prices', rows: ps.map(x => ({ t: '₹' + fmt2(x.p), s: x.n + '×' + (x.usual ? ' · usual' : ''), v: x.p })), onPick: v => { bk.typed = String(v); drawBk(); upd(); } }));
+                }
+                kn.textContent = bk.step === 3 ? 'Add line' : bk.step === 2 ? (bk.typed ? 'Next' : 'Skip') : '+ item'; kn.classList.toggle('dim', bk.step === 1);
+            }
             const toggleP = (which) => { const p = which === 'dt' ? dtBox : lsBox, o = which === 'dt' ? lsBox : dtBox; o.hidden = true; p.hidden = !p.hidden; };
             box.querySelector('#e-pdt').onclick = () => toggleP('dt'); box.querySelector('#e-pls').onclick = () => toggleP('ls');
             box.querySelectorAll('#e-acct button').forEach(b => b.onclick = () => { acct = b.dataset.a; upd(); });
@@ -1152,14 +1256,17 @@
             // earlier notes in this category, with the amount you usually paid: one tap fills the note (and the amount, if empty)
             const bank = (() => { const m = new Map(); D.months.forEach(r => r.exps.forEach(e => { if (e.share || e.cat !== c.id || !e.note || e.kind === 'adjust' || e.kind === 'import') return; const k = e.note.trim().toLowerCase(); const o = m.get(k) || { note: e.note.trim(), n: 0, ts: 0, amts: {} }; o.n++; if (e.ts > o.ts) { o.ts = e.ts; o.note = e.note.trim(); } const a2 = Math.round(e.amt * 100) / 100; o.amts[a2] = (o.amts[a2] || 0) + 1; m.set(k, o); })); return [...m.values()].map(o => ({ note: o.note, n: o.n, ts: o.ts, usual: +Object.keys(o.amts).sort((x, y) => o.amts[y] - o.amts[x] || y - x)[0] })).sort((a, b) => b.n - a.n || b.ts - a.ts); })();
             const nsBox = box.querySelector('#e-ns');
-            const drawNs = () => { const q = val(box, '#e-note').trim().toLowerCase(); const hit = !q || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q)).slice(0, 3);
-                nsBox.innerHTML = hit.map((o, i) => `<button type="button" class="ls-chip" data-i="${i}">${esc(o.note)} · ₹${fmt2(o.usual)}</button>`).join('');
-                nsBox.querySelectorAll('button').forEach(b => b.onclick = () => { const o = hit[+b.dataset.i]; noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); }); };
-            const noteIn = box.querySelector('#e-note'); let nt = 0; noteIn.addEventListener('input', () => { clearTimeout(nt); nt = setTimeout(() => { learnPick(); drawLs(); drawNs(); upd(); }, 160); });
+            const drawNs = () => { const q = val(box, '#e-note').trim().toLowerCase(); const hit = !q || bk.on || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q)).slice(0, 3), allHit = !q || bk.on || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q));
+                nsBox.innerHTML = hit.map((o, i) => `<button type="button" class="ls-chip" data-i="${i}">${esc(o.note)} · ₹${fmt2(o.usual)}</button>`).join('') + (allHit.length > 3 ? '<button type="button" class="ls-chip" data-more="1">More…</button>' : '');
+                const mb = nsBox.querySelector('[data-more]'); if (mb) mb.onclick = () => openMore({ title: 'Earlier notes', search: true, ph: 'Search notes', rows: allHit.map(o => ({ t: o.note, s: '₹' + fmt2(o.usual), v: o })), onPick: o => { noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); } });
+                nsBox.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { const o = hit[+b.dataset.i]; noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); }); };
+            const noteIn = box.querySelector('#e-note'); let nt = 0; noteIn.addEventListener('input', () => { if (bk.on) bk.noteAuto = !noteIn.value.trim(); clearTimeout(nt); nt = setTimeout(() => { learnPick(); drawLs(); drawNs(); upd(); }, 160); });
             learnPick(); drawLs(); drawDt(); upd();
             go.onclick = () => {
-                const a = parseFloat(amt); if (!(a > 0) || go.disabled) return;
+                if (bk.on && bk.step === 3) pushLine();
+                const a = bk.on ? Math.round(bkSum() * 100) / 100 : parseFloat(amt); if (!(a > 0) || go.disabled) return;
                 const e = { t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: a, acct, note: val(box, '#e-note'), kind: 'add' };
+                if (bk.on && bk.lines.length) e.items = bk.lines.map(l => ({ n: l.n, qn: l.qn || 0, qu: l.qu || '', p: l.p }));
                 if (lasts >= 2) e.lasts = { d: lasts };
                 const cnt = prefs.purchOn ? E.counted(D, c, a) : 0;
                 if (cnt) { const emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked; e.pur = { c: cnt, need, reason: (val(box, '#e-reason') || '').trim(), emg: !!emg }; }
@@ -1168,7 +1275,7 @@
                                 toast(`${money(a)} added to ${c.name}${when ? ' on ' + fmtDay(when) : ''}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
                 if (D.P && D.P - D.cur.spent < 0 && prefs.warnOn) setTimeout(() => toast(`Over the monthly budget by ${money(D.cur.spent - D.P)}.`), 6200);
             };
-        });
+        }, { onClose: () => document.querySelectorAll('.bk-more').forEach(x => x.remove()) });
     }
     function quickAdd(catId) {
         const c = D.catsById[catId]; if (!c) return;

@@ -596,3 +596,36 @@ body.still .eamt-n, body.still .eamt-line, body.still .eamt-r { transition: none
 .e-msg { min-height: 2.7em; display: flex; align-items: center; justify-content: center; text-align: center; font-size: .8rem; line-height: 1.3; color: var(--text-muted); opacity: 0; transition: opacity .3s; }
 .e-msg.on { opacity: 1; } .e-msg.tight, .e-msg.risk { color: #d99a1c; } .e-msg.broken { color: var(--warning, #d2493f); }
 .e-pills { margin: 2px 0 6px; } .e-panel { margin-bottom: 6px; }
+
+/* v2.51 baskets: four-column keypad (never moves), one question at a time */
+.keypad.k4 { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 50px); }
+.keypad.k4 button { padding: 0; font-size: 1.45rem; }
+.keypad.k4 .kb { grid-column: 4; grid-row: 1 / 3; }
+.keypad.k4 .kn { grid-column: 4; grid-row: 3 / 5; font-family: var(--font-sans); font-size: .95rem; line-height: 1.2; color: #fff; border: 0; background: linear-gradient(135deg, var(--blue-a, #6aa4ff), var(--blue-b, #3f82ec)); }
+.keypad.k4 .kn.dim { opacity: .4; }
+.bk { margin: 2px 0 4px; }
+.bk-strip { height: 52px; display: flex; gap: 6px; align-items: center; overflow-x: auto; scrollbar-width: none; }
+.bk-strip::-webkit-scrollbar { display: none; }
+.bk-card { flex: none; position: relative; border: 1px solid var(--glass-line); border-radius: 14px; padding: 5px 24px 5px 9px; font-size: .78rem; line-height: 1.25; background: var(--input-bg); }
+.bk-card b { display: block; font-weight: 600; } .bk-card span { color: var(--text-muted); }
+.bk-card i { position: absolute; right: 2px; top: 50%; transform: translateY(-50%); width: 24px; height: 36px; display: flex; align-items: center; justify-content: center; font-style: normal; color: var(--text-muted); cursor: pointer; }
+.bk-card.live { border-style: dashed; padding-right: 9px; }
+.bk-empty { font-size: .78rem; color: var(--text-muted); }
+.bk-steps { display: flex; gap: 6px; margin: 2px 0 6px; }
+.bk-steps button { flex: 1; min-height: 32px; padding: 0 4px; border-radius: 999px; border: 1px solid var(--glass-line); background: transparent; color: var(--text-muted); font: inherit; font-size: .78rem; cursor: pointer; }
+.bk-steps button.on { background: linear-gradient(135deg, var(--blue-a, #6aa4ff), var(--blue-b, #3f82ec)); color: #fff; border-color: transparent; }
+.bk-steps button.done { color: var(--text-main); } .bk-steps button:disabled { opacity: .55; cursor: default; }
+.bk-area { height: 124px; overflow: hidden; }
+.bk-q { font-size: .82rem; color: var(--text-muted); margin-bottom: 2px; } .bk-q b { color: var(--text-main); font-weight: 600; }
+.bk-area .ls-chip { min-height: 38px; } .bk-area .ls-chip small { margin-left: 5px; color: var(--text-muted); font-size: .7rem; }
+.bk-area .ls-chip.new { border-style: dashed; } .bk-area .ls-chip.dim { opacity: .55; } .bk-area .ls-chip.on small { color: #fff; }
+.bk-more { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(100% - 40px); max-width: 340px; z-index: 30; }
+.bk-more input { font-size: 1.05rem; margin-bottom: 8px; }
+.bm-list { max-height: 44vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.bm-row { display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 14px; border-radius: 14px; border: 1px solid var(--glass-line); background: var(--input-bg); color: inherit; font: inherit; font-size: .95rem; cursor: pointer; text-align: left; }
+.bm-row small { color: var(--text-muted); } .bm-new { color: var(--blue-b, #3f82ec); border-style: dashed; }
+.bk-due { margin-bottom: 8px; } .bk-bar { height: 6px; border-radius: 6px; background: var(--track); overflow: hidden; margin-top: 4px; }
+.bk-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--blue-a, #6aa4ff), var(--blue-b, #3f82ec)); }
+html body div.keypad.k4 button:not(.link-btn) { height: auto; min-height: 0; font-size: 1.45rem; }
+html body div.keypad.k4 button.kn:not(.link-btn) { font-size: .95rem; }
+.bk-strip { height: 46px; } .bk-area { height: 104px; }
