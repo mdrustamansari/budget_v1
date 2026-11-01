@@ -1060,7 +1060,7 @@
         let waitShown = false;
         let amt = preset ? String(preset) : '', acct = c.lastAcct || 'bank', need = 'want';
         sheet(`<h2>${esc(c.icon)} ${esc(c.name)}</h2><div class="eamt" id="e-row"><span class="eamt-n priv" id="e-amt"></span><i class="eamt-line"></i><div class="eamt-r" id="e-rest"><b id="e-left"></b><small>left this month</small></div></div>
-            <div class="qchips" id="e-q"></div><div class="bk" id="e-bk" hidden><div class="bk-strip" id="bk-strip"></div><div class="bk-steps" id="bk-steps"></div><div class="bk-area" id="bk-area"></div></div><div class="e-msg" id="e-pv" aria-live="polite"></div>
+            <div class="qchips" id="e-q"></div><div class="bk-strip" id="e-lines" hidden></div><div class="e-msg" id="e-pv" aria-live="polite"></div>
             <div class="seg" id="e-acct"><button data-a="bank">Bank (UPI)</button><button data-a="cash">Cash</button></div>
             <div class="ls-chips e-pills"><button type="button" class="ls-chip" id="e-pdt">When: Today ▾</button><button type="button" class="ls-chip" id="e-pls">Lasts: One-off ▾</button></div>
             <div id="e-dt" class="e-panel" hidden></div><div id="e-ls" class="e-panel" hidden></div>
@@ -1070,9 +1070,10 @@
             let purReady = false, lasts = 0, lsTouched = false, lsOther = false, when = 0, dtOpen = false;
             let lsAll = false, dtAll = false;
             // basket: items bought together. One question at a time: item, quantity, price.
-            const bk = { on: false, lines: [], step: 1, cur: null, typed: '', unitsAll: false, noteAuto: true };
-            const bkSum = () => bk.lines.reduce((t, l) => t + l.p, 0), bkLive = () => bk.on && bk.step === 3 ? (parseFloat(bk.typed) || 0) : 0;
-            const A = () => bk.on ? bkSum() + bkLive() : (parseFloat(amt) || 0);
+            const bk = { wz: false, lines: [], step: 1, cur: null, typed: '', unitsAll: false, noteAuto: true };
+            const inBk = () => bk.lines.length > 0 || bk.wz;
+            const bkSum = () => bk.lines.reduce((t, l) => t + l.p, 0), bkLive = () => bk.wz && bk.step === 3 ? (parseFloat(bk.typed) || 0) : 0;
+            const A = () => inBk() ? bkSum() + bkLive() : (parseFloat(amt) || 0);
             const slug = t => String(t).toLowerCase().replace(/\s+/g, '-');
             const lineNote = l => slug(l.n) + (l.qn > 0 && l.qu ? '-' + (Math.round(l.qn * 1000) / 1000) + l.qu : '') + '-' + (Math.round(l.p * 100) / 100);
             const dueHere = (() => { try { return prefs.learnOn === false ? [] : E.basketInsights(D).due.filter(d => d.cat === c.id && d.left <= 7); } catch (x) { return []; } })();
@@ -1129,14 +1130,15 @@
             };
             const upd = () => {
                 const a = A();
-                disp.textContent = bk.on ? '₹' + (Math.round(a * 100) / 100) : amt ? '₹' + amt : '₹0';
+                disp.textContent = inBk() ? '₹' + (Math.round(a * 100) / 100) : amt ? '₹' + amt : '₹0';
                 const showRest = a > 0 && !!D.P && !when; rowEl.classList.toggle('on', showRest);
                 box.querySelector('#e-pdt').textContent = 'When: ' + (when ? fmtDay(when) : 'Today') + ' ▾'; box.querySelector('#e-pdt').classList.toggle('on', !!when);
                 box.querySelector('#e-pls').textContent = 'Lasts: ' + (lasts >= 2 ? (lsOpts.find(o => o[0] === lasts) || [0, plural(lasts, 'day')])[1] : 'One-off') + ' ▾'; box.querySelector('#e-pls').classList.toggle('on', lasts >= 2);
                 box.querySelectorAll('#e-acct button').forEach(b => b.classList.toggle('on', b.dataset.a === acct));
                 let ok = a > 0, label = 'Add';
                 const slot = (t, lv) => { pv.className = 'e-msg ' + (t ? 'on ' : '') + (lv || ''); if (t) pv.textContent = t; };
-                let bkMsg = ''; if (bk.on) { if (bk.step === 3 && bk.cur && bkLive() > 0) { const pn = E.priceNote(D, c.id, bk.cur.n, bk.cur.qn, bk.cur.qu, bkLive()); if (pn) bkMsg = `${bk.cur.n} costs ${pn.pct > 0 ? 'more' : 'less'} than usual: ${Math.abs(Math.round(pn.pct))}% ${pn.pct > 0 ? 'above' : 'below'} your usual ₹${fmt2(Math.round(pn.usual))} per ${pn.per}.`; } else if (bk.step === 1 && dueHere.length) { const d = dueHere[0]; bkMsg = `${d.name} is usually bought every ${plural(d.gap, 'day')}: ${d.left <= 0 ? 'due now' : 'due in ' + plural(d.left, 'day')}.`; } }
+                let bkMsg = ''; if (bk.wz) { if (bk.step === 3 && bk.cur && bkLive() > 0) { const pn = E.priceNote(D, c.id, bk.cur.n, bk.cur.qn, bk.cur.qu, bkLive()); if (pn) bkMsg = `${bk.cur.n} costs ${pn.pct > 0 ? 'more' : 'less'} than usual: ${Math.abs(Math.round(pn.pct))}% ${pn.pct > 0 ? 'above' : 'below'} your usual ₹${fmt2(Math.round(pn.usual))} per ${pn.per}.`; } else if (bk.step === 1 && dueHere.length) { const d = dueHere[0]; bkMsg = `${d.name} is usually bought every ${plural(d.gap, 'day')}: ${d.left <= 0 ? 'due now' : 'due in ' + plural(d.left, 'day')}.`; } }
+                { const wm = document.getElementById('wz-msg'); if (wm) { wm.textContent = bkMsg; wm.className = 'e-msg ' + (bkMsg ? 'on' : ''); } }
                 const cvr = learned(val(box, '#e-note'))[1], cvTxt = cvr ? `Your ${val(box, '#e-note').trim()} still lasts until ${fmtDay(cvr.end)} (${plural(cvr.left, 'day')}).` : '';
                 if (a > 0 && D.P && when) slot(`Saved on ${fmtDay(when)}. It counts in that month, and your balance drops now.`, 'ok');
                 else if (a > 0 && D.P) {
@@ -1163,28 +1165,29 @@
                 go.disabled = !ok; go.style.opacity = ok ? '' : '0.45'; go.textContent = label;
             };
             const padEl = box.querySelector('#e-pad');
-            padEl.innerHTML = ['1','2','3','4','5','6','7','8','9','.','0'].map(k => `<button type="button" data-k="${k}">${k}</button>`).join('') + '<span></span><button type="button" class="kb" data-k="⌫" aria-label="Delete">⌫</button><button type="button" class="kn btn-accent" data-k="next" id="e-kn">+ item</button>';
-            const kn = padEl.querySelector('#e-kn');
+            const padHTML = '<button type="button" data-k="1">1</button>'.replace('1', '1');
+            const padKeys = id => ['1','2','3','4','5','6','7','8','9','.','0'].map(k => `<button type="button" data-k="${k}">${k}</button>`).join('') + `<span></span><button type="button" class="kb" data-k="⌫" aria-label="Delete">⌫</button><button type="button" class="kn btn-accent" data-k="next" id="${id}">+ item</button>`;
+            padEl.innerHTML = padKeys('e-kn');
+            const typeInto = (t, k, maxLen) => { if (k === '.') return t.indexOf('.') < 0 ? (t || '0') + '.' : t; if (t.replace('.', '').length >= maxLen || /\.\d\d$/.test(t)) return t; t += k; return t === '0' || t === '00' ? '' : t; };
+            const bar = box.querySelector('#e-lines');
+            const drawLines = () => { const has = bk.lines.length > 0; bar.hidden = !has; box.querySelector('#e-q').hidden = has;
+                bar.innerHTML = bk.lines.map((l, i) => `<div class="bk-card"><b>${esc(l.n)}</b><span>${l.ql ? esc(l.ql) + ' · ' : ''}₹${fmt2(l.p)}</span><i data-rm="${i}" role="button" aria-label="Remove ${esc(l.n)}">×</i></div>`).join('');
+                bar.querySelectorAll('[data-rm]').forEach(x => x.onclick = () => { bk.lines.splice(+x.dataset.rm, 1); setNote(); drawLines(); drawNs(); upd(); }); };
             padEl.onclick = ev => { const b = ev.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k;
-                if (k === 'next') return nextKey();
-                if (k === '⌫') return backKey();
-                if (bk.on) { if (bk.step === 1) return; let t = bk.typed;
-                    if (k === '.') { if (t.indexOf('.') < 0 && bk.step === 3 || (bk.step === 2 && t.indexOf('.') < 0)) t = (t || '0') + '.'; }
-                    else if (t.replace('.', '').length < 6 && !/\.\d\d$/.test(t)) t += k;
-                    if (t === '0' || t === '00') t = ''; bk.typed = t; drawBk(); upd(); return; }
-                if (k === '.') { if (amt.indexOf('.') < 0) amt = (amt || '0') + '.'; }
-                else if (amt.replace('.', '').length < 7 && !/\.\d\d$/.test(amt)) amt += k;
-                if (amt === '0' || amt === '00') amt = '';
-                upd(); };
-            { const bs = box.querySelector('#e-pad [data-k="⌫"]'); let t = 0; if (bs) { bs.addEventListener('pointerdown', () => { t = setTimeout(() => { if (bk.on) { bk.typed = ''; drawBk(); } else amt = ''; t = -1; upd(); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => bs.addEventListener(ev, () => clearTimeout(t))); bs.addEventListener('click', ev => { if (t === -1) { ev.stopImmediatePropagation(); t = 0; } }, true); } }
-            const bkBox = box.querySelector('#e-bk'), strip = box.querySelector('#bk-strip'), stepsEl = box.querySelector('#bk-steps'), area = box.querySelector('#bk-area'), noteIn0 = box.querySelector('#e-note');
+                if (k === 'next') return openWizard();
+                if (k === '⌫') { if (bk.lines.length) { bk.lines.pop(); setNote(); drawLines(); drawNs(); } else { amt = amt.slice(0, -1); if (amt === '0' || amt === '00') amt = ''; } return upd(); }
+                if (bk.lines.length) { toast('The total comes from your items. Tap + item to change them.'); return; }
+                amt = typeInto(amt, k, 7); upd(); };
+            { const bs = box.querySelector('#e-pad [data-k="⌫"]'); let t = 0; if (bs) { bs.addEventListener('pointerdown', () => { t = setTimeout(() => { if (bk.lines.length) { bk.lines = []; setNote(); drawLines(); drawNs(); } else amt = ''; t = -1; upd(); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => bs.addEventListener(ev, () => clearTimeout(t))); bs.addEventListener('click', ev => { if (t === -1) { ev.stopImmediatePropagation(); t = 0; } }, true); } }
+            const noteIn0 = box.querySelector('#e-note');
             const setNote = () => { if (bk.noteAuto) { noteIn0.value = bk.lines.map(lineNote).join(', '); noteIn0.maxLength = 200; } };
-            const closeMore = () => document.querySelectorAll('.bk-more').forEach(x => x.remove());
+            const closeMore = () => document.querySelectorAll('.wz-bg.more').forEach(x => x.remove());
+            let wz = null, kn = null, strip = null, stepsEl = null, area = null, snap = null;
             // "More…": the full list, newest and most used first, with search and "+ new"
             const openMore = o => {
                 closeMore(); const m = document.createElement('div'); m.className = 'modal bk-more';
                 m.innerHTML = `<h2>${esc(o.title)}</h2>${o.search ? `<input type="text" id="bm-q" placeholder="${esc(o.ph || 'Search')}" autocomplete="off" maxlength="40">` : ''}<div class="bm-list" id="bm-l"></div><div class="modal-actions"><button class="btn-secondary" id="bm-x">Back</button></div>`;
-                $('sheet-bg').appendChild(m);
+                const wrap = document.createElement('div'); wrap.className = 'wz-bg more'; wrap.appendChild(m); document.body.appendChild(wrap);
                 const q = m.querySelector('#bm-q'), list = m.querySelector('#bm-l'); let shown = [];
                 const draw = () => { const t = q ? q.value.trim().toLowerCase() : ''; shown = o.rows.filter(r => !t || r.t.toLowerCase().includes(t));
                     const exact = o.rows.some(r => r.t.toLowerCase() === t);
@@ -1194,12 +1197,29 @@
                 m.querySelector('#bm-x').onclick = closeMore; draw();
                 if (o.focus && q) setTimeout(() => q.focus(), 80);
             };
-            const pushLine = () => { const p = parseFloat(bk.typed) || 0; if (!bk.cur || !(p > 0)) return false; bk.lines.push({ n: bk.cur.n, qn: bk.cur.qn || 0, qu: bk.cur.qu || '', ql: bk.cur.ql || '', p }); bk.cur = null; bk.typed = ''; bk.step = 1; bk.unitsAll = false; setNote(); return true; };
+            const pushLine = () => { const p = parseFloat(bk.typed) || 0; if (!bk.cur || !(p > 0)) return false; bk.lines.push({ n: bk.cur.n, qn: bk.cur.qn || 0, qu: bk.cur.qu || '', ql: bk.cur.ql || '', p }); bk.cur = null; bk.typed = ''; bk.step = 1; bk.unitsAll = false; return true; };
             const pickItem = name => { const n = E.titleCase(name); if (!n) return; bk.cur = { n, qn: 0, qu: '', ql: '' }; bk.step = n.toLowerCase() === 'misc' ? 3 : 2; bk.typed = ''; bk.unitsAll = false; drawBk(); upd(); };
             const toQty = (qn, qu) => { bk.cur.qn = qn; bk.cur.qu = qu; bk.cur.ql = E.qLabel(qn, qu); bk.step = 3; bk.typed = ''; drawBk(); upd(); };
-            function enterBasket() { if (bk.on) return; const a0 = parseFloat(amt) || 0; bk.on = true; bk.step = 1; bk.typed = ''; if (a0 > 0) { bk.lines.push({ n: 'Misc', qn: 0, qu: '', ql: '', p: a0 }); amt = ''; } bk.noteAuto = !noteIn0.value.trim(); box.querySelector('#e-q').hidden = true; bkBox.hidden = false; setNote(); drawBk(); drawNs(); upd(); }
+            function openWizard() {
+                if (bk.wz) return;
+                snap = bk.lines.slice();
+                const a0 = parseFloat(amt) || 0; if (!bk.lines.length) { bk.noteAuto = !noteIn0.value.trim(); if (a0 > 0) { bk.lines.push({ n: 'Misc', qn: 0, qu: '', ql: '', p: a0 }); amt = ''; } }
+                bk.wz = true; bk.step = 1; bk.cur = null; bk.typed = '';
+                wz = document.createElement('div'); wz.className = 'wz-bg';
+                wz.innerHTML = `<div class="modal wz"><div class="wz-top"><b>${esc(c.icon)} ${esc(c.name)}</b><span id="wz-tot" class="priv"></span></div><div class="bk-strip" id="bk-strip"></div><div class="bk-steps" id="bk-steps"></div><div class="bk-area" id="bk-area"></div><div class="e-msg" id="wz-msg" aria-live="polite"></div><div class="keypad k4 wzpad" id="wz-pad">${padKeys('wz-kn')}</div><div class="modal-actions"><button class="btn-secondary" id="wz-x">Cancel</button><button class="btn-primary" id="wz-done">Done</button></div></div>`;
+                document.body.appendChild(wz);
+                strip = wz.querySelector('#bk-strip'); stepsEl = wz.querySelector('#bk-steps'); area = wz.querySelector('#bk-area'); kn = wz.querySelector('#wz-kn');
+                wz.querySelector('#wz-pad').onclick = ev => { const b = ev.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k; if (k === 'next') return nextKey(); if (k === '⌫') return backKey(); if (bk.step === 1) return; bk.typed = typeInto(bk.typed, k, 6); drawBk(); upd(); };
+                wz.querySelector('#wz-x').onclick = () => closeWizard(false); wz.querySelector('#wz-done').onclick = () => closeWizard(true);
+                drawBk(); upd();
+            }
+            function closeWizard(keep) {
+                closeMore(); if (!bk.wz) return;
+                if (keep) pushLine(); else { bk.lines = snap || []; }
+                bk.wz = false; bk.cur = null; bk.typed = ''; bk.step = 1; setNote(); if (!bk.lines.length && bk.noteAuto) noteIn0.value = '';
+                if (wz) wz.remove(); wz = null; drawLines(); drawNs(); upd();
+            }
             function nextKey() {
-                if (!bk.on) { enterBasket(); return; }
                 if (bk.step === 1) return;
                 if (bk.step === 2) {
                     const t = parseFloat(bk.typed) || 0;
@@ -1210,19 +1230,19 @@
                 if (pushLine()) { drawBk(); upd(); }
             }
             function backKey() {
-                if (!bk.on) { amt = amt.slice(0, -1); if (amt === '0' || amt === '00') amt = ''; upd(); return; }
                 if (bk.typed) { bk.typed = bk.typed.slice(0, -1); drawBk(); upd(); return; }
                 if (bk.step === 3) { bk.step = bk.cur && bk.cur.n.toLowerCase() === 'misc' ? 1 : 2; if (bk.step === 1) bk.cur = null; else { bk.cur.qn = 0; bk.cur.qu = ''; bk.cur.ql = ''; } }
                 else if (bk.step === 2) { bk.step = 1; bk.cur = null; }
-                else if (bk.lines.length) { bk.lines.pop(); setNote(); }
-                else { bk.on = false; box.querySelector('#e-q').hidden = false; bkBox.hidden = true; if (bk.noteAuto) noteIn0.value = ''; }
-                drawBk(); drawNs(); upd();
+                else if (bk.lines.length) bk.lines.pop();
+                else { closeWizard(false); return; }
+                drawBk(); upd();
             }
             function drawBk() {
-                if (!bk.on) { kn.textContent = '+ item'; kn.classList.remove('dim'); return; }
+                if (!bk.wz || !wz) return;
+                wz.querySelector('#wz-tot').textContent = '₹' + fmt2(Math.round((bkSum() + bkLive()) * 100) / 100);
                 const card = (l, i, live) => `<div class="bk-card ${live ? 'live' : ''}"><b>${esc(l.n)}</b><span>${l.ql ? esc(l.ql) + ' · ' : ''}${l.p ? '₹' + fmt2(l.p) : '…'}</span>${live ? '' : `<i data-rm="${i}" role="button" aria-label="Remove ${esc(l.n)}">×</i>`}</div>`;
                 strip.innerHTML = bk.lines.map((l, i) => card(l, i)).join('') + (bk.cur ? card(Object.assign({ p: bkLive() }, bk.cur), 0, true) : '') || '<span class="bk-empty">Your items appear here</span>';
-                strip.querySelectorAll('[data-rm]').forEach(x => x.onclick = () => { bk.lines.splice(+x.dataset.rm, 1); setNote(); drawBk(); upd(); });
+                strip.querySelectorAll('[data-rm]').forEach(x => x.onclick = () => { bk.lines.splice(+x.dataset.rm, 1); drawBk(); upd(); });
                 stepsEl.innerHTML = ['Item', 'Quantity', 'Price'].map((t, i) => `<button type="button" class="${i + 1 === bk.step ? 'on' : i + 1 < bk.step ? 'done' : ''}" data-s="${i + 1}" ${i + 1 > bk.step ? 'disabled' : ''}>${i + 1} ${t}</button>`).join('');
                 stepsEl.querySelectorAll('button').forEach(b => b.onclick = () => { const s = +b.dataset.s; if (s >= bk.step) return; if (s === 1) bk.cur = null; bk.step = s; bk.typed = ''; drawBk(); upd(); });
                 const chip = (cls, attrs, t, sm) => `<button type="button" class="ls-chip ${cls}" ${attrs}>${t}${sm ? `<small>${sm}</small>` : ''}</button>`;
@@ -1256,17 +1276,16 @@
             // earlier notes in this category, with the amount you usually paid: one tap fills the note (and the amount, if empty)
             const bank = (() => { const m = new Map(); D.months.forEach(r => r.exps.forEach(e => { if (e.share || e.cat !== c.id || !e.note || e.kind === 'adjust' || e.kind === 'import') return; const k = e.note.trim().toLowerCase(); const o = m.get(k) || { note: e.note.trim(), n: 0, ts: 0, amts: {} }; o.n++; if (e.ts > o.ts) { o.ts = e.ts; o.note = e.note.trim(); } const a2 = Math.round(e.amt * 100) / 100; o.amts[a2] = (o.amts[a2] || 0) + 1; m.set(k, o); })); return [...m.values()].map(o => ({ note: o.note, n: o.n, ts: o.ts, usual: +Object.keys(o.amts).sort((x, y) => o.amts[y] - o.amts[x] || y - x)[0] })).sort((a, b) => b.n - a.n || b.ts - a.ts); })();
             const nsBox = box.querySelector('#e-ns');
-            const drawNs = () => { const q = val(box, '#e-note').trim().toLowerCase(); const hit = !q || bk.on || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q)).slice(0, 3), allHit = !q || bk.on || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q));
+            const drawNs = () => { const q = val(box, '#e-note').trim().toLowerCase(); const hit = !q || bk.lines.length || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q)).slice(0, 3), allHit = !q || bk.lines.length || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q));
                 nsBox.innerHTML = hit.map((o, i) => `<button type="button" class="ls-chip" data-i="${i}">${esc(o.note)} · ₹${fmt2(o.usual)}</button>`).join('') + (allHit.length > 3 ? '<button type="button" class="ls-chip" data-more="1">More…</button>' : '');
                 const mb = nsBox.querySelector('[data-more]'); if (mb) mb.onclick = () => openMore({ title: 'Earlier notes', search: true, ph: 'Search notes', rows: allHit.map(o => ({ t: o.note, s: '₹' + fmt2(o.usual), v: o })), onPick: o => { noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); } });
                 nsBox.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { const o = hit[+b.dataset.i]; noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); }); };
-            const noteIn = box.querySelector('#e-note'); let nt = 0; noteIn.addEventListener('input', () => { if (bk.on) bk.noteAuto = !noteIn.value.trim(); clearTimeout(nt); nt = setTimeout(() => { learnPick(); drawLs(); drawNs(); upd(); }, 160); });
+            const noteIn = box.querySelector('#e-note'); let nt = 0; noteIn.addEventListener('input', () => { if (bk.lines.length) bk.noteAuto = !noteIn.value.trim(); clearTimeout(nt); nt = setTimeout(() => { learnPick(); drawLs(); drawNs(); upd(); }, 160); });
             learnPick(); drawLs(); drawDt(); upd();
             go.onclick = () => {
-                if (bk.on && bk.step === 3) pushLine();
-                const a = bk.on ? Math.round(bkSum() * 100) / 100 : parseFloat(amt); if (!(a > 0) || go.disabled) return;
+                const a = bk.lines.length ? Math.round(bkSum() * 100) / 100 : parseFloat(amt); if (!(a > 0) || go.disabled) return;
                 const e = { t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: a, acct, note: val(box, '#e-note'), kind: 'add' };
-                if (bk.on && bk.lines.length) e.items = bk.lines.map(l => ({ n: l.n, qn: l.qn || 0, qu: l.qu || '', p: l.p }));
+                if (bk.lines.length) e.items = bk.lines.map(l => ({ n: l.n, qn: l.qn || 0, qu: l.qu || '', p: l.p }));
                 if (lasts >= 2) e.lasts = { d: lasts };
                 const cnt = prefs.purchOn ? E.counted(D, c, a) : 0;
                 if (cnt) { const emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked; e.pur = { c: cnt, need, reason: (val(box, '#e-reason') || '').trim(), emg: !!emg }; }
@@ -1275,7 +1294,7 @@
                                 toast(`${money(a)} added to ${c.name}${when ? ' on ' + fmtDay(when) : ''}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
                 if (D.P && D.P - D.cur.spent < 0 && prefs.warnOn) setTimeout(() => toast(`Over the monthly budget by ${money(D.cur.spent - D.P)}.`), 6200);
             };
-        }, { onClose: () => document.querySelectorAll('.bk-more').forEach(x => x.remove()) });
+        }, { onClose: () => document.querySelectorAll('.wz-bg').forEach(x => x.remove()) });
     }
     function quickAdd(catId) {
         const c = D.catsById[catId]; if (!c) return;

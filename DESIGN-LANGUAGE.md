@@ -194,3 +194,7 @@ While someone types, the controls they are tapping never change position. New in
 
 ## 35. One question at a time (Budget v2.51)
 A multi-part entry is a short conversation, not a form. Three steps (item, quantity, price), each showing only the 2–3 best suggestions (mixed most used and most recent) plus "More…" for the full, searchable list. Any step also accepts a brand-new value, which the app learns. The keypad is a fixed 4×4 grid: ⌫ spans rows 1–2, the action key (+ item / Skip / Next / Add line) spans rows 3–4 and changes only its label. Only entering basket mode may shift the layout, once; after that every area has a fixed height. Lines are small cards in a fixed-height strip with ×. The same "2–3 and More…" rule applies to When, Lasts and note suggestions. "More…" opens a glass list above the sheet and never navigates away.
+
+Update (v2.52): the multi-step flow lives in a wizard layer above the card, never inside it. The card keeps its size; the wizard has its own keypad, Cancel and Done. Lists opened by "More…" sit in a third layer above the wizard.
+
+Rule (v2.53): choices that can change in length are underlined links; a dynamic button is a circle for one or two characters and a pill with a minimum width for longer text. Interface text cannot be selected by long press; only text boxes can.

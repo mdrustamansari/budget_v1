@@ -629,3 +629,31 @@ body.still .eamt-n, body.still .eamt-line, body.still .eamt-r { transition: none
 html body div.keypad.k4 button:not(.link-btn) { height: auto; min-height: 0; font-size: 1.45rem; }
 html body div.keypad.k4 button.kn:not(.link-btn) { font-size: .95rem; }
 .bk-strip { height: 46px; } .bk-area { height: 104px; }
+
+/* v2.52 wizard: its own layer above the card, card never grows */
+.wz-bg { position: fixed; inset: 0; z-index: 28; display: flex; align-items: center; justify-content: center; padding: 14px; background: rgba(8, 16, 32, .5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.wz-bg.more { z-index: 30; background: rgba(8, 16, 32, .35); }
+.wz { width: 100%; max-width: 360px; max-height: 96vh; padding: 16px; }
+.wz-top { display: flex; justify-content: space-between; align-items: baseline; font-size: 1.1rem; margin-bottom: 4px; } .wz-top span { font-size: 1.7rem; font-weight: 300; }
+.wz .bk-area { height: 100px; }
+.wz .e-msg { min-height: 2.2em; }
+.wz .keypad.k4 { grid-template-rows: repeat(4, 44px); margin: 6px 0; }
+.bk-more { position: static; transform: none; width: 100%; max-width: 340px; }
+.qchips[hidden], .bk-strip[hidden] { display: none !important; }
+
+/* v2.53 chips are underlined links, never ovals. Bank/Cash and the big buttons are unchanged. */
+html body :is(.e-pills, .e-panel, #e-ns, .bk-area) .ls-chips { gap: 2px 16px; margin: 4px 0 6px; align-items: center; }
+html body :is(.e-pills, .e-panel, #e-ns, .bk-area) .ls-chip { min-height: 40px; height: auto; padding: 4px 2px; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; color: var(--text-main); font-size: .92rem; white-space: nowrap; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 5px; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); }
+html body :is(.e-pills, .e-panel, #e-ns, .bk-area) .ls-chip.on { color: var(--blue-b, #3f82ec); font-weight: 600; text-decoration-thickness: 2px; text-decoration-color: var(--blue-b, #3f82ec); }
+html body :is(.e-pills, .e-panel, #e-ns, .bk-area) .ls-chip.new { color: var(--blue-b, #3f82ec); text-decoration-style: dashed; }
+html body :is(.e-pills, .e-panel, #e-ns, .bk-area) .ls-chip.dim { opacity: .45; }
+html body .bk-area .ls-chip small { text-decoration: none; display: inline-block; margin-left: 4px; color: var(--text-muted); font-size: .7rem; }
+html body .e-pills { flex-wrap: nowrap; justify-content: space-between; }
+html body .e-pills .ls-chip { flex: 0 0 auto; }
+/* the step pills: one clean shape, never squashed */
+.bk-steps button { min-width: 84px; white-space: nowrap; }
+/* round for one or two characters, a wide pill for longer words */
+.rb { width: 40px; min-width: 40px; padding: 0 !important; border-radius: 50% !important; }
+/* long-press must never select the interface; text boxes stay editable */
+html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+input, textarea, [contenteditable="true"], .selectable, pre, code { -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
