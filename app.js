@@ -1188,21 +1188,22 @@
             { const bs = box.querySelector('#e-pad [data-k="⌫"]'); let t = 0; if (bs) { bs.addEventListener('pointerdown', () => { t = setTimeout(() => { if (bk.lines.length) { bk.lines = []; setNote(); drawLines(); drawNs(); } else amt = ''; t = -1; upd(); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => bs.addEventListener(ev, () => clearTimeout(t))); bs.addEventListener('click', ev => { if (t === -1) { ev.stopImmediatePropagation(); t = 0; } }, true); } }
             const noteIn0 = box.querySelector('#e-note');
             const setNote = () => { if (bk.noteAuto) { noteIn0.value = bk.lines.map(lineNote).join(', '); noteIn0.maxLength = 200; } };
-            const closeMore = () => document.querySelectorAll('.wz-bg.more').forEach(x => x.remove());
+            const closeMore = () => { document.querySelectorAll('.wz-bg.more').forEach(x => x.remove()); document.querySelectorAll('.wz-more').forEach(x => x.remove()); if (wz) { wz.classList.remove('top'); wz.querySelector('.wz').classList.remove('showing-more'); } };
             let wz = null, kn = null, strip = null, stepsEl = null, area = null, snap = null;
-            // "More…": the full list, newest and most used first, with search and "+ new"
+            // "More…" and "new item": drawn INSIDE the wizard, in the same frame, so nothing can slide off the screen or hide behind the keyboard
             const openMore = o => {
-                closeMore(); const m = document.createElement('div'); m.className = 'modal bk-more';
-                m.innerHTML = `<h2>${esc(o.title)}</h2>${o.search ? `<input type="text" id="bm-q" placeholder="${esc(o.ph || 'Search')}" autocomplete="off" maxlength="40">` : ''}<div class="bm-list" id="bm-l"></div><div class="modal-actions"><button class="btn-secondary" id="bm-x">Back</button></div>`;
-                const wrap = document.createElement('div'); wrap.className = 'wz-bg more'; wrap.appendChild(m); document.body.appendChild(wrap); fitLayer(wrap);
+                closeMore(); const m = document.createElement('div'); m.className = 'wz-more';
+                m.innerHTML = `<h2>${esc(o.title)}</h2>${o.search && wz ? `<input type="text" id="bm-q" placeholder="${esc(o.ph || 'Search')}" autocomplete="off" maxlength="40" enterkeyhint="done">` : ''}<div class="bm-list" id="bm-l"></div><div class="modal-actions"><button class="btn-secondary" id="bm-x">Back</button></div>`;
+                if (wz) { const box0 = wz.querySelector('.wz'); box0.classList.add('showing-more'); box0.appendChild(m); wz.classList.add('top'); }
+                else { const wrap = document.createElement('div'); wrap.className = 'wz-bg more'; const mm = document.createElement('div'); mm.className = 'modal bk-more'; mm.appendChild(m); wrap.appendChild(mm); document.body.appendChild(wrap); fitLayer(wrap); }
                 const q = m.querySelector('#bm-q'), list = m.querySelector('#bm-l'); let shown = [];
                 const draw = () => { const t = q ? q.value.trim().toLowerCase() : ''; shown = o.rows.filter(r => !t || r.t.toLowerCase().includes(t));
                     const exact = o.rows.some(r => r.t.toLowerCase() === t);
-                    list.innerHTML = shown.map((r, i) => `<button type="button" class="bm-row" data-i="${i}"><span>${esc(r.t)}</span><small>${esc(r.s || '')}</small></button>`).join('') + (o.onNew && (!t ? !o.focus : !exact) ? `<button type="button" class="bm-row bm-new" data-n="1"><span>${t ? '+ Add “' + esc(q.value.trim()) + '”' : '+ new item'}</span></button>` : '');
-                    list.querySelectorAll('.bm-row').forEach(b => b.onclick = () => { if (b.dataset.n) { if (q && q.value.trim()) { const v = q.value.trim(); closeMore(); o.onNew(v); } else if (q) q.focus(); return; } const r = shown[+b.dataset.i]; closeMore(); o.onPick(r.v); }); };
+                    list.innerHTML = shown.map((r, i) => `<button type="button" class="bm-row" data-i="${i}"><span>${esc(r.t)}</span><small>${esc(r.s || '')}</small></button>`).join('') + (o.onNew && q && t && !exact ? `<button type="button" class="bm-row bm-new" data-n="1"><span>+ Add “${esc(q.value.trim())}”</span></button>` : '');
+                    list.querySelectorAll('.bm-row').forEach(b => b.onclick = () => { if (b.dataset.n) { const v = q.value.trim(); closeMore(); o.onNew(v); return; } const r = shown[+b.dataset.i]; closeMore(); o.onPick(r.v); }); };
                 if (q) { q.oninput = draw; q.onkeydown = ev => { if (ev.key === 'Enter' && q.value.trim() && o.onNew) { const v = q.value.trim(); closeMore(); o.onNew(v); } }; }
                 m.querySelector('#bm-x').onclick = closeMore; draw();
-                if (o.focus && q) setTimeout(() => q.focus(), 80);
+                if (o.focus && q) setTimeout(() => q.focus({ preventScroll: true }), 80);
             };
             const pushLine = () => { const p = parseFloat(bk.typed) || 0; if (!bk.cur || !(p > 0)) return false; bk.lines.push({ n: bk.cur.n, qn: bk.cur.qn || 0, qu: bk.cur.qu || '', ql: bk.cur.ql || '', p }); bk.cur = null; bk.typed = ''; bk.step = 1; bk.unitsAll = false; return true; };
             const pickItem = name => { const n = E.titleCase(name); if (!n) return; bk.cur = { n, qn: 0, qu: '', ql: '' }; bk.step = n.toLowerCase() === 'misc' ? 3 : 2; bk.typed = ''; bk.unitsAll = false; drawBk(); upd(); };
@@ -1285,7 +1286,7 @@
             const nsBox = box.querySelector('#e-ns');
             const drawNs = () => { const q = val(box, '#e-note').trim().toLowerCase(); const hit = !q || bk.lines.length || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q)).slice(0, 3), allHit = !q || bk.lines.length || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q));
                 nsBox.innerHTML = hit.map((o, i) => `<button type="button" class="ls-chip" data-i="${i}">${esc(o.note)} · ₹${fmt2(o.usual)}</button>`).join('') + (allHit.length > 3 ? '<button type="button" class="ls-chip" data-more="1">More…</button>' : '');
-                const mb = nsBox.querySelector('[data-more]'); if (mb) mb.onclick = () => openMore({ title: 'Earlier notes', search: true, ph: 'Search notes', rows: allHit.map(o => ({ t: o.note, s: '₹' + fmt2(o.usual), v: o })), onPick: o => { noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); } });
+                const mb = nsBox.querySelector('[data-more]'); if (mb) mb.onclick = () => openMore({ title: 'Earlier notes', search: false, rows: allHit.map(o => ({ t: o.note, s: '₹' + fmt2(o.usual), v: o })), onPick: o => { noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); } });
                 nsBox.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { const o = hit[+b.dataset.i]; noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); }); };
             const noteIn = box.querySelector('#e-note'); let nt = 0; noteIn.addEventListener('input', () => { if (bk.lines.length) bk.noteAuto = !noteIn.value.trim(); clearTimeout(nt); nt = setTimeout(() => { learnPick(); drawLs(); drawNs(); upd(); }, 160); });
             learnPick(); drawLs(); drawDt(); upd();
