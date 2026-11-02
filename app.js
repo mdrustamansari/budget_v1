@@ -628,7 +628,7 @@
         const note = spent === 0 ? 'Nothing spent yet today.' : r <= 1 ? `▼ ${money(diff)} below your average` : `▲ ${money(diff)} above your average`;
         const say = spent === 0 ? 'You have spent nothing today.' : r <= 1 ? (prefs.privacy ? 'Today is below your usual day. Good.' : `Today you spent ${money(spent)}. That is below your usual ${money(avg)}.`) : (prefs.privacy ? 'Today is above your usual day.' : `Today you spent ${money(spent)}. Your usual day is ${money(avg)}.`);
         return `<div class="tg ${kind}"${tl(say + (prefs.privacy ? '' : ` Yesterday you spent ${money(dayTotal(Date.now() - 864e5))}. The thin line on the bar shows it.`), r > 1.5 ? 'bad' : '')}><div class="row"><span class="label">Today so far</span><span class="tg-note">${esc(note)}</span></div>
-            <div class="tg-track" style="margin-top:18px"><i class="tg-fill grow" style="width:${pct}%"></i><b class="tg-mark" style="left:50%"></b>${yMark(avg)}</div>
+            <div class="tg-track" style="margin-top:34px"><i class="tg-fill grow" style="width:${pct}%"></i><b class="tg-mark" style="left:50%"></b>${yMark(avg)}</div>
             <div class="tg-scale"><span class="priv">${money(spent)} today</span><span>average ${mh(avg)}</span></div></div>`;
     }
     function budgetMood() {
@@ -849,7 +849,7 @@
         else {
             const mx = Math.max(1, ...S.days.map(r => r.avg)), fd = ts => new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
             const bars = order.map(w => { const r = S.days[w], tot = Math.max(3, r.avg / mx * 62), inner = r.big.length ? Math.max(3, r.avgEx / mx * 62) : 0;
-                return `<div${tl(`${WD[w]}: ${prefs.privacy ? 'average hidden' : 'average ' + money(r.avg)} over ${plural(r.n, WD[w])}. ${r.big.length ? 'One very large entry is included.' : ''}`)}><span class="priv">${sh(r.avg)}</span><b style="height:${tot}px;${r.big.length ? 'opacity:.45;position:relative' : ''}">${inner ? `<i style="position:absolute;left:0;right:0;bottom:0;height:${inner}px;border-radius:inherit;background:var(--blue-b);opacity:1"></i>` : ''}</b>${names[w]}<small style="display:block;font-size:.62rem;opacity:.6">${r.n}×</small></div>`; }).join('');
+                return `<div${tl(`${WD[w]}: ${prefs.privacy ? 'average hidden' : 'average ' + money(r.avg)} over ${plural(r.n, WD[w])}. ${r.big.length ? 'One very large entry is included.' : ''}`)}><span class="priv">${sh(r.avg)}</span><b style="height:${tot}px;${r.big.length ? 'opacity:.45;position:relative' : ''}">${inner ? `<i style="position:absolute;left:0;right:0;bottom:0;height:${inner}px;border-radius:inherit;background:var(--blue-b);opacity:1"></i>` : ''}</b>${names[w]}<small style="display:block;font-size:0.98rem;opacity:.6">${r.n}×</small></div>`; }).join('');
             const notes = S.days.filter(r => r.big.length).map(r => { const b = r.big.map(x => `${mx2(x.amt)} (${esc(x.name)}, ${fd(x.ts)})`).join(' and ');
                 return `<div class="hint mt"><b>${WD[r.w]}:</b> the average is ${mx2(r.avg)} over ${plural(r.n, WD[r.w])}, but one very large entry, ${b}, is most of it. Without it the average is ${mx2(r.avgEx)}. ${r.n < 3 ? `Only ${plural(r.n, WD[r.w])} ${r.n === 1 ? 'is' : 'are'} counted, which ${r.n === 1 ? 'is' : 'are'} too few to show a pattern. Please do not read this as a habit.` : ''}</div>`; }).join('');
             const thin = S.days.filter(r => r.n < 3).length;
