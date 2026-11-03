@@ -1,127 +1,179 @@
-Rustam's Budget Manager (new generation)
-Upload ALL of these files to the same GitHub repo (replace the old ones): index.html, style.css, flagship.css, the folder fonts/, engine.js, app.js, sw.js, manifest.webmanifest, icon-192.png, icon-512.png, icon-maskable-512.png.
-Then open the app twice (the first load fetches the update, the second shows it). Your old data is imported automatically.
+Rustam's Goal Manager, version 5
 
-What is new in version 2.2
-- Usual amounts: when you add an expense, the app shows the amounts you really pay for that category (for example Rs 30, Rs 20, Rs 10 for conveyance) as one-tap buttons. It needs the same amount at least twice, and newer payments count more.
-- Insights now start with "What the app has learned": which weekdays cost most, categories that keep going over their limit, spending in the last ten days of the month, and many small payments. It needs about three weeks of entries.
-- Settings has a Your data card. Everything stays on this phone, and you can switch learning off.
+Put ALL these files in your goal-manager GitHub repository (replace the old ones), then open the app twice so your phone picks up the update. Your data stays.
+Files: index.html, style.css, flagship.css, engine.js, look.js, insight.js, app.js, sw.js, manifest.webmanifest, icon-192.png, icon-512.png, icon-maskable-512.png, and the new folder fonts/ (six small font files).
 
-Version 2.2.1: the number pad now has a decimal point, so you can enter 8.5.
+What is new in version 3
+- Plan is organised by chapter: Reading (Skim, Scan), Drafting (parts, themes, pieces) and Editing and proofreading.
+- Every piece has allotted days. The clock starts when the previous piece is done (or when you press Start). Late days push everything after. Early days come back as time.
+- Tick pieces done on the day you finished. Tick whole chapters or groups at once for work you did before today.
+- Look: Aurora, Paper and eleven nature themes. Paper has colour, texture, dot grid, graph boxes, ruled lines, margins and sliders.
+- Fixed a bug: editing or deleting a goal could change the wrong item.
 
-Version 2.3
-- Today now shows a small "Today so far" gauge: what you have spent today against the average of your earlier days this month. Green below the average, amber above, red well above. It appears after day 3.
-- The Circle Companion lives in the header corner. It breathes, blinks and looks around, shows pen and notebook while you add an expense, a magnifying glass on Insights, and cheers when you close the day. It speaks rarely.
+What is new in version 4
+- Frosted glass now works on every card, block and panel (a page animation had been switching the blur off). Fixed in the Budget Manager too.
+- Nothing is drawn above the top margin of the paper.
+- Daily Tasks: give a reading piece a page count and a daily pace (for example By the Sea, 246 pages, 15 a day). Log pages each day; the app shows pages left, pages needed per day against your deadline, and finishes the piece automatically when you reach the total. Skim and Scan share one pass.
+- Split a drafting piece into sub-sections (for example Orientation 1/3, 2/3, 3/3), each with its own allotted days and over or under count.
+- Work order now has a Custom option: choose the next piece yourself from any piece not yet done. Use "Do this next" on any piece.
+
+What is new in version 4.1
+- Editing and proofreading always come last: every editing piece in every chapter is placed after all reading and drafting for the whole thesis, and stays locked until that is done. If you already did some editing, tap the locked piece and choose "I have already done this".
+
+What is new in version 5
+- Today now shows live progress for the piece you are working on: a ring, pages done out of the total, today's pages against what you need, and the last seven days as bars.
+- Work chain: a streak of days with real work. One missed day is forgiven. Leave days never break it. A few quiet milestones are shown as stars.
+- Companion orb in the header. It glows when you worked today, dims when you are behind or the chain is at risk, and rests on leave days. Tap it for a short message. You can switch it off in Settings.
+- The app learns how many days you really take for reading, drafting and editing. After three finished pieces of one kind it suggests new allotted days for pieces you have not started. You press a button to accept; your first deadlines stay fixed, so delays still show. You can undo it.
+- Plan shows the whole chain as coloured blocks, and each chapter's progress. Outlook shows what the app has learned and your work habits (your strongest and weakest weekday).
+- Your data: every entry is saved on this phone only. Settings shows how many entries there are and lets you switch off learning.
+- IMPORTANT: also copy the new file insight.js into your repository.
+
+Version 5.1: the number pad now has a decimal point, so you can log 8.5 pages.
+
+Version 5.2
+- The Circle Companion replaces the small orb. It breathes, blinks and looks around with a rhythm of its own. Hands and props appear only when needed: arms up to celebrate, a pointing hand at a chart, a magnifying glass on Outlook. It speaks rarely.
 - Settings > Your data > Companion: choose Header corner, Floating (bottom right) or Off.
 - IMPORTANT: also copy the new file companion.js into your repository.
 
-Version 2.4 (new Circle Companion)
+Version 5.3 (new Circle Companion)
 - The Companion is redesigned from Rustam's own glass prototype and merged with the expressive one: clear glass body, light-catching rim, two slow orbit rings, a soft aura.
 - Adaptive ink: the outline, face and hands turn dark on light themes and white on dark themes.
 - Floating mode can be dragged anywhere. It settles against the nearest side and remembers its place.
 - Its eyes follow your finger when you are near it. A tap makes it squash and bounce a little.
 - New poses: waving, typing on a laptop, a coffee break.
-- Replace companion.js (and sw.js) and open the app twice.
+- Replace companion.js and open the app twice.
 
-Version 2.5 (the living Circle Companion)
-- IMPORTANT: upload ALL files, including three new ones: companion-art.js, companion-lines.js and the new companion.js. Then open the app twice.
-- The Companion is now a cute fluid spectre. It rests as a circle (or a ghost with a wavy tail) and often molds into 33 shapes: cube, notepad, calculator, laptop, sign board, question mark, tick, danger mark, wait mark, cross mark, notice mark, heart, star, coin, wallet, savings jar, bar chart, calendar, clock, idea bulb, bell, lock, shield, magnifier, book, gift, trophy, flag, rocket, cloud, moon, umbrella and speech bubble.
-- It uses real-looking props: notebook, pen, calculator, laptop, chart and pointer stick, coffee cup, pillow, chair, bed, platform, ball, music notes, confetti.
-- About 90 actions and combinations: wave, bow, nod, laugh, jump, hop, spin, dance, peek, knock, peekaboo, think, idea, work, nap, coffee break, play, celebrate, rocket launch and more.
-- Poke it for fun reactions. Poke it many times and it gets dizzy, then hides.
-- It does things on its own now and then, like a living thing. Night time makes it sleepier.
-- It speaks proverbs, tips and your own budget notes, about 19 lines a day (you choose).
-- It reacts to real moments: a tick after saving an expense, a calculator while you type an amount, a wait mark when a purchase is blocked, a danger mark when you pass the pool, a trophy when you close the day.
-- Settings > Circle Companion has its own section: where it lives (fixed in the header, floating and snapping to the side, floating free, or hidden), resting form, Movement, Activity, lines a day, proverbs on or off, and buttons to show you things. It is always on top of every screen.
-- Reduced motion and Lite mode keep it still.
+v5.4 - The new Circle Companion (same as Budget Manager v2.7)
+  A living spectre or a glass orb (choose in Settings > Circle Companion), 33 shapes, lifelike props, about 90 actions,
+  idle life, pokes, proverbs and tips (about 19 lines a day), soft diffused shadow and an optional cosmic aura.
+  It reacts when you finish a piece, reach a 7, 30 or 100 day chain, or change screen.
+  Placement: header corner, floating and snapping, or free. Always on top.
+  New files: companion-art.js, companion-lines.js. The old Companion setting under "Your data" is replaced by the Companion's own card.
+  Cache v5-4.
 
-v2.7 - (v2.6 glass edge light was dropped; this builds on v2.5)
-  Circle Companion settings: new "Character" choice. Spectre (molds into many shapes) or Glass orb
-  (always a perfect sphere; still speaks, gestures and uses props).
-  The shadow under it is now soft and blurred, like diffused light.
-  New "Cosmic aura" switch: glow, two orbit rings, a lens flare on the highlight, star sparkles and tiny twinkling stars.
-  Service-worker cache v18.
+v5.5 - Daily work now shows up in the Plan
+  Pages (or sub-sections) logged on a daily task now count as work done on the Plan pieces under it.
+  - Each open piece shows a small bar (work done) with a mark for where the clock says you should be.
+    Tap a piece to see "Work done" (for example 94 of 246 pages) and "Against the clock" (days ahead or behind).
+  - Chapter and thesis bars count work done, weighted by allotted days, not only whole finished pieces.
+  - If one daily task covers several pieces (Skim then Scan), its progress is shared out in clock order.
+  - The finish forecast follows your real pace once a piece has been under way for two days or more, so the buffer
+    grows or shrinks a little each day. The fixed deadlines do not move.
+  - A piece is still marked done only when you finish it, or when its daily task reaches 100%.
+  New test file: tests/work.test.js. Cache v5-5.
 
-v2.7.1 - The Companion settings drop-downs now use the full card width. Cache v19.
+v5.6 - Pick, then start
+  The Today screen now recommends the next pieces. A piece starts only when you press "Start this".
+  - Working on: the pieces you started (two at a time is the comfortable limit; a third asks first).
+  - After Start, the app asks how you want to work: a daily pace (pages or steps), sub-sections, or just the clock.
+  - Waiting is not counted as late. The clock for a piece runs from the day you start it, and finishing measures the real time taken.
+    Fixed deadlines do not move, so unused days still show as lost buffer in the thesis forecast.
+  - "New daily task" on Today: start from the Plan (recommended pieces first), or create a task outside the Plan.
+    Tasks outside the Plan do not move the thesis clock.
+  - Locked pieces cannot be started; the app says why.
+  - Existing data: the app switches to this mode once, at first opening. Pieces you have already logged work on count as started.
+  - A started piece with no work yet can be moved back with "Stop working on this".
+  New test file: tests/pick.test.js. Cache v5-6.
 
-v2.8 - Sounds and vibration (with settings), a round save button at the bottom left (tap to confirm "Saved on this phone", with Back up now), and the Companion's "Avoid text" setting plus tap-to-speak support. Cache v20.
+v5.7 - A Today panel about today's work
+  The top panel of Today now starts with today's work, not the buffer:
+  - Today's goal: "12 of 15 pages" with a ring. With several daily tasks it shows how many daily goals are done, with a line for each.
+    The goal is your planned daily pace, or the amount you need if that is higher.
+  - Your pace: the last 7 days against what you need, and your progress on the daily task.
+  - Last 7 days against the 7 before, and last 30 days against the 30 before, in "plan days" (one plan day = one day of the thesis plan;
+    1 a day means exactly on plan). Only the days since you began are counted.
+  - Where your speed leads: the finish date at your 30-day speed (7-day speed in the first two weeks), against the year-4 target
+    (11 Feb 2027) and the JRF end (11 Feb 2028).
+  - Up to three short insights: behind on a deadline, a small amount left today, chain at risk, ahead or behind the clock, faster or slower week.
+  - The fifth-year buffer is now a slim strip at the bottom of the panel. Tap it to open Outlook.
+  New test file: tests/rhythm.test.js. Cache v5-7.
 
-v2.9 - All Goal Manager looks are now in the Budget Manager: Paper (page colour, dots/graph/ruled, margins, texture), Aurora and 11 nature themes (Settings, Look), plus the new Sunflower accent. Aurora stays the default, so nothing changes until you choose. Also carries the v5.9/v5.10 fixes: sound and vibration react when your finger lifts, "Quiet at night" off by default, original gentle vibration pulses, and the Companion no longer jumps mid-slide. Cache v21.
+v5.8 - The Today panel is now graphic: a ring with the number inside (segmented for several tasks), up to three icon chips (chain, pace, week against week), a 14-day bar strip with a dashed goal line, a road to your target and the JRF end with a projected-finish dot, and a buffer gauge. Tap any of them and the Companion says the detail (or shows a small card if Talking is Silent).
+      "Other date" in the log sheets lets you add work for a day you forgot (not in the future, not before the JRF began). It is marked "added later".
+      New sounds (all under 3 seconds, made on the phone) and vibration patterns, with their own settings. A round save button sits at the bottom left. Quiet secondary buttons when a piece is already active.
+      Companion: new "Avoid text" setting (Off / Gentle / Eager). It slides slowly beside text and stays there. Cache v5-8.
 
-v2.10 - The Look card is tidier: the theme tiles are smaller, four to a row. Cache v22.
+v5.9 - Fixes. Sounds and vibration now react when your finger lifts (Android only allows them after a finished tap), and the audio is unlocked on the first tap. "Quiet at night" is now off by default (it had silenced every sound after 10 pm); settings were reset to the new defaults. Vibration patterns are longer and stronger, and Settings has a "Feel the vibration" button with a status line. The Companion no longer jumps during a slide when a setting changes or the screen resizes. Cache v5-9.
 
-v2.11 - Tap a graphic and the Companion explains it in one or two short sentences: the ring, the "Day x of y" line, the pace bar, today against your average, the three tiles, the category bars (Today and Month). In privacy mode it says no amounts.
-      Sounds for real moments, never cheering a spend: a soft confirmation when you log a spend; a low double tone when the month's pool is broken or a big purchase is blocked; a small glad sound when you close a day under your average; a rising sound when money moves to savings; a fanfare when a month closes within budget; save, undo and "money kept" sounds. All under 3 seconds, with the same settings as before.
-      All confirmations and warnings now come from the Companion, with an Undo button when it applies.
-      Long cards in Settings fold with a small triangle (state remembered). Companion and Sounds settings are sectioned too.
-      Shared Companion changes: a physical spring stop after "Avoid text" slides or a drag-and-snap, a soft lens flare in the aura, the Colour setting (Classic or Shifting spectrum), and sliders that move only when you drag the handle on purpose (switches ignore swipes). Cache v23.
+v5.10 - New theme "Sunflower": lemon-yellow to deep golden yellow, with dark text, in light and dark mode (Settings, Aurora colours, Palette). Marigold is unchanged. Vibration patterns are back to the original gentle feel; the strength option (Light, Medium, Strong) stays. Cache v5-10.
+
+v5.11 - The Look card is tidier: the theme tiles are smaller, four to a row, so Settings is shorter. Cache v5-11.
+
+v5.12 - Fix: after the app's quiet one-minute refresh, the app stayed in "still" mode (no animation) until you tapped a tab. That froze the Companion, so it jumped instead of gliding. The refresh now restores the normal animation state. Cache v5-12.
+
+v5.13 - Page icons in "Log pages read or done today": seven book-page icons with real page numbers, starting after the last page you finished (finished 113, and the row shows 114 to 120). Tap the last page you reached and all pages up to it light up; the amount fills in itself. "Last finished: N · change" sets where you are (a note, never counted as work today). The Companion asks "What is the last page you finished?" only when the app is unsure (no entry for 3 or more days on a task under way), at most once a day for each task.
+      New page-turn sound and vibration: each lit page plays the next note of a rising scale with a soft paper swish; Log gives a chime, a fuller chord when the daily goal is met, and a brighter sparkle for pages beyond the goal. The tap sound is now a soft, quiet glass "tink". The Companion now delivers the app's responses (confirmations, warnings, with the Undo button on a small card); with the Companion hidden, the normal toast returns. Cache v5-13.
+
+v5.14 - Page icons are shorter and wider, like real pages. About five show at once; swipe sideways for up to 30 ahead. The row always starts after the last page you finished.
+      Log history: a card on Today and a link in the log boxes. Entries by day, newest first, with day totals (for example "Mon 12 Oct · 14 pages · 2 entries"), time, task, amount, an "added later" tag, and position notes shown as notes (not work). Edit an amount, or delete a wrong entry; the Companion offers Undo and everything is recalculated. Filter by task. 14 days shown, "Show older" for more.
+      Long panes fold with a small triangle (closed, open). Settings opens on the most useful parts; your choice is remembered.
+      Accidental touches: sliders now move only when you deliberately drag the round handle (a tap on the bar does nothing, and a scroll that starts on a slider does not move it). Switches ignore a swipe.
+      Companion: a physical stop after "Avoid text" slides or after a drag-and-snap: it leans into the move, runs a little past the spot, rebounds, takes a small second bounce and settles. With reduced motion or Lite mode it moves straight there.
+      Companion: a soft lens-flare in the aura (a bloom at the highlight and faint ghosts), tinted to its colour. No sharp star spikes.
+      Companion: new "Colour" setting, Classic or Shifting spectrum (two or three soft colours drifting; speed Slow, Calm or Lively). Off by default. In Lite mode or with reduced motion it keeps one colour a day.
+      Cache v5-14.
       Credits: the lens-flare textures are resized and softened from three.js examples (MIT License, Copyright (c) three.js authors, https://github.com/mrdoob/three.js).
 
-v2.12 - Same Companion effects as Goal Manager v5.15: fading glass, travelling outline light, "catch the light" flare (Soft or Photographic), movement styles and speed when it avoids text. Cache v24.
+v5.15 - Companion effects. Parts of the spectre body now fade in and out softly, like light through glass (never the face). A soft band of light and a soft band of shadow travel round the outline of every character, and parts of the outline fade away. Every 10 to 20 seconds the brightest part of the outline "catches the light" with a short flare. Settings, Circle Companion: "Glass effects" (Rich, Light, Off), "Lens flare style" (Soft or Photographic, a real starburst from the owner's own image), "Catch the light" on or off. Lite mode and reduced motion switch it all off.
+      New: "Movement style when it avoids text" (Springy, Glide, Float, Hop, Dart) and "Speed of that movement" (Slow, Normal, Fast). Cache v5-15.
 
-v2.13 - Flagship theme, dark themes, no more jumping. Same as Goal Manager v5.16.
-      New: "Version 2.13" is shown just under the app title.
-      Fixed: the amount sheets and keypad no longer jump. They are pinned to the top and only grow downwards; the page behind is frozen while a sheet is open.
-      New: the Companion avoids text inside sheets and keypads too, but never moves while your hands are on the keypad.
-      New: the Flagship theme (now the default): refined frosted glass, thin large numbers, light small text, soft rounded shapes, slow silky motion. Light and dark versions; Sapphire or Champagne Gold accent; optional Soft glow; letters: phone default, Inter, Manrope or Arial.
+v5.16 - Flagship theme, dark themes, no more jumping.
+      New: "Version 5.16" is shown just under the app title.
+      Fixed: the sheets (log pages, amounts, keypad) no longer jump. They are pinned to the top, so they only grow downwards; the page behind is frozen while a sheet is open; the keyboard no longer moves them.
+      New: the Companion now avoids text inside sheets and keypads too. It never moves while your hands are on the keypad. If nowhere is clear it waits in the dim strip above the sheet.
+      New: the Flagship theme, now the default. Calm precision and airy clarity: refined frosted glass, thin large numbers and titles with light small text (never bold), soft rounded shapes, one soft light from the top left, slow and silky motion with no bounce. Light and dark versions. Accent: Sapphire or Champagne Gold. Optional "Soft glow" (a faint glow on the lower edge of cards, buttons and bars). Letters: phone default (San Francisco or Roboto), Inter, Manrope or Arial.
       New: five dark themes: Royal Gold, Midnight Forest, Deep Ocean, Ember Dusk, Graphite. Look is sorted into Light themes and Dark themes.
-      Changed: themes are fixed and never follow the phone's dark setting. Optional "Follow my phone" switches between your last light and last dark theme.
-      Changed: an untouched Aurora or Paper look moves to Flagship once.
-      IMPORTANT: also copy flagship.css and the folder fonts/ into your repository.
-      Credits: Inter and Manrope, SIL Open Font License 1.1. Cache v25.
+      Changed: themes are now fixed. A light theme stays light and a dark theme stays dark, whatever your phone is set to. Optional "Follow my phone" switches between your last light theme and your last dark theme (first dark: Flagship Dark if your light theme is Flagship, otherwise Graphite).
+      Changed: a Paper look you never customised moves to Flagship once. A customised Paper page stays as it is.
+      IMPORTANT: also copy the new file flagship.css and the folder fonts/ into your repository.
+      Credits: Inter and Manrope fonts, SIL Open Font License 1.1 (fontsource.org). Cache v5-16.
 
-v2.14 - Visible buttons, calmer colours, a cooler phone.
+v5.17 - Visible buttons, calmer colours, a cooler phone.
       Fixed: in Flagship (light and dark) and every dark theme, secondary buttons, keypad keys and chips now have their own fill and a clear edge, so they can always be seen. Accent buttons keep their colour and get a fine edge.
       Changed: the five dark themes are now muted and flat (soft grey-tinted colours, only a whisper of light in the corner, flatter shadows). Flagship Dark and Light have a quieter haze.
       Changed: the other light themes are paler and more muted, with only a slight gradient. Aurora's colour haze is half as strong; the nature themes have a lighter sky and a soft veil over the scenery.
       Cooler phone (nothing removed): the main heat came from the frosted-glass blur being redone for every card under the moving Companion many times a second. On smooth backgrounds (Flagship, dark themes, Aurora, Paper, nature themes without a wallpaper photo) the blur could not be seen anyway, so cards use a slightly more frosted tint instead. The nav bar, sheets and speech bubbles keep the live blur, and so does any look with a wallpaper photo. The Companion now draws its resting animation about 20 times a second (it was 30), remembers where the words on the page are instead of scanning every word several times a second, and checks for text every 0.6 second. The soft colour haze no longer has an extra blur layer. In my test the idle load fell from about 85% to about 35% of one core (laptop test, so expect smaller numbers on a phone).
-      Cache v26.
+      Cache v5-17.
 
-v2.15 - Categories that adapt, today against yesterday, a torn-paper note.
-      New: the five categories you use most stay on top, in order of use. The rest rest under a small arrow ("12 more"). Tap it to open or close them. They move up again when you use them.
-      New: a card under the dashboard shows spent today so far / yesterday (for example 357/513) with two slim bars. Tap it to hear the numbers.
-      New: a yellow torn-paper strip above the dashboard shows your last entry.
+v5.18 - Today against yesterday, a torn-paper note, and a phone that follows Flagship.
+      New: a small card under the Today panel shows pages done today / yesterday (for example 11/23) with two slim bars. Tap it to hear the numbers.
+      New: a yellow torn-paper strip above the Today panel: "You finished reading page 143 last sitting". It uses your last entry and your "last page" notes. Tap it to open the log history.
       New: Settings > Sounds has a separate "Glass tap sound" switch. The other sounds stay on.
       Changed: "Follow my phone" now always uses Flagship Light and Flagship Dark.
-      New: Insights also tells you in which part of the day you spend most.
-      Cache v27. Copy ALL files, including flagship.css, look.js, feel.js and the fonts/ folder.
+      New: the habits card also tells you in which part of the day you work most, and your average entry.
+      Every entry already stores its date and time, so speed and habits are worked out from all of them.
+      Cache v5-18. Copy ALL files, including flagship.css, look.js, feel.js and the fonts/ folder.
 
-v2.16 - Note and "yesterday" refinements.
-      Changed: the torn note is now old white paper with a yellow tint, half as tall: "Last entry: Groceries · ₹357, today".
-      Changed: no separate today/yesterday card. The "Today so far" bar now has a thin line for yesterday's spending, with its amount. Tap the bar and the Companion explains.
-      Cache v28.
+v5.19 - Note and "yesterday" refinements.
+      Changed: the torn note is now old white paper with a yellow tint, half as tall, and says "Last time you stopped at page 145".
+      Changed: no separate today/yesterday card. Under the daily bars in the Today panel there is one slim line: pages today, a thin mark for yesterday, and a gold part when you pass yesterday. Tap it and the Companion explains.
+      Cache v5-19.
 
-v2.17 - Weekday averages corrected.
-      Fixed: "Which days cost most" no longer divides by a fixed eight weeks. Each weekday is divided by how many of that weekday really passed since your first entry (a day with no spending counts as zero). Voided entries, adjustments and imports are not counted.
-      New: one very large entry (a big purchase, or about ₹1,000 and more than 10 times your usual entry) is flagged. The card shows the average with it and without it, and the entry's name, amount and date.
-      New: the card says how many days were counted, and says plainly when a weekday has fewer than 3 days: too few to show a habit. Weekday insights in words appear only after 4 weeks.
-      Your records are never changed; only the calculation and the explanation changed.
-      Example from your backup: Monday = 5 Oct ₹7,361 + 12 Oct ₹110 = ₹7,471 over 2 Mondays = ₹3,735.50 (shown as 3.7k); without the ₹7,300 fragrance, ₹85.50.
-      Cache v29.
+v5.20 - Real frosted glass everywhere, a much cooler phone.
+      Changed: every theme (Flagship, dark, Aurora, Paper, nature) has the real live frosted glass again, as in v5.15. Nothing is switched off.
+      Cooler phone, nothing removed: the Companion no longer redraws when nothing changes. While the page scrolls or you type it holds its picture; when you pause it moves about 10 times a second; after about 9 seconds of stillness it rests and stirs for a moment now and then. Moods, props, pokes and moves are still drawn at once. Its busy moves are capped at 30 pictures a second (60 only while you drag it). Snow and rain move in smooth small steps. Test on a laptop: with the glass on, the Companion at rest cost 1% of a core, against about 70-85% before.
+      Changed: the note under the header is now a soft old-paper note that matches the app, with the time in natural words: "You last stopped at page 145, yesterday at 8:40 pm."
+      Changed: the yesterday mark under the daily bars is darker and clear on Flagship light.
+      New: the Welcome screen shows the app version.
+      Cache v5-20. Copy ALL files (companion.js, look.js, flagship.css, style.css, app.js, index.html, sw.js, feel.js).
 
-v2.18 - Real frosted glass everywhere, a much cooler phone, a better ledger.
-      Changed: every theme has the real live frosted glass again. Nothing is switched off. The Companion redraws only when something changes (see Goal v5.20 notes).
-      New: the Ledger (Month tab) lists every day with its total and number of entries, then that day's entries with the time. Each entry has Edit (amount, bank or cash, note) and Delete. Both can be undone from the message that appears. Edits keep the original time. Show older adds 14 more days.
-      Changed: the note under the header is a soft old-paper note: "Your last entry was ₹95 for Groceries, yesterday at 11:17 pm."
-      Changed: the yesterday line on "Today so far" is clearer; the Welcome screen shows the app version.
-      Cache v30.
-
-v2.19 - A livelier Companion that rests and wakes gently, clearer buttons, a cooler phone.
+v5.21 - A livelier Companion that rests and wakes gently, and a cooler phone.
       Changed: the Companion no longer jumps between still and moving. Its own clock slows to a stop and starts again softly, and it stirs for about 4 seconds every 12 to 25 seconds. It also checks how hard it is working for your phone (and your battery) and draws less often if needed.
-      Removed: the photographic lens flare. Only the gentle bloom is left.
-      Ledger: Edit and Delete are now small icons with a tooltip (pen and bin). Delete asks first, then still offers Undo.
-      Buttons now have a thin outline on every light theme (Paper, nature, Aurora and the rest), so you can always see them.
+      Removed: the photographic lens flare. Only the gentle bloom is left (the file is much smaller).
+      Log history: Edit and Delete are now small icons with a tooltip. Delete asks first, then still offers Undo.
       The note at the top is now a simple, flat banner.
 
-v2.20 - One banner with tips, smart sections, clearer edit buttons.
-      New: the top banner now shows "last entry" (info icon) and, now and then, a tip or proverb (bulb icon). The text slides up inside the banner. The separate tip block is gone.
-      New: Smart sections on Today, Month, Mindful and Insights. After two weeks the app folds sections you have not opened for three weeks under "More". Switch it off in Settings.
-      Fixed: the Save button text was invisible on light themes.
+v5.22 - One banner with tips, smart sections, clearer edit buttons.
+      New: the top banner now shows "last finished" (info icon) and, now and then, a tip or proverb (bulb icon). The text slides up inside the banner. The separate tip block is gone.
+      New: Smart sections. After two weeks the app folds sections you have not opened for three weeks under "More". Switch it off in Settings.
+      Fixed: the Save button text was invisible on light themes. Log history now has a Cancel button, and the note row uses the same bin icon.
       New file: DESIGN-LANGUAGE.md, the design rules shared by all your apps.
 
 Update (17 Oct 2026, later): The Lens flare style list is gone (only the gentle bloom remains, so there is nothing to choose). Tips in the top banner now use normal upright type. Every button now has a visible edge on all themes, including the Companion's question box and the More button. Checked on all 10 themes and every tab.
 
-v2.22 - Shared style update: small buttons and chips have a hairline edge on every theme (same as Goal v5.24). Nothing else changed.
+v5.24 - Every button is visible on every theme.
+      Fixed (checked with your real backup on all 10 themes): the small buttons "New daily task", "Choose another piece", "Last finished: N · change" and "Log history" now have a hairline edge. The info chips (streak, pace, percent) have an edge too, and their text is darker on light themes.
 
 Release 2 (Goal v5.25 / Budget v2.23) - First-launch wizard, tour and small questions later.
       New: on a fresh install a short wizard asks five things: your name, the look, the Companion, privacy and comfort, and the backup time. If you already have data, you will not see it.
@@ -145,20 +197,24 @@ Liquid glass (Goal v5.32 / Budget v2.30) - New Settings card "Glass style": Fros
 
 Liquid fixes (Goal v5.33 / Budget v2.31) - The bottom tab bar stays fixed again in Liquid and is the same size as in Frosted. The rim light is now outside the glass edge; new Shadow and Top shine sliders; buttons follow the same design with a frostier fill; an adaptive hairline runs round every glass object (stronger when the glass is clearer).
 
-Bundle G (Budget v2.32) - The ledger shows the five most recent entries; Show older reveals 10 more each tap, and each day header still shows the whole day total.
-
 Bundle G (Goal v5.34 / Budget v2.32) - Saved and Undo messages now use glass (Frosted or Liquid, to match your Glass style); swipe left or right anywhere (not on rows, sliders or sideways strips, and not from the screen edges) to change tab.
 
-v2.33 fix: Liquid rim light — white part inside the hairline, dark part outside it.
+v5.35 fix: Liquid rim light — white part inside the hairline, dark part outside it.
 
-v2.34 New: weekly and monthly report on the Insights tab. Weeks run Monday to Sunday. While a week or month is running it is compared with the same days of the last one; a closed one is compared in full. Donut of spending by category, paired bars, a day strip (calendar for months), and "Habits I noticed", found by comparing category, note words, price per person and rhythm. Notes like 2N are read as 2 persons. Tap a habit to name it. One triangle marker for every rise and fall.
+v5.36 New: the word Task replaces Piece everywhere. Speed: say how much you do in one hour, and optionally add how long a sitting took when you log. The app learns your speed from three clues; when they agree (confident) it uses the new speed quietly and keeps a history with Undo; when it is not sure (still learning) it only asks. Fixed: tab swipe no longer jitters. Danger text buttons have a hairline.
 
-v2.35 Fixed: tab swipe no longer jitters (transform-only slide). Danger text buttons have a hairline.
+v5.36 Fixed: tab swipe jitter (the browser back-swipe was fighting with ours). Liquid: separate Light rim and Dark rim sliders (brightness and blur), crisper white inner rim. Screens refresh only when you look at them; no minute timer, and no timers while the app is hidden.
 
-v2.35 Fixed: tab swipe jitter (the browser back-swipe was fighting with ours). Liquid: separate Light rim and Dark rim sliders (brightness and blur), crisper white inner rim. Screens refresh only when you look at them; no minute timer, and no timers while the app is hidden.
+v5.37 New: Work report in Outlook (Week or Month, this or last). About how many hours you worked, compared with the same days before while the period runs, and full against full once it closes. Plan-kept ring (rest and leave days are never counted as missed), a donut of hours by task, paired bars with the same triangle marker, days you worked, how you work (days, times, sitting length, speed: confident or still learning), finished tasks named, and work left at your speed as a range of weeks. Hours come from the minutes you enter; without minutes they are estimated from your speed and marked so. Deadlines are never moved.
 
-Version 2.36: one button language, the same as Goal v5.39 (full pill shape; pale glass and filled accent; crisp white top shine, soft dark bottom shadow). Look settings can be saved to a file and restored (Settings, My look settings). First frame matches your theme and phone mode. Fixed the blink after a tab swipe.
+v5.38 New: one button language. Every button now has the same shape and two states (pale glass, filled accent), a crisp white top shine (65%, no blur) and a soft dark bottom shadow (3 px blur). Look settings can be saved to a file and restored (Settings, My look settings): themes, glass, rim sliders, fonts, paper, sounds and the Companion. The first frame now matches your theme and your phone's light or dark mode. Fixed: the blink after a tab swipe (the screen fade started again 0.3 s later).
 
-Version 2.37: less work on every tab switch (the look is only applied again when something about it changed), to stop the blink after a swipe.
+v5.39 Changed: every button is now a full pill, the same shape as the Budget backup buttons; effects unchanged.
 
-v2.38 (2026-10-22): the Goal design arrives: three kinds of button (primary, glass, outline) plus links, one 40 px height, Glass tint sliders, Liquid cards with the accent tint, bipolar Liquid Tint, backup reminder fix ("I saved it"), and the new Settings (top page with Backup and Look tiles, one page per group). "13 more" and similar are links by design. Close and open the app twice to update.
+v5.40 New: Liquid glass body tone (Settings, Glass style, Body tone, default 15%): the body of each glass object is slightly darker on light themes and slightly lighter on dark themes, so the bright rim and shine read as real gloss. Set it to 0 to switch it off.
+
+v5.41 Changed: three kinds of button, all pills of one height (40 px). Primary (filled, bold text), Glass (tinted glass for actions that belong to the task, normal text) and Outline (hollow glass, for things not part of the task, such as Add and Choose another task). "More" buttons are underlined links. New: Settings, Button glass, with Accent tint and Black tint sliders for the glass buttons (default 9% and 0%).
+
+v5.42 Changed: Liquid glass cards now take the same light accent tint as the glass buttons (default 9%), instead of a black or white layer. The Body tone slider is replaced by Settings, Glass tint (Accent tint and Black tint), which covers buttons and Liquid cards. If you do not see a new version, close the app completely and open it twice: the app saves itself for offline use and updates on the second open.
+
+v5.43 Fixed: the backup reminder now goes away after you back up. When the phone says the share sheet was closed, the app asks once ("I saved it") instead of guessing. Changed: Liquid Tint slider is centred at none; right adds white (1 to 10%), left adds black (1 to 10%).

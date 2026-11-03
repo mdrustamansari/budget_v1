@@ -205,7 +205,10 @@ Text never below about 11.5 px. Every control has a 44 px touch area even when i
 ## Release 2 (3.01 / 6.01)
 One voice: titles are sans; a setting offers serif for the app name and the big question only. Cards: 24 px corners, 20 px padding, 16 px gap. The frame never moves: nothing may widen the page; pinch zoom is locked. Text size is a user setting (Small, Default, Large, Larger).
 
-## Release 3 (3.02 / 6.02)
-- Sheet entrance: `r3spring` .46 s, transform only (never opacity: it would switch the glass off). Not on the wizard layer.
-- Enter-to-next lives in `r3.js` and works on every sheet box; a box that handles Enter itself sets `data-enter="own"`.
-- Safety copy: keys `<app>_auto1` and `<app>_auto2`, weekly, shown in Settings > Backup.
+## Release 3 (6.02)
+- Same spring, Enter-to-next and safety copy as Budget 3.02 (`r3.js`, keys `gl_auto1`, `gl_auto2`).
+- Every delete goes through `delU(id)`: one place, one Undo toast.
+
+## 6.03: work named by kind
+- Kinds are Reading, Drafting, Editing (shown "Editing" in short lines, "Editing and proofreading" in full). `kindOfGoal(id)` finds it by walking up to the phase or group.
+- Pace is learned in hours first (`learned[g].hr`), in days as the fallback.
