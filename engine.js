@@ -1,480 +1,628 @@
-/* Rustam's Goal Manager: the commitment engine.
- * Everything on screen is calculated from one list of events: derive(events, now).
- * Rules: unfinished work always carries forward; deadlines never move; early work builds buffer.
+/* Rustam's Budget Manager: the money engine.
+ * Pure rules, no screen code. Everything the app shows is calculated from one list of events:
+ *   derive(events, now) -> a complete picture of the money.
+ * Undo is just a "void" event, so history is never lost and the numbers can never drift.
  */
 (function (root) {
     'use strict';
+
+    const DAY = 86400000;
     const pad = n => String(n).padStart(2, '0');
-    const dn = key => { const p = String(key).split('-'); return Math.floor(Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000); };
-    const keyOf = n => { const d = new Date(n * 86400000); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); };
-    const localKey = ts => { const d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
-    const weekday = n => (new Date(n * 86400000).getUTCDay());
-    const addYears = (key, y) => { const p = key.split('-'); const yy = +p[0] + y, m = +p[1], d = +p[2]; const dt = new Date(Date.UTC(yy, m - 1, d)); return keyOf(Math.floor(dt.getTime() / 86400000)); };
-    const num = (v, d) => (isFinite(Number(v)) && v !== '' && v !== null && v !== undefined ? Number(v) : d);
-    const HORIZON = 1825;
-    const WORK_DEFAULT = [1, 2, 3, 4, 5, 6];
+    const ymKey = (y, m) => y * 12 + m;
+    const keyOfTs = ts => { const d = new Date(ts); return ymKey(d.getFullYear(), d.getMonth()); };
+    const dateKey = ts => { const d = new Date(ts); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+    const dim = (y, m) => new Date(y, m + 1, 0).getDate();
+    const startOfDay = ts => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+    const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : (isFinite(Number(v)) && v !== null && v !== '' && v !== undefined ? Number(v) : d));
 
-    function normGoal(g) {
+    /* ---------- Icons ---------- */
+    const ICONS = [
+        ['🥛', 'Milk'], ['🥚', 'Egg'], ['🍗', 'Chicken'], ['🥩', 'Meat'], ['🐟', 'Fish'],
+        ['🥦', 'Vegetables'], ['🍎', 'Fruit'], ['🥜', 'Dry fruits'], ['🌾', 'Wheat'], ['🍚', 'Rice'],
+        ['🍞', 'Bread'], ['🛒', 'Groceries'], ['🎁', 'Gifts'], ['🍽️', 'Meals'], ['☕', 'Tea & coffee'],
+        ['🛺', 'Auto / travel'], ['🚌', 'Bus'], ['⛽', 'Fuel'], ['🏠', 'Home'], ['💡', 'Electricity'],
+        ['💧', 'Water'], ['📱', 'Phone'], ['💊', 'Medicine'], ['📚', 'Books'], ['👕', 'Clothes'],
+        ['💈', 'Grooming'], ['🌸', 'Fragrances'], ['👟', 'Shoes'], ['🧾', 'Misc']
+    ];
+    const ICON_RULES = [
+        [/dry\s*fruit|nut/i, '🥜'], [/non[\s-]?veg|chicken|mutton|meat/i, '🍗'], [/fish/i, '🐟'], [/egg/i, '🥚'],
+        [/milk|dairy/i, '🥛'], [/veg/i, '🥦'], [/fruit/i, '🍎'], [/wheat|atta|flour/i, '🌾'], [/rice/i, '🍚'],
+        [/bread/i, '🍞'], [/grocer|kirana|ration/i, '🛒'], [/gift/i, '🎁'],
+        [/canteen|food|meal|lunch|dinner|restaurant/i, '🍽️'], [/tea|coffee/i, '☕'],
+        [/convey|transport|travel|bus|auto|commute|metro/i, '🛺'], [/fuel|petrol|diesel/i, '⛽'],
+        [/rent|home|house/i, '🏠'], [/electric|power|bijli/i, '💡'], [/water/i, '💧'],
+        [/phone|mobile|recharge|internet/i, '📱'], [/medic|health|pharma/i, '💊'],
+        [/book|study|school|tuition/i, '📚'], [/shoe|sandal|footwear/i, '👟'], [/cloth|dress|shirt/i, '👕'],
+        [/groom|barber|salon|haircut|shav/i, '💈'], [/fragran|perfume|attar|scent|deo/i, '🌸']
+    ];
+    function guessIcon(name) {
+        const n = String(name || '');
+        for (const [re, ic] of ICON_RULES) if (re.test(n)) return ic;
+        return '🧾';
+    }
+
+    /* ---------- Categories ---------- */
+    // Which spending counts as a big purchase, and each category's own monthly allowance
+    function defaultPur(name) {
+        const n = String(name || '');
+        const P = (mode, thr, per, allow) => ({ mode, thr, per, allow });
+        if (/rent|electric|power|bijli|milk|dairy|egg|veg|chicken|mutton|meat|fish|wheat|atta|flour|rice|grocer|kirana|ration|convey|transport|commute|bus|metro|auto/i.test(n) && !/dry\s*fruit/i.test(n)) return P('never', 0, 'month', 0);
+        if (/canteen|meal|lunch|dinner|restaurant|food/i.test(n)) return P('above', 150, 'day', 0);
+        if (/dry\s*fruit|nut/i.test(n)) return P('above', 1000, 'month', 0);
+        if (/gift/i.test(n)) return P('above', 3000, 'month', 0);
+        if (/fragran|perfume|attar|scent/i.test(n)) return P('always', 0, 'month', 500);
+        if (/cloth|dress|shirt|shoe|footwear/i.test(n)) return P('always', 0, 'month', 1000);
+        if (/groom|barber|salon/i.test(n)) return P('always', 0, 'month', 300);
+        return P('always', 0, 'month', 500);
+    }
+    function normPur(p, name) {
+        if (p && ['never', 'always', 'above'].indexOf(p.mode) >= 0) {
+            const d = defaultPur(name);
+            const allow = p.mode === 'never' ? 0 : (p.allow !== undefined && p.allow !== null && Number(p.allow) >= 0 ? Number(p.allow) : d.allow);
+            return { mode: p.mode, thr: Number(p.thr) || 0, per: p.per === 'day' ? 'day' : 'month', allow };
+        }
+        return defaultPur(name);
+    }
+    // Lump items are paid once a month (rent, a month's wheat), so the forecast does not scale them up
+    const defaultLump = name => /rent|electric|power|bijli|wheat|atta|rice|tuition|fee|emi|insurance/i.test(String(name || ''));
+    function normCat(c) {
         return {
-            id: g.id, kind: ['project', 'life', 'ms', 'item', 'piece'].indexOf(g.kind) >= 0 ? g.kind : 'task',
-            phase: g.phase || null, isPhase: !!g.isPhase, over: g.over || null,
-            parent: g.parent || null, title: String(g.title || 'Untitled'),
-            unit: g.unit || 'pages', total: Math.max(0, num(g.total, 0)), perDay: Math.max(0, num(g.perDay, 0)),
-            days: Array.isArray(g.days) && g.days.length ? g.days.map(Number) : WORK_DEFAULT.slice(),
-            start: g.start || null, deadline0: g.deadline0 || null,
-            thesis: g.thesis !== false, cat: g.cat || 'Other', due: g.due || null, notes: g.notes || '',
-            createdAt: g.createdAt || 0,
-            pdays: Math.max(0, num(g.pdays, 0)), phrs: Math.max(0, num(g.phrs, 0)), fixedEnd: g.fixedEnd || null, mirror: g.mirror || null,
-            grp: g.grp || null, role: g.role || null, qty: Math.max(0, num(g.qty, 0)), qunit: g.qunit || 'pages', qpace: Math.max(0, num(g.qpace, 0)), uph: Math.max(0, num(g.uph, 0)), chap: !!g.chap, ord: (g.ord === undefined || g.ord === null) ? null : num(g.ord, 0), budget: Math.max(0, num(g.budget, 0)), wt: Math.max(0, num(g.wt, 0)), custom: !!g.custom
+            id: c.id,
+            name: String(c.name || 'Untitled'),
+            icon: c.icon || guessIcon(c.name),
+            limit: Number(c.limit) || 0,
+            type: c.type === 'fixed' ? 'fixed' : 'variable',
+            price: Number(c.price) || 0,
+            lump: c.lump === undefined ? defaultLump(c.name) : !!c.lump,
+            pur: normPur(c.pur, c.name),
+            defAcct: c.defAcct === 'cash' ? 'cash' : 'bank'
         };
     }
-
-    /* One task, day by day: what was planned, what was done, what carries forward. */
-    function simTask(g, ctx, extraDoneByDay) {
-        const startN = dn(g.start), perDay = g.perDay, total = g.total;
-        const doneMap = ctx.done.get(g.id) || new Map();
-        const replans = (ctx.replans.get(g.id) || []);
-        const planAt = [], doneAt = [], ledger = [];
-        let planCum = 0, doneCum = 0, planFinishN = null, finishedN = null;
-        let extraLeft = 0, extraPer = 0, extraDays = 0;
-        doneMap.forEach((q, n) => { if (n < startN) doneCum += q; });
-        const maxN = Math.max(ctx.todayN + 1, startN) + 3650;
-        let n = startN;
-        for (; n <= maxN; n++) {
-            const prevDone = doneCum;
-            doneCum += doneMap.get(n) || 0;
-            replans.forEach(r => {
-                if (r.dayN === n) {
-                    const b = Math.max(0, planCum - prevDone);
-                    if (b > 0) {
-                        ledger.push({ dayN: n, backlog: b, slipDays: perDay > 0 ? b / perDay : 0, spread: r.spread });
-                        planCum -= b; extraLeft = b; extraPer = b / Math.max(1, r.spread); extraDays = Math.max(1, r.spread);
-                    }
-                }
-            });
-            const working = g.days.indexOf(weekday(n)) >= 0 && !ctx.leave.has(n);
-            if (working && planCum < total - 1e-9) {
-                let inc = perDay;
-                if (extraDays > 0) { const e = Math.min(extraPer, extraLeft); inc += e; extraLeft -= e; extraDays--; }
-                planCum = Math.min(total, planCum + inc);
-            }
-            planAt.push(planCum); doneAt.push(doneCum);
-            if (planFinishN === null && planCum >= total - 1e-9 && total > 0) planFinishN = n;
-            if (finishedN === null && doneCum >= total - 1e-9 && total > 0) finishedN = n;
-            if (n > ctx.todayN && planFinishN !== null && (finishedN !== null || n > ctx.todayN)) break;
-            if (perDay <= 0 && n > ctx.todayN) break;
-        }
-        return { startN, planAt, doneAt, planFinishN, finishedN, ledger };
-    }
-    const at = (arr, startN, n) => (n < startN || !arr.length) ? 0 : arr[Math.min(arr.length - 1, n - startN)];
-
-    function analyseTask(g, ctx) {
-        const todayN = ctx.todayN, startN = dn(g.start);
-        const s = simTask(g, ctx);
-        const doneMap = ctx.done.get(g.id) || new Map();
-        let doneTotal = 0; doneMap.forEach(q => { doneTotal += q; });
-        const planYest = at(s.planAt, startN, todayN - 1), planToday = at(s.planAt, startN, todayN);
-        const doneYest = todayN - 1 < startN ? Math.min(doneTotal, at(s.doneAt, startN, startN - 1)) : at(s.doneAt, startN, todayN - 1);
-        const doneBeforeToday = Math.max(0, doneTotal - (doneMap.get(todayN) || 0));
-        const doneToday = doneMap.get(todayN) || 0;
-        const started = startN <= todayN;
-        const finished = g.total > 0 && doneTotal >= g.total - 1e-9;
-        const target = started && !finished ? Math.max(0, planToday - doneBeforeToday) : 0;
-        const carriedStart = started ? Math.max(0, planYest - doneBeforeToday) : 0;
-        const carried = Math.min(target, carriedStart), fresh = target - carried;
-        const left = Math.max(0, target - doneToday);
-        const carriedLeft = Math.min(left, Math.max(0, planYest - doneTotal)), newLeft = left - carriedLeft;
-        const behindQty = started && !finished ? Math.max(0, planYest - doneTotal) : 0;
-        const aheadQty = started ? Math.max(0, doneTotal - Math.max(planToday, 0)) : 0;
-        const per = g.perDay > 0 ? g.perDay : 1;
-        let status = !started ? 'later' : finished ? 'done' : behindQty > 1e-9 ? 'behind' : aheadQty > 1e-9 ? 'ahead' : 'on';
-        // actual pace over the last 14 days
-        let wd = 0, sum = 0;
-        for (let k = Math.max(startN, todayN - 14); k <= todayN - 1; k++) {
-            if (g.days.indexOf(weekday(k)) >= 0 && !ctx.leave.has(k)) wd++;
-            sum += doneMap.get(k) || 0;
-        }
-        if (started && doneToday > 0) {      // work already done today counts toward the pace
-            sum += doneToday;
-            if (g.days.indexOf(weekday(todayN)) >= 0 && !ctx.leave.has(todayN)) wd++;
-        }
-        const enough = wd >= 3 && started;
-        const rate = enough ? sum / wd : g.perDay;
-        const deadlineN = dn(g.deadline0 || keyOf(s.planFinishN === null ? todayN : s.planFinishN));
-        // projection
-        let projN = null, never = false;
-        const remaining = Math.max(0, g.total - doneTotal);
-        if (finished) {
-            projN = s.finishedN !== null ? s.finishedN : todayN;
-        } else if (rate <= 1e-9) never = true;
-        else {
-            let rem = remaining, k = Math.max(todayN + 1, startN), guard = 0;
-            while (rem > 1e-9 && guard < HORIZON) {
-                if (g.days.indexOf(weekday(k)) >= 0 && !ctx.leave.has(k)) rem -= rate;
-                if (rem <= 1e-9) break;
-                k++; guard++;
-            }
-            if (rem > 1e-9) never = true; else projN = k;
-        }
-        const projShown = never ? todayN + HORIZON : projN;
-        const slip = projShown - deadlineN;
-        const recoveryPerDay = behindQty > 0 ? per + behindQty / 7 : 0;
-        return {
-            id: g.id, g, startN, total: g.total, done: doneTotal, remaining, perDay: g.perDay, unit: g.unit,
-            started, finished, status, target, carried, fresh, doneToday, left, carriedLeft, newLeft,
-            behindQty, aheadQty, behindDays: behindQty / per, aheadDays: aheadQty / per,
-            projShown, rate, rateActual: enough, planFinishN: s.planFinishN, deadlineN, projN, never, slip,
-            finishedN: s.finishedN, ledger: s.ledger, recoveryPerDay,
-            planYest, planToday, pct: g.total > 0 ? Math.min(1, doneTotal / g.total) : 0
-        };
+    const DEFAULT_CATS = [
+        { id: 1,  name: 'Milk',        limit: 500,  type: 'fixed', price: 31 },
+        { id: 2,  name: 'Eggs',        limit: 500,  type: 'fixed', price: 8.5 },
+        { id: 3,  name: 'Conveyance',  limit: 1500, type: 'variable' },
+        { id: 4,  name: 'Non-Veg',     limit: 1500, type: 'variable' },
+        { id: 5,  name: 'Vegetables',  limit: 1200, type: 'variable' },
+        { id: 6,  name: 'Dry Fruits',  limit: 1000, type: 'variable' },
+        { id: 7,  name: 'Wheat',       limit: 250,  type: 'fixed', price: 200 },
+        { id: 8,  name: 'Rice',        limit: 200,  type: 'fixed', price: 160 },
+        { id: 9,  name: 'Groceries',   limit: 2500, type: 'variable' },
+        { id: 10, name: 'Gifts',       limit: 3000, type: 'variable' },
+        { id: 11, name: 'Canteen',     limit: 600,  type: 'variable' },
+        { id: 12, name: 'Misc',        limit: 250,  type: 'variable' },
+        { id: 13, name: 'House Rent',  limit: 5500, type: 'fixed', price: 5500 },
+        { id: 14, name: 'Electricity', limit: 700,  type: 'variable' },
+        { id: 15, name: 'Grooming',    limit: 500,  type: 'variable' },
+        { id: 16, name: 'Fragrances',  limit: 500,  type: 'variable' },
+        { id: 17, name: 'Clothes',     limit: 1000, type: 'variable' }
+    ];
+    // Events that create the default categories on a brand new install
+    function bootstrapEvents(ts) {
+        return DEFAULT_CATS.map(c => ({ t: 'cat', op: 'add', ts, c: normCat(c) }));
     }
 
-    /* A preview used while creating a task */
-    function planPreview(spec, leaveSet, nowKey) {
-        const g = normGoal(Object.assign({ id: -1, kind: 'task' }, spec));
-        if (!g.start) g.start = nowKey;
-        const ctx = { todayN: dn(nowKey), done: new Map(), replans: new Map(), leave: leaveSet || new Set() };
-        if (!(g.perDay > 0) || !(g.total > 0)) return null;
-        const s = simTask(g, ctx);
-        return { finishN: s.planFinishN, finish: s.planFinishN === null ? null : keyOf(s.planFinishN), workDays: Math.ceil(g.total / g.perDay) };
-    }
-    // The daily amount needed to finish by a deadline
-    function perDayFor(spec, deadlineKey, leaveSet, nowKey) {
-        const g = normGoal(Object.assign({ id: -1, kind: 'task' }, spec));
-        const startN = dn(g.start || nowKey), endN = dn(deadlineKey);
-        let wd = 0;
-        for (let n = startN; n <= endN; n++) if (g.days.indexOf(weekday(n)) >= 0 && !(leaveSet && leaveSet.has(n))) wd++;
-        return wd > 0 ? g.total / wd : 0;
-    }
-
-    /* ---- Time-boxed pieces: every piece has allotted days; the clock chains from one piece to the next ---- */
-    const GRP_RANK = { reading: 0, drafting: 1, editing: 2 };
-    function buildPieces(X) {
-        const { leave: leaveSet, goals, kidsOf, unfinTs, logs: allLogs, pstartMap, dl0Map, rebases, cfg, jrf, todayN, now, done, picks } = X, adjM = X.adj || new Map(), beginMap = X.beginMap || new Map(), pickMode = !!(cfg && cfg.startMode === 'pick');
-        const finMap = new Map(X.finMap);
-        const all = [...goals.values()].filter(g => g.kind === 'piece' && (!g.mirror || goals.has(g.mirror)) && g.pdays > 0);
-        // daily paces: a quantity (pages, steps) logged each day that finishes the pieces under it
-        const under = (id, pid) => { let x = goals.get(pid), n = 0; while (x && n++ < 30) { if (x.id === id) return true; x = x.parent ? goals.get(x.parent) : null; } return false; };
-        const trackList = [];
-        goals.forEach(g => {
-            if ((g.kind !== 'project' && g.kind !== 'piece') || !(g.qty > 0)) return;
-            const m = done.get(g.id) || new Map(), am = adjM.get(g.id) || [], days = [...new Set([...m.keys(), ...am.map(a => a[0])])].sort((a, b) => a - b);
-            let cum = 0, reachedN = null; days.forEach(n => { cum += (m.get(n) || 0) + am.filter(a => a[0] === n).reduce((x, a) => x + a[1], 0); if (reachedN === null && cum >= g.qty - 1e-9) reachedN = n; });
-            const lastLogN = m.size ? Math.max.apply(null, [...m.keys()]) : null, lastPos = am.length ? am[am.length - 1] : null;
-            const scope = all.filter(p => under(g.id, p.id));
-            const lastLogTs = Math.max.apply(null, [0].concat((allLogs || []).filter(l => under(g.id, l.goal)).map(l => l.ts || 0)));
-            // a task you reopened by hand stays open until you log more; the quantity reached does not re-finish it behind your back
-            if (reachedN !== null) scope.forEach(p => { if (!finMap.has(p.id) && !((unfinTs && unfinTs.get(p.id) || 0) > lastLogTs)) finMap.set(p.id, { day: keyOf(reachedN), ts: now, id: null, auto: true }); });
-            trackList.push({ id: g.id, g, total: g.qty, unit: g.qunit, pace: g.qpace, done: Math.max(0, cum), lastLogN, posN: lastPos ? lastPos[0] : null, reachedN, scopeIds: scope.map(p => p.id), loggedToday: (m.get(todayN) || 0) > 0, last7: [...m.entries()].filter(([n]) => n > todayN - 7 && n <= todayN).reduce((s, [, q]) => s + q, 0) });
-        });
-        const ord = new Map(); let k = 0;
-        const dfs = g => { ord.set(g.id, k++); (kidsOf.get(g.id) || []).forEach(dfs); };
-        [...goals.values()].filter(g => !g.parent || !goals.has(g.parent)).sort((a, b) => a.id - b.id).forEach(dfs);
-        const up = (g, f) => { let x = g, n = 0; while (x && n++ < 20) { if (f(x)) return x; x = x.parent ? goals.get(x.parent) : null; } return null; };
-        const chapters = [...goals.values()].filter(g => g.chap).sort((a, b) => ord.get(a.id) - ord.get(b.id));
-        const chapIdx = new Map(chapters.map((g, i) => [g.id, i]));
-        const byPhase = cfg && cfg.order === 'phase';
-        const recs = all.map(g => {
-            const ch = up(g, x => x.chap), gr = up(g, x => x.grp), grp = gr ? gr.grp : (g.grp || null);
-            const ci = ch ? chapIdx.get(ch.id) : 999, rank = grp in GRP_RANK ? GRP_RANK[grp] : 3;
-            return { g, id: g.id, chapter: ch ? ch.id : null, grpNode: gr ? gr.id : null, grp, key: byPhase ? [0, rank, ci, ord.get(g.id)] : [rank === 2 ? 1 : 0, ci, rank, ord.get(g.id)] };
-        }).sort((a, b) => { for (let i = 0; i < 4; i++) if (a.key[i] !== b.key[i]) return a.key[i] - b.key[i]; return 0; });
-        // editing and proofreading is the last stage of the whole thesis: locked until every reading and drafting piece is done
-        const rdOpen = recs.filter(r => (r.grp === 'reading' || r.grp === 'drafting') && !finMap.has(r.id)).length, editLocked = r => r.grp === 'editing' && rdOpen > 0;
-        if (cfg && cfg.order === 'custom') {
-            const base = new Map(recs.map((r, i) => [r.id, i]));
-            const cls = r => { const f = finMap.get(r.id); if (f) return [0, f.day ? dn(f.day) : -1, base.get(r.id)]; const pi = editLocked(r) ? -1 : picks.indexOf(r.id); if (pi >= 0) return [1, pi, 0]; return [2, 0, base.get(r.id)]; };
-            recs.sort((a, b) => { const x = cls(a), y = cls(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i]; return 0; });
-        }
-        // work done on each piece, from the daily paces: a daily task's progress is shared out over the pieces under it, in clock order
-        const recIdx = new Map(recs.map((r, i) => [r.id, i])), workMap = new Map();
-        trackList.forEach(t => {
-            const sc = t.scopeIds.filter(i => recIdx.has(i)).sort((a, b) => recIdx.get(a) - recIdx.get(b)); if (!sc.length) return;
-            const tot = sc.reduce((s, i) => s + goals.get(i).pdays, 0); let acc = Math.min(1, t.done / t.total) * tot;
-            sc.forEach(i => {
-                const d = goals.get(i).pdays, w = Math.max(0, Math.min(1, acc / d)); acc = Math.max(0, acc - d);
-                const prev = workMap.get(i); if (!prev || w > prev.w) workMap.set(i, { w, track: t.id, unit: t.unit, qty: sc.length === 1 ? t.done : null, total: sc.length === 1 ? t.total : null });
-            });
-        });
-        const readingOpen = new Map();
-        recs.forEach(r => { if (r.grp === 'reading' && !finMap.has(r.id) && r.chapter != null) readingOpen.set(r.chapter, (readingOpen.get(r.chapter) || 0) + 1); });
-        const sim = ratio => {
-            let cursor = null; const out = new Map();
-            recs.forEach(r => {
-                const g = r.g, fin = finMap.get(r.id), createdN = dn(localKey(g.createdAt || now));
-                const days = fin ? g.pdays : Math.max(1, Math.ceil(g.pdays * ratio - 1e-9));
-                let auto = Math.max(cursor === null ? -1e9 : cursor + 1, createdN);
-                const man = pstartMap.has(r.id) ? dn(pstartMap.get(r.id)) : null;
-                let start = man !== null && man < auto ? Math.max(man, createdN) : auto;
-                const begN = beginMap.has(r.id) ? dn(beginMap.get(r.id)) : null, wk0 = workMap.get(r.id), picked = begN !== null || man !== null || !!(wk0 && wk0.w > 0);
-                if (begN !== null) start = Math.max(begN, createdN);               // you pressed Start: the clock starts that day
-                else if (pickMode && !fin && !picked) start = Math.max(auto, todayN);  // not picked yet: it waits, and the waiting is not counted as late
-                let finN = fin && fin.day ? dn(fin.day) : null, took = null, projN, status, due = start + days - 1;
-                if (fin) {
-                    if (finN !== null) { if (finN < start) start = finN; if (finN >= createdN) took = finN - start + 1; due = start + g.pdays - 1; projN = finN; cursor = cursor === null ? finN : Math.max(cursor, finN); }
-                    else projN = null;
-                    status = 'done';
-                } else {
-                    projN = start > todayN ? due : Math.max(due, todayN);
-                    // real pace: if work is under way, the finish follows the work done so far, not only the clock
-                    const wk = workMap.get(r.id);
-                    if (wk && wk.w > 0 && wk.w < 1 && start <= todayN && todayN - start + 1 >= 2) projN = Math.max(todayN, Math.min(todayN + Math.ceil((1 - wk.w) * (todayN - start + 1) / wk.w - 1e-9), todayN + 3 * g.pdays));
-                    status = start > todayN ? 'later' : todayN > due ? 'late' : todayN === due ? 'due' : 'on';
-                    if (pickMode && !picked && start <= todayN) status = 'ready';
-                    cursor = pickMode && cursor !== null ? Math.max(cursor, projN) : projN;
-                }
-                out.set(r.id, { start, due, finN, took, projN, status, picked, lateDays: !fin && start <= todayN ? Math.max(0, todayN - due) : 0 });
-            });
-            return out;
-        };
-        const base = sim(1);
-        const list = recs.map((r, i) => {
-            const g = r.g, b = base.get(r.id), fin = finMap.get(r.id);
-            const fixedN = g.fixedEnd ? dn(g.fixedEnd) : null;
-            const dl0 = fixedN !== null ? fixedN : (dl0Map.has(r.id) ? dn(dl0Map.get(r.id)) : null);
-            const lockWhy = r.grp === 'drafting' && r.chapter != null && (readingOpen.get(r.chapter) || 0) > 0 ? 'reading' : (editLocked(r) ? 'edit' : null), locked = lockWhy === 'edit', advise = lockWhy === 'reading';
-            const title = g.mirror && goals.get(g.mirror) ? 'Edit: ' + goals.get(g.mirror).title : g.title;
-            const wk = workMap.get(r.id), wexp = !fin && wk && b.start <= todayN ? Math.min(1, Math.max(0, (todayN - b.start + 1) / g.pdays)) : null;
-            const slip = fin ? (b.finN !== null && dl0 !== null ? b.finN - dl0 : 0) : (dl0 !== null && b.projN !== null ? b.projN - dl0 : 0);
-            return Object.assign({}, r, b, { i, title, finId: fin ? fin.id : null, done: !!fin, doneUndated: !!fin && b.finN === null, days: g.pdays, hrs: (g.qunit === 'hours' && g.qty > 0) ? g.qty : (g.phrs > 0 && Math.ceil(g.phrs / 3 - 1e-9) === g.pdays) ? g.phrs : g.pdays * 3, dl0, slip, locked, lockWhy, advise, fixed: fixedN !== null, over: b.took !== null ? b.took - g.pdays : null, began: beginMap.has(r.id), started: pickMode ? (b.picked || !!fin) : (pstartMap.has(r.id) || b.start <= todayN), manual: pstartMap.has(r.id), parent: g.parent,
-                work: fin ? 1 : (wk ? wk.w : 0), hasWork: !!wk && !fin, workQty: wk && !fin ? wk.qty : null, workTotal: wk && !fin ? wk.total : null, workUnit: wk ? wk.unit : null,
-                workExp: wexp, workAhead: wexp !== null ? (wk.w - wexp) * g.pdays : null });
-        });
-        const byId = new Map(list.map(p => [p.id, p]));
-        // pace: how long you really take compared with what you allot
-        const timed = list.filter(p => p.done && p.took !== null).slice(-10);
-        const nT = timed.length, ratio = nT >= 3 ? Math.min(3, Math.max(0.5, timed.reduce((s, p) => s + p.took, 0) / timed.reduce((s, p) => s + p.days, 0))) : 1;
-        const fc = ratio === 1 ? base : sim(ratio);
-        const open = list.filter(p => !p.done);
-        const lastProj = m => { let mx = null; list.forEach(p => { if (!p.done) { const v = m.get(p.id).projN; if (v !== null && (mx === null || v > mx)) mx = v; } }); return mx; };
-        const projFinal = lastProj(base), forecastFinal = lastProj(fc);
-        const baseFinal = open.length ? Math.max.apply(null, open.map(p => p.dl0 !== null ? p.dl0 : p.projN)) : null;
-        // node aggregates
-        const agg = new Map();
-        const nodeAgg = id => {
-            if (agg.has(id)) return agg.get(id);
-            const ps = list.filter(p => { let x = p.g; while (x) { if (x.id === id) return true; x = x.parent ? goals.get(x.parent) : null; } return false; });
-            const totalDays = ps.reduce((s, p) => s + p.days, 0), doneDays = ps.filter(p => p.done).reduce((s, p) => s + p.days, 0);
-            const op = ps.filter(p => !p.done), dls = op.filter(p => p.dl0 !== null);
-            const pr = op.length ? Math.max.apply(null, op.map(p => p.projN)) : null, dl = dls.length ? Math.max.apply(null, dls.map(p => p.dl0)) : null;
-            const workDays = ps.reduce((s, p) => s + p.days * p.work, 0);
-            const a = { id, count: ps.length, doneCount: ps.length - op.length, totalDays, doneDays, workDays, openDays: totalDays - workDays, pct: totalDays ? workDays / totalDays : 0, pctDone: totalDays ? doneDays / totalDays : 0, projN: pr, dl0: dl, slip: pr !== null && dl !== null ? pr - dl : 0, late: op.filter(p => p.status === 'late').length, next: op.sort((x, y) => x.i - y.i)[0] || null, pieces: ps };
-            agg.set(id, a); return a;
-        };
-        goals.forEach(g => { if (g.kind === 'project') nodeAgg(g.id); });
-        // headline numbers
-        const doneList = list.filter(p => p.done && p.took !== null);
-        const earlyDays = doneList.reduce((s, p) => s + Math.max(0, p.days - p.took), 0), overDays = doneList.reduce((s, p) => s + Math.max(0, p.took - p.days), 0);
-        let run = 0; for (let j = doneList.length - 1; j >= 0 && doneList[j].took <= doneList[j].days; j--) run++;
-        const totalDays = list.reduce((s, p) => s + p.days, 0), doneDays = list.filter(p => p.done).reduce((s, p) => s + p.days, 0), workDays = list.reduce((s, p) => s + p.days * p.work, 0);
-        let thesis = null;
-        if (jrf) {
-            const pf = projFinal !== null ? projFinal : (doneList.length ? doneList[doneList.length - 1].finN : todayN);
-            const bf = baseFinal !== null ? baseFinal : pf;
-            const forgiven = rebases.reduce((s, r) => s + r.forgiven, 0);
-            // The year-4 target is for reading and drafting. Editing, proofreading and finalising live in the fifth year.
-            const FIN = cfg && num(cfg.finDays, -1) >= 0 ? num(cfg.finDays, 60) : 60;
-            const wOpen = open.filter(p => p.grp !== 'editing'), eOpen = open.filter(p => p.grp === 'editing');
-            const wDone = list.filter(p => p.done && p.grp !== 'editing' && p.finN != null);
-            const pfW = wOpen.length ? Math.max.apply(null, wOpen.map(p => p.projN)) : (wDone.length ? Math.max.apply(null, wDone.map(p => p.finN)) : todayN);
-            const editDays = eOpen.reduce((a, p) => a + p.days, 0), fifthDays = jrf.endN - jrf.targetN;
-            const bfW = wOpen.length ? Math.max.apply(null, wOpen.map(p => p.dl0 !== null ? p.dl0 : p.projN)) : pfW;
-            const fifth = { days: fifthDays, edit: editDays, fin: FIN, free: fifthDays - editDays - FIN, writeN: pfW, baseWriteN: bfW, editN: pf - pfW };
-            thesis = { slip: pf - bf, planned: jrf.endN - bf - FIN, buffer: jrf.endN - pf - FIN, fifth, lost: Math.max(0, pf - bf), gained: Math.max(0, bf - pf), projN: pf, baseN: bf, toTarget: pfW - jrf.targetN, forecastN: forecastFinal !== null ? forecastFinal : pf, forecastToTarget: (forecastFinal !== null ? forecastFinal : pf) - (pf - pfW) - jrf.targetN, ratio, paced: nT, pct: totalDays ? workDays / totalDays : 0, pctDone: totalDays ? doneDays / totalDays : 0, workDays, forgiven, projects: [], openDays: totalDays - workDays, daysToTarget: jrf.targetN - todayN };
-        }
-        const active = pickMode ? open.filter(p => p.picked) : open.filter(p => p.start <= todayN).slice(0, 4);
-        const upcoming = pickMode ? open.filter(p => !p.picked && !p.locked).sort((a, b) => (a.advise ? 1 : 0) - (b.advise ? 1 : 0)).slice(0, 3) : open.filter(p => p.start > todayN).slice(0, 3);
-        const needLock = open.filter(p => p.dl0 === null && !p.fixed && now - (p.g.createdAt || now) >= 86400000);
-        // a task with sub-tasks takes its daily pace from them (same unit only); with none, its pace is its own
-        const trackIds = new Set(trackList.map(t => t.id));
-        const nearTrack = id => { let x = goals.get(id), n = 0; x = x && x.parent ? goals.get(x.parent) : null; while (x && n++ < 30) { if (trackIds.has(x.id)) return x.id; x = x.parent ? goals.get(x.parent) : null; } return null; };
-        const kidsT = new Map(); trackList.forEach(t => { const p = nearTrack(t.id); if (p !== null) { if (!kidsT.has(p)) kidsT.set(p, []); kidsT.get(p).push(t); } });
-        trackList.forEach(t => { const ks = (kidsT.get(t.id) || []).filter(k => k.unit === t.unit); t.kidIds = ks.map(k => k.id); const sp = ks.reduce((a, k) => a + (k.pace > 0 ? k.pace : 0), 0); t.paceOwn = t.pace; if (ks.length && sp > 0) { t.pace = sp; t.paceFrom = 'kids'; } });
-        // work logged on the sub-tasks counts for the task above them (same unit); one record, no second copy
-        trackList.forEach(t => { if (t.kidIds && t.kidIds.length) { const ks = t.kidIds.map(i => trackList.find(x => x.id === i)); t.ownDone = t.done; t.done = Math.min(t.total, t.done + ks.reduce((a, k) => a + k.done, 0)); t.loggedToday = t.loggedToday || ks.some(k => k.loggedToday); } });
-        const tracks = trackList.map(t => {
-            const sc = t.scopeIds.map(i => byId.get(i)).filter(Boolean), op = sc.filter(p => !p.done);
-            const fx = op.filter(p => p.fixed).map(p => p.dl0), dls = op.map(p => p.dl0 !== null ? p.dl0 : p.due), deadline = fx.length ? Math.min.apply(null, fx) : (dls.length ? Math.max.apply(null, dls) : null);
-            const remaining = Math.max(0, t.total - t.done), fromToday = t.loggedToday ? 1 : 0;
-            const daysLeft = deadline === null ? null : Math.max(0, deadline - todayN + 1 - fromToday);
-            const need = daysLeft === null ? null : daysLeft > 0 ? Math.ceil(remaining / daysLeft - 1e-9) : remaining;
-            const projN = t.pace > 0 && remaining > 0 ? todayN + Math.ceil(remaining / t.pace - 1e-9) - 1 + fromToday : null;
-            return Object.assign({}, t, { remaining, pct: Math.min(1, t.done / t.total), deadline, daysLeft, need, projN, finished: remaining <= 1e-9, behind: projN !== null && deadline !== null && projN > deadline, avg7: t.last7 / 7, pieces: sc });
-        });
-        // rhythm: how much plan work you really do, week against week and month against month, and where that speed leads
-        const wdByDay = new Map(), addWD = (n, v) => wdByDay.set(n, (wdByDay.get(n) || 0) + v), inTrack = new Set();
-        trackList.forEach(t => {
-            t.scopeIds.forEach(i => inTrack.add(i)); const m = done.get(t.id); if (!m) return;
-            const tot = t.scopeIds.reduce((a, i) => a + (goals.get(i) ? goals.get(i).pdays : 0), 0); let cum = 0;
-            [...m.keys()].sort((a, b) => a - b).forEach(n => { const q = Math.min(m.get(n), Math.max(0, t.total - cum)); cum += m.get(n); if (q > 0) addWD(n, q / t.total * tot); });
-        });
-        list.forEach(p => { if (p.done && p.finN !== null && !inTrack.has(p.id)) addWD(p.finN, p.days); });
-        const lv = leaveSet || new Set(), sumWD = (a, b) => { let v = 0; for (let n = a; n <= b; n++) v += wdByDay.get(n) || 0; return v; }, openD = (a, b) => { let c = 0; for (let n = a; n <= b; n++) if (!lv.has(n)) c++; return Math.max(1, c); };
-        const firstN = wdByDay.size ? Math.min.apply(null, [...wdByDay.keys()]) : null;
-        const win = (a, b) => ({ days: sumWD(a, b), speed: sumWD(a, b) / openD(firstN !== null ? Math.max(a, Math.min(firstN, b)) : a, b) });
-        const w7 = win(todayN - 6, todayN), p7 = win(todayN - 13, todayN - 7), w30 = win(todayN - 29, todayN), p30 = win(todayN - 59, todayN - 30);
-        const remainWD = Math.max(0, totalDays - list.reduce((a, p) => a + p.days * p.work, 0));
-        const basis = firstN !== null && firstN <= todayN - 13 ? w30 : w7, atSpeed = firstN !== null && basis.speed >= 0.03 && remainWD > 0 ? todayN + Math.ceil(remainWD / basis.speed) - 1 : null;
-        const rhythm = { w7, p7, w30, p30, hasP7: firstN !== null && firstN <= todayN - 7, hasP30: firstN !== null && firstN <= todayN - 30, basisDays: basis === w30 ? 30 : 7, speed: basis.speed, remainWD, atSpeedN: remainWD <= 0 ? todayN : atSpeed, targetN: jrf ? jrf.targetN : null, endN: jrf ? jrf.endN : null, todayWD: wdByDay.get(todayN) || 0, firstN, days14: Array.from({ length: 14 }, (_, i) => { const n = todayN - 13 + i; return { n, v: wdByDay.get(n) || 0, leave: lv.has(n) }; }) };
-        return { rhythm, pickMode, tracks, picks, list, byId, agg, nodeAgg, active, upcoming, open, thesis, totalDays, doneDays, earlyDays, overDays, onTimeRun: run, ratio, paced: nT, projFinal, forecastFinal, baseFinal, needLock, rebases, chapters: chapters.map(c => c.id), rdOpen };
-    }
-
+    /* ---------- The derivation ---------- */
     function derive(events, now) {
         now = now || Date.now();
         const evs = events.slice().sort((a, b) => (a.ts - b.ts) || ((a.id || 0) - (b.id || 0)));
         const voided = new Set();
         evs.forEach(e => { if (e.t === 'void') voided.add(e.target); });
-        const todayKey = localKey(now), todayN = dn(todayKey);
-        let cfg = null;
-        const goals = new Map();
-        const unfinTs = new Map(), finMap = new Map(), pstartMap = new Map(), beginMap = new Map(), dl0Map = new Map(), rebases = []; let picks = [];
-        const done = new Map(), replans = new Map(), leave = new Set(), leaves = [], marks = new Map(), logs = [], poses = [], adj = new Map(), logSum = new Map(), adjSum = new Map();
-        let nextGoalId = 1;
+
+        const cats = new Map();
+        const months = new Map();
+        const buckets = new Map();
+        const priceHist = {};
+        const purchases = [];
+        const reviews = new Map();
+        const wants = new Map();
+        const dayCloses = new Set();
+        const savLog = [];
+        const ahead = new Map(), lasting = [];
+        const saveByMonth = {};
+        let bank = 0, cash = 0, hasBal = false, saved = 0;
+        let pool = { init: false, key: 0, bal: 0, allow: 0, min: 500 };
+        let nextCatId = 1;
+        const catEvents = [];
+
+        const M = (y, m) => {
+            const k = ymKey(y, m);
+            let r = months.get(k);
+            if (!r) {
+                r = { k, y, m, plan: null, exps: [], spent: 0, byCat: {}, byAcct: { bank: 0, cash: 0 }, close: null, limits: {}, names: {}, icons: {}, recon: [], checks: [] };
+                months.set(k, r);
+            }
+            return r;
+        };
+        const snap = r => { cats.forEach((c, id) => { r.limits[id] = c.limit; r.names[id] = c.name; r.icons[id] = c.icon; }); };
+        const settle = (b, ts) => { if (b.allow > 0) b.bal += Math.max(0, (ts - b.ts) / DAY) * b.allow / 30; b.ts = Math.max(b.ts, ts); };
+        const rollPool = ts => { if (!pool.init) return; const k = keyOfTs(ts); while (pool.key < k) { pool.key++; pool.bal += pool.allow; } };
+
         for (const e of evs) {
             if (e.t === 'void' || voided.has(e.id)) continue;
             switch (e.t) {
-                case 'cfg': cfg = Object.assign({}, cfg || {}, e.c); break;
-                case 'goal':
-                    if (e.op === 'add' || e.op === 'addmany') { (e.op === 'add' ? [e.g] : e.gs).forEach(gg => { const g = normGoal(Object.assign({}, gg, { createdAt: e.ts })); goals.set(g.id, g); nextGoalId = Math.max(nextGoalId, g.id + 1); }); }
-                    else if (false) { const g = normGoal(Object.assign({}, e.g, { createdAt: e.ts })); goals.set(g.id, g); nextGoalId = Math.max(nextGoalId, g.id + 1); }
-                    else if (e.op === 'edit' && goals.has(e.gid)) {
-                        const old = goals.get(e.gid), f = Object.assign({}, e.f);
-                        if (old.fixedEnd && f.fixedEnd !== undefined && f.fixedEnd !== old.fixedEnd && e.ts - old.createdAt > 86400000) delete f.fixedEnd;   // a hard date cannot be moved after the first day
-                        if (old.deadline0 && f.deadline0 && f.deadline0 !== old.deadline0 && e.ts - old.createdAt > 86400000) delete f.deadline0;   // a deadline cannot be moved after the first day
-                        goals.set(e.gid, normGoal(Object.assign({}, old, f, { id: old.id, createdAt: old.createdAt })));
+                case 'cat': {
+                    if (e.op === 'add') {
+                        const c = normCat(e.c);
+                        c.createdAt = e.ts;
+                        cats.set(c.id, c);
+                        nextCatId = Math.max(nextCatId, c.id + 1);
+                        buckets.set(c.id, { bal: 0, ts: e.ts, allow: c.pur.allow });
+                        priceHist[c.id] = c.type === 'fixed' && c.price ? [{ ts: e.ts, price: c.price }] : [];
+                    } else if (e.op === 'edit' && cats.has(e.cid)) {
+                        const old = cats.get(e.cid);
+                        const b = buckets.get(e.cid) || { bal: 0, ts: e.ts, allow: 0 };
+                        settle(b, e.ts);
+                        const c = normCat(Object.assign({}, old, e.f || {}));
+                        c.createdAt = old.createdAt;
+                        cats.set(e.cid, c);
+                        b.allow = c.pur.allow;
+                        buckets.set(e.cid, b);
+                        if (c.type === 'fixed' && c.price && (!priceHist[e.cid] || !priceHist[e.cid].length || priceHist[e.cid][priceHist[e.cid].length - 1].price !== c.price)) {
+                            (priceHist[e.cid] = priceHist[e.cid] || []).push({ ts: e.ts, price: c.price });
+                        }
+                    } else if (e.op === 'del') {
+                        cats.delete(e.cid);
+                        buckets.delete(e.cid);
                     }
-                    else if (e.op === 'reorder') { (e.ids || []).forEach((gid, i) => { const g = goals.get(gid); if (g) goals.set(gid, normGoal(Object.assign({}, g, { ord: (i + 1) * 10 }))); }); }
-                    else if (e.op === 'del') { const rm = id => { goals.delete(id); [...goals.values()].forEach(g => { if (g.parent === id) rm(g.id); }); }; rm(e.gid); }
-                    break;
-                case 'log': {
-                    if (e.sit) { logs.push(e); break; }   // a sitting (start to finish of a task): hours only, never pages or words
-                    const n = dn(e.day || localKey(e.ts));
-                    if (!done.has(e.goal)) done.set(e.goal, new Map());
-                    const m = done.get(e.goal); m.set(n, (m.get(n) || 0) + e.qty);
-                    logs.push(e); logSum.set(e.goal, (logSum.get(e.goal) || 0) + e.qty);
+                    const rr = months.get(keyOfTs(e.ts));
+                    if (rr) snap(rr);
                     break;
                 }
-                case 'pos': {   // "Last page I finished: N". It fixes where you are. It is never work done today.
-                    poses.push(e);
-                    const n = dn(e.day || localKey(e.ts)), before = (logSum.get(e.goal) || 0) + (adjSum.get(e.goal) || 0), delta = e.page - before;
-                    if (!adj.has(e.goal)) adj.set(e.goal, []); adj.get(e.goal).push([n, delta, e.page]); adjSum.set(e.goal, (adjSum.get(e.goal) || 0) + delta);
+                case 'plan': {
+                    const r = M(e.y, e.m);
+                    r.plan = e;
+                    if (!e.hist) {
+                        if (hasBal) r.recon.push({ ts: e.ts, bank: num(e.bank, 0) - bank, cash: num(e.cash, 0) - cash });
+                        bank = num(e.bank, 0); cash = num(e.cash, 0); hasBal = true;
+                        const prev = saveByMonth[r.k] || 0;
+                        saved += num(e.save, 0) - prev;
+                        saveByMonth[r.k] = num(e.save, 0);
+                    }
+                    if (!pool.init) pool = { init: true, key: r.k, bal: num(e.allow, 3000), allow: num(e.allow, 3000), min: num(e.minAmt, 500) };
+                    else {
+                        while (pool.key < r.k) { pool.key++; pool.bal += pool.allow; }
+                        if (r.k === pool.key) { pool.bal += num(e.allow, pool.allow) - pool.allow; pool.allow = num(e.allow, pool.allow); }
+                        pool.min = num(e.minAmt, pool.min);
+                    }
+                    snap(r);
                     break;
                 }
-                case 'leave': { const a = dn(e.from), b = dn(e.to); for (let n = a; n <= b; n++) leave.add(n); leaves.push(e); break; }
-                case 'replan': { if (!replans.has(e.goal)) replans.set(e.goal, []); replans.get(e.goal).push({ dayN: dn(e.day || todayKey), spread: Math.max(1, e.spread || 7) }); break; }
-                case 'fin': finMap.set(e.goal, { day: e.day || null, ts: e.ts, id: e.id }); break;
-                case 'unfin': finMap.delete(e.goal); unfinTs.set(e.goal, e.ts || 0); break;
-                case 'pstart': pstartMap.set(e.goal, e.day); break;
-                case 'begin': beginMap.set(e.goal, e.day || localKey(e.ts)); break;
-                case 'unbegin': beginMap.delete(e.goal); break;
-                case 'next': picks = [e.goal].concat(picks.filter(x => x !== e.goal)); break;
-                case 'lock': Object.keys(e.map || {}).forEach(k => { if (e.rebase || !dl0Map.has(+k)) dl0Map.set(+k, e.map[k]); }); if (e.rebase) rebases.push({ ts: e.ts, forgiven: e.forgiven || 0 }); break;
-                case 'done': marks.set(e.goal, e.day || localKey(e.ts)); break;
+                case 'check': {
+                    const r = M(new Date(e.ts).getFullYear(), new Date(e.ts).getMonth());
+                    const rec = { ts: e.ts, bank: e.bank === undefined || e.bank === null ? 0 : num(e.bank, 0) - bank, cash: e.cash === undefined || e.cash === null ? 0 : num(e.cash, 0) - cash };
+                    r.checks.push(rec);
+                    if (e.bank !== undefined && e.bank !== null) bank = num(e.bank, bank);
+                    if (e.cash !== undefined && e.cash !== null) cash = num(e.cash, cash);
+                    hasBal = true;
+                    break;
+                }
+                case 'xfer':
+                    if (e.dir === 'c2b') { cash -= e.amt; bank += e.amt; } else { bank -= e.amt; cash += e.amt; }
+                    break;
+                case 'sav':
+                    saved += e.amt;
+                    savLog.push(e);
+                    break;
+                case 'close': {
+                    const r = M(e.y, e.m);
+                    r.close = e;
+                    saved += num(e.toSave, 0);
+                    if (e.toPool) { rollPool(e.ts); if (pool.init) pool.bal += e.toPool; }
+                    break;
+                }
+                case 'seed': {
+                    rollPool(e.ts);
+                    if (pool.init && e.poolBal !== undefined) pool.bal = num(e.poolBal, pool.bal);
+                    if (e.cats) Object.keys(e.cats).forEach(id => {
+                        const b = buckets.get(Number(id));
+                        if (b) { b.bal = num(e.cats[id].bal, 0); b.ts = num(e.cats[id].ts, e.ts); }
+                    });
+                    break;
+                }
+                case 'exp': {
+                    const d = new Date(e.ts);
+                    const r = M(d.getFullYear(), d.getMonth());
+                    const acct = e.acct === 'cash' ? 'cash' : 'bank';
+                    const LD = e.kind !== 'adjust' && e.lasts && num(e.lasts.d, 0) >= 2 ? Math.round(num(e.lasts.d, 0)) : 0;
+                    if (!LD) {
+                        r.exps.push(e);
+                        r.spent += e.amt;
+                        r.byCat[e.cat] = (r.byCat[e.cat] || 0) + e.amt;
+                    } else {
+                        // a lasting expense: the cash leaves today, but the cost is shared over the days it lasts (by days, month by month)
+                        const per = e.amt / LD, d0 = new Date(e.ts); let y0 = d0.getFullYear(), m0 = d0.getMonth(), dd = d0.getDate(), left = LD, i = 0;
+                        const curKey = keyOfTs(now), parts = [];
+                        while (left > 0) { const take = Math.min(left, dim(y0, m0) - dd + 1); parts.push({ y: y0, m: m0, days: take, share: per * take }); left -= take; dd = 1; m0++; if (m0 > 11) { m0 = 0; y0++; } if (++i > 400) break; }
+                        parts.forEach((p, n) => {
+                            const share = Object.assign({}, e, { amt: p.share, share: true, full: e.amt, part: n + 1, parts: parts.length, ts: n === 0 ? e.ts : new Date(p.y, p.m, 1, 12).getTime() });
+                            if (ymKey(p.y, p.m) <= curKey) { const rr = M(p.y, p.m); rr.exps.push(share); rr.spent += p.share; rr.byCat[e.cat] = (rr.byCat[e.cat] || 0) + p.share; snap(rr); }
+                            else { const k = ymKey(p.y, p.m); const a = ahead.get(k) || { k, y: p.y, m: p.m, spent: 0, byCat: {} }; a.spent += p.share; a.byCat[e.cat] = (a.byCat[e.cat] || 0) + p.share; ahead.set(k, a); }
+                        });
+                        lasting.push({ id: e.id, ts: e.ts, cat: e.cat, name: e.name, icon: e.icon, item: String(e.note || '').trim(), amt: e.amt, days: LD, end: e.ts + LD * DAY, parts: parts.length, acct });
+                    }
+                    r.byAcct[acct] += e.amt;
+                    if (acct === 'cash') cash -= e.amt; else bank -= e.amt;
+                    if (e.pur) {
+                        rollPool(e.ts);
+                        if (pool.init) pool.bal -= e.pur.c;
+                        const b = buckets.get(e.cat);
+                        if (b && b.allow > 0) { settle(b, e.ts); b.bal -= e.pur.c; }
+                        purchases.push({ id: e.id, ts: e.ts, cat: e.cat, catName: e.name, icon: e.icon, total: e.amt, counted: e.pur.c, need: e.pur.need, reason: e.pur.reason, emg: !!e.pur.emg, review: null, k: r.k });
+                    }
+                    snap(r);
+                    break;
+                }
+                case 'rev': reviews.set(e.pid, e.v); break;
+                case 'want': {
+                    if (e.op === 'add') wants.set(e.wid, { wid: e.wid, name: e.name, price: e.price, cat: e.cat, ts: e.ts, status: 'wait' });
+                    else if (wants.has(e.wid)) { const w = wants.get(e.wid); w.status = e.op === 'drop' ? 'dropped' : 'bought'; w.doneAt = e.ts; }
+                    break;
+                }
+                case 'dayclose': dayCloses.add(e.day); break;
                 default: break;
             }
         }
-        const ctx = { todayN, done, replans, leave };
-        const kidsOf = new Map();
-        goals.forEach(g => { if (g.parent) { if (!kidsOf.has(g.parent)) kidsOf.set(g.parent, []); kidsOf.get(g.parent).push(g); } });
-        const sk = g => g.ord !== null && g.ord !== undefined ? g.ord : 1e9 + g.id;   // a task you placed by hand keeps its place; new ones come last
-        kidsOf.forEach(a => a.sort((x, y) => sk(x) - sk(y)));
-        // a task that was split into sub-sections and then lost them all is a task again (it must have a Done, a tick and its hours)
-        goals.forEach(g => { if (g.kind === 'project' && g.pdays > 0 && !g.chap && !g.grp && !g.role && !g.isPhase && !g.mirror && !(kidsOf.get(g.id) || []).length) g.kind = 'piece'; });
-        const sumMap = m => { let s = 0; if (m) m.forEach(q => { s += q; }); return s; };
-        const itemsUnder = (root, out) => { out = out || []; (kidsOf.get(root) || []).forEach(c => { if (c.kind === 'item') out.push(c); else if (c.kind === 'project') itemsUnder(c.id, out); }); return out; };
-        const ancestors = id => { const set = new Set(); let g = goals.get(id); while (g) { set.add(g.id); g = g.parent ? goals.get(g.parent) : null; } return set; };
 
-        // items: the smallest pieces of the thesis
-        const items = new Map();
-        goals.forEach(g => { if (g.kind === 'item') { const dn_ = sumMap(done.get(g.id)); items.set(g.id, { id: g.id, g, title: g.title, unit: g.unit, total: g.total, done: dn_, remaining: Math.max(0, g.total - dn_), pct: g.total > 0 ? Math.min(1, dn_ / g.total) : 0, parent: g.parent }); } });
+        rollPool(now);
+        buckets.forEach(b => settle(b, now));
+        purchases.forEach(p => { p.review = reviews.get(p.id) || null; });
 
-        // tasks: own-logged, or derived from the items under a node
-        const tasks = [], derivedItems = new Map();
-        goals.forEach(g => {
-            if (g.kind !== 'task' || !g.start || !(g.perDay > 0)) return;
-            if (g.over && goals.has(g.over)) {
-                const its = itemsUnder(g.over).filter(i => i.total > 0);
-                const total = its.reduce((s, i) => s + i.total, 0);
-                if (!(total > 0)) return;
-                const merged = new Map();
-                its.forEach(i => { const m = done.get(i.id); if (m) m.forEach((q, n) => merged.set(n, (merged.get(n) || 0) + q)); });
-                done.set(g.id, merged);
-                const g2 = Object.assign({}, g, { total, unit: its[0].unit });
-                tasks.push(analyseTask(g2, ctx));
-                derivedItems.set(g.id, its.map(i => items.get(i.id)));
-            } else if (!g.over && g.total > 0) tasks.push(analyseTask(g, ctx));
+        /* ----- the current month ----- */
+        const nd = new Date(now);
+        const cy = nd.getFullYear(), cm = nd.getMonth(), cd = nd.getDate();
+        const curK = ymKey(cy, cm);
+        const cur = months.get(curK) || { k: curK, y: cy, m: cm, plan: null, exps: [], spent: 0, byCat: {}, byAcct: { bank: 0, cash: 0 }, close: null, limits: {}, names: {}, icons: {}, recon: [], checks: [] };
+        const dm = dim(cy, cm);
+        const P = cur.plan ? num(cur.plan.pool, 0) : 0;
+        const todayKey = dateKey(now);
+        const todayExps = cur.exps.filter(e => dateKey(e.ts) === todayKey);
+        const spentToday = todayExps.reduce((s, e) => s + e.amt, 0);
+        const before = cur.spent - spentToday;
+        const remDays = dm - cd + 1;
+        const allowance = P > 0 ? (P - before) / remDays : 0;
+        const todayByCat = {};
+        todayExps.forEach(e => { if (e.kind === 'add' || e.kind === undefined) todayByCat[e.cat] = (todayByCat[e.cat] || 0) + e.amt; });
+        const today = {
+            key: todayKey, spent: spentToday, allowance, left: allowance - spentToday, byCat: todayByCat,
+            daysAfter: dm - cd, future: cd < dm && P > 0 ? (P - cur.spent) / (dm - cd) : null, dm, day: cd
+        };
+
+        // usage-sorted categories (last 45 days of one-tap / typed entries)
+        const cutoff = now - 45 * DAY;
+        const usage = {};
+        months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && e.ts >= cutoff) usage[e.cat] = (usage[e.cat] || 0) + 1; }));
+        const lastAcct = {};
+        evs.forEach(e => { if (e.t === 'exp' && !voided.has(e.id) && e.kind !== 'adjust') lastAcct[e.cat] = e.acct; });
+        const catList = [];
+        cats.forEach(c => {
+            const b = buckets.get(c.id) || { bal: 0, allow: 0 };
+            const rate = b.allow / 30;
+            const cool = b.allow > 0 && b.bal < 0 ? Math.ceil(-b.bal / rate - 1e-9) : 0;
+            catList.push(Object.assign({}, c, {
+                spent: cur.byCat[c.id] || 0,
+                uses: usage[c.id] || 0,
+                lastAcct: lastAcct[c.id] || c.defAcct,
+                bucket: { bal: b.bal, allow: b.allow, cool, until: cool > 0 ? now + cool * DAY : 0 }
+            }));
         });
-        const byId = new Map(tasks.map(t => [t.id, t]));
-        tasks.forEach(t => { if (derivedItems.has(t.id)) { t.derived = true; t.items = derivedItems.get(t.id); t.next = t.items.find(i => i.remaining > 1e-9) || null; } });
+        catList.sort((a, b) => b.uses - a.uses || a.id - b.id);
 
-        // nodes (phases, chapters, parts, themes)
-        const leavesOf = (id, out) => { out = out || []; (kidsOf.get(id) || []).forEach(c => {
-            if (c.kind === 'item' && c.total > 0) out.push({ unit: c.unit, total: c.total, done: Math.min(c.total, sumMap(done.get(c.id))) });
-            else if (c.kind === 'task' && !c.over && c.total > 0) out.push({ unit: c.unit, total: c.total, done: Math.min(c.total, sumMap(done.get(c.id))) });
-            else if (c.kind === 'project') leavesOf(c.id, out);
-        }); return out; };
-        const projects = [];
-        goals.forEach(g => {
-            if (g.kind !== 'project') return;
-            const kids = tasks.filter(t => { const par = t.g.parent; return par && (par === g.id || ancestors(par).has(g.id)); });
-            const slip = kids.length ? Math.max(...kids.map(t => t.slip)) : 0;
-            const proj = kids.length ? Math.max(...kids.map(t => t.projShown)) : null;
-            const dl = kids.length ? Math.max(...kids.map(t => t.deadlineN)) : null;
-            const lv = leavesOf(g.id);
-            const units = new Set(lv.map(l => l.unit));
-            const tot = lv.reduce((s, l) => s + l.total, 0), dd = lv.reduce((s, l) => s + l.done, 0);
-            const pct = !lv.length ? 0 : units.size === 1 ? dd / tot : lv.reduce((s, l) => s + l.done / l.total, 0) / lv.length;
-            const behind = kids.filter(t => t.status === 'behind').length;
-            const par = g.parent ? goals.get(g.parent) : null;
-            projects.push({ id: g.id, g, title: g.title, thesis: g.thesis, phase: g.phase, isPhase: g.isPhase, parent: g.parent, chapter: !g.isPhase && (!par || par.isPhase), kids, slip, deadlineN: dl, projN: proj, pct, leaves: lv.length, total: tot, done: dd, remaining: Math.max(0, tot - dd), unit: units.size === 1 ? [...units][0] : null, behind, started: kids.some(t => t.started), children: (kidsOf.get(g.id) || []).map(c => c.id) });
-        });
-        projects.sort((a, b) => a.id - b.id);
-        const pById = new Map(projects.map(p => [p.id, p]));
-
-        // work that has no daily plan yet
-        const covered = new Set();
-        derivedItems.forEach(its => its.forEach(i => covered.add(i.id)));
-        goals.forEach(g => { if (g.kind === 'task' && g.over) itemsUnder(g.over).forEach(i => covered.add(i.id)); });
-        const uncovered = new Map();
-        items.forEach(i => { if (i.remaining > 1e-9 && !covered.has(i.id)) { let g = goals.get(i.parent), ch = null; while (g) { const p = pById.get(g.id); if (p && p.chapter) { ch = p; break; } g = g.parent ? goals.get(g.parent) : null; } const key = ch ? ch.id : 0; const u = uncovered.get(key) || { chapter: ch, total: 0, unit: i.unit, count: 0 }; u.total += i.remaining; u.count++; uncovered.set(key, u); } });
-
-        // the JRF timeline and the buffer
-        const c = cfg || null;
-        let jrf = null, thesis = null;
-        if (c && c.start) {
-            const startN = dn(c.start), targetN = dn(addYears(c.start, c.target || 4)), endN = dn(addYears(c.start, c.years || 5));
-            jrf = { startN, targetN, endN, years: c.years || 5, target: c.target || 4, elapsed: todayN - startN, total: endN - startN, daysToTarget: targetN - todayN, daysToEnd: endN - todayN, year: Math.min(c.years || 5, Math.max(1, Math.floor((todayN - startN) / 365.25) + 1)) };
-            const th = projects.filter(p => p.thesis && p.chapter);
-            const slip = th.reduce((s, p) => s + p.slip, 0);
-            const planned = endN - targetN;
-            thesis = { slip, planned, buffer: planned - slip, lost: Math.max(0, slip), gained: Math.max(0, -slip), projN: targetN + slip, projects: th, pct: th.length ? th.reduce((s, p) => s + p.pct, 0) / th.length : 0 };
+        /* ----- the day strip: was each past day inside its own allowance? ----- */
+        const dayStatus = [];
+        if (P > 0) {
+            let running = 0;
+            const byDay = {};
+            cur.exps.forEach(e => { const dd = new Date(e.ts).getDate(); byDay[dd] = (byDay[dd] || 0) + e.amt; });
+            for (let d = 1; d <= cd; d++) {
+                const a = (P - running) / (dm - d + 1);
+                const s = byDay[d] || 0;
+                let st = 'ok';
+                if (a <= 0 || s > a * 1.25) st = 'bad'; else if (s > a) st = 'warn';
+                if (!s && d < cd) st = 'none';
+                dayStatus.push({ d, spent: s, allowance: a, st, today: d === cd });
+                running += s;
+            }
         }
 
-        // life
-        const life = [];
-        goals.forEach(g => {
-            if (g.kind !== 'life') return;
-            const ms = [...goals.values()].filter(m => m.kind === 'ms' && m.parent === g.id).map(m => ({ id: m.id, title: m.title, due: m.due, done: marks.get(m.id) || null, daysLeft: m.due ? dn(m.due) - todayN : null }));
-            life.push({ id: g.id, title: g.title, cat: g.cat, due: g.due, notes: g.notes, daysLeft: g.due ? dn(g.due) - todayN : null, ms, doneCount: ms.filter(m => m.done).length });
-        });
+        /* ----- forecast: a range for where the month will land ----- */
+        let forecast = { ready: false };
+        const elapsed = (cd - 1) + (nd.getHours() * 60 + nd.getMinutes()) / 1440;
+        if (P > 0 && elapsed >= 2) {
+            let varSpent = 0;
+            cur.exps.forEach(e => { const c = cats.get(e.cat); if (!(c && c.lump)) varSpent += e.amt; });
+            const prev = months.get(curK - 1);
+            let lumpDue = 0;
+            cats.forEach(c => { if (c.lump && prev) lumpDue += Math.max(0, (prev.byCat[c.id] || 0) - (cur.byCat[c.id] || 0)); });
+            const rate = varSpent / elapsed;
+            const remD = dm - elapsed;
+            const base = cur.spent + lumpDue;
+            forecast = { ready: true, free: P - (base + rate * remD), freeLo: P - (base + rate * 1.2 * remD), freeHi: P - (base + rate * 0.85 * remD), lumpDue };
+        }
 
-        // streak of days when every started task was on schedule at day end
+        /* ----- streak of closed days ----- */
         let streak = 0;
-        { const act = tasks.filter(t => t.started && !t.finished); if (act.length) {
-            const sims = act.map(t => ({ t, s: simTask(t.g, ctx) }));
-            for (let n = todayN - 1; n > todayN - 200; n--) {
-                let any = false, ok = true;
-                sims.forEach(({ t, s }) => { if (n >= t.startN) { any = true; const p = at(s.planAt, t.startN, n), d = at(s.doneAt, t.startN, n); if (d + 1e-9 < p) ok = false; } });
-                if (!any || !ok) break;
-                streak++;
-            }
-        } }
+        { let t = startOfDay(now); if (!dayCloses.has(dateKey(t))) t -= DAY; while (dayCloses.has(dateKey(t))) { streak++; t -= DAY; } }
 
-        const pieces = buildPieces({ leave, goals, kidsOf, finMap, unfinTs, logs, pstartMap, beginMap, dl0Map, rebases, cfg: c, jrf, todayN, now, done, picks, adj });
-        if (pieces.list.length && jrf) thesis = pieces.thesis;
-        return { now, todayKey, todayN, pieces, events: evs, cfg: c, jrf, thesis, goals, tasks, byId, projects, pById, items, uncovered, kidsOf, life, leaves: leaves.filter(l => !voided.has(l.id)), leave, logs, poses, nextGoalId, streak, marks };
+        /* ----- last month's leftover waiting for a decision ----- */
+        const prevM = months.get(curK - 1);
+        let pendingClose = null;
+        if (prevM && prevM.plan && !prevM.close) {
+            const left = num(prevM.plan.pool, 0) - prevM.spent;
+            if (left > 0) pendingClose = { y: prevM.y, m: prevM.m, left, pool: num(prevM.plan.pool, 0), spent: prevM.spent };
+        }
+
+        const poolUsed = purchases.filter(p => p.k === curK).reduce((s, p) => s + p.counted, 0);
+        const monthsArr = Array.from(months.values()).sort((a, b) => a.k - b.k);
+
+        return {
+            now, events: evs, voided, cats: catList, catsById: Object.fromEntries(catList.map(c => [c.id, c])), nextCatId,
+            cur, months: monthsArr, plan: cur.plan, needPlan: !cur.plan, P,
+            today, dayStatus, forecast, streak,
+            accounts: { bank, cash, hasBal },
+            savings: saved, savLog,
+            pool: { init: pool.init, bal: pool.bal, allow: pool.allow, min: pool.min, used: poolUsed, carried: Math.max(0, pool.bal + poolUsed - pool.allow) },
+            purchases: purchases.sort((a, b) => b.ts - a.ts),
+            lasting: lasting.sort((a, b) => b.ts - a.ts), ahead: Array.from(ahead.values()).sort((a, b) => a.k - b.k),
+            wants: Array.from(wants.values()).sort((a, b) => b.ts - a.ts),
+            dayCloses, pendingClose, priceHist
+        };
     }
 
-    const E = { dn, keyOf, localKey, weekday, addYears, derive, planPreview, perDayFor, normGoal, HORIZON, WORK_DEFAULT };
-    if (typeof module !== 'undefined' && module.exports) module.exports = E; else root.GEngine = E;
+    /* ---------- Questions the screens ask before an expense is saved ---------- */
+    // How much of this expense counts as a "big purchase" (0 = none)
+    function counted(D, cat, amt) {
+        const p = cat.pur || { mode: 'never' };
+        let c = 0;
+        if (p.mode === 'always') c = amt;
+        else if (p.mode === 'above') {
+            const prev = p.per === 'day' ? (D.today.byCat[cat.id] || 0) : cat.spent;
+            c = Math.max(0, prev + amt - Math.max(prev, p.thr || 0));
+        }
+        return c >= D.pool.min ? c : 0;
+    }
+    function poolOpensFor(D, price) {
+        const al = D.pool.allow || 1;
+        const m = Math.max(1, Math.ceil((price - D.pool.bal) / al - 1e-9));
+        const d = new Date(D.now);
+        return { m, ts: new Date(d.getFullYear(), d.getMonth() + m, 1).getTime(), bal: D.pool.bal + m * D.pool.allow };
+    }
+    // Lasting items: what an item usually lasts (from your own entries), and whether a bought one still covers you
+    const itemKey = t => String(t || '').trim().toLowerCase();
+    function learnLasts(D, catId, item) {
+        const k = itemKey(item); if (!k) return null;
+        const list = [];
+        D.months.forEach(r => r.exps.forEach(e => { if (!e.share && e.cat === catId && e.kind !== 'adjust' && e.kind !== 'import' && itemKey(e.note) === k) list.push({ ts: e.ts, d: 0 }); }));
+        (D.lasting || []).forEach(l => { if (l.cat === catId && itemKey(l.item) === k) list.push({ ts: l.ts, d: l.days }); });
+        list.sort((a, b) => a.ts - b.ts);
+        const declared = list.filter(x => x.d >= 2).pop();
+        if (declared) return { d: declared.d, how: 'last', n: list.length };
+        if (list.length >= 2) {
+            const gaps = []; for (let i = 1; i < list.length; i++) gaps.push(Math.round((list[i].ts - list[i - 1].ts) / DAY));
+            gaps.sort((a, b) => a - b); const med = gaps[Math.floor(gaps.length / 2)];
+            if (med >= 20) return { d: med, how: 'gap', n: list.length };
+        }
+        return null;
+    }
+    function coverOf(D, catId, item, now) {
+        const k = itemKey(item); if (!k) return null;
+        const l = (D.lasting || []).filter(x => x.cat === catId && itemKey(x.item) === k && x.end > (now || D.now)).sort((a, b) => b.end - a.end)[0];
+        return l ? { l, left: Math.ceil((l.end - (now || D.now)) / DAY), end: l.end } : null;
+    }
+
+    /* ---------- Baskets: items bought together (name, quantity, price). What the app learns from them. ---------- */
+    const UNIT_BASE = { g: ['kg', 0.001], kg: ['kg', 1], ml: ['l', 0.001], l: ['l', 1], pc: ['pc', 1], dozen: ['pc', 12] };
+    const unitAlias = u => { u = String(u || '').toLowerCase().replace(/\.$/, ''); return ({ gm: 'g', gms: 'g', gram: 'g', grams: 'g', kgs: 'kg', kilo: 'kg', kilos: 'kg', lt: 'l', ltr: 'l', litre: 'l', liter: 'l', liters: 'l', litres: 'l', pcs: 'pc', piece: 'pc', pieces: 'pc', dz: 'dozen', doz: 'dozen' })[u] || u; };
+    const qLabel = (qn, qu) => qn > 0 && qu ? (Math.round(qn * 1000) / 1000) + ' ' + qu : '';
+    const titleCase = t => String(t || '').trim().replace(/\s+/g, ' ').replace(/^./, c => c.toUpperCase());
+    // "tea-leaves-450g-120, sugar-1kg-65, misc-20": split at commas; the last number is the price, a number with a unit is the quantity, the rest is the name.
+    // It counts as a basket only when the prices add up to the amount paid, so a wrong guess can never slip in.
+    function parseBasket(note, amt) {
+        const parts = String(note || '').split(/[,;\n]+/).map(x => x.trim()).filter(Boolean); if (!parts.length) return null;
+        const out = [];
+        for (const part of parts) {
+            const tok = part.split(/[-\s]+/).filter(Boolean); if (tok.length < 2) return null;
+            const pm = tok[tok.length - 1].match(/^₹?(\d+(?:\.\d+)?)$/); if (!pm) return null;
+            tok.pop(); let qn = 0, qu = '';
+            for (let i = 0; i < tok.length; i++) {
+                const m = tok[i].match(/^(\d+(?:\.\d+)?)(g|gm|gms|gram|grams|kg|kgs|kilo|kilos|ml|l|lt|ltr|litre|litres|liter|liters|pc|pcs|piece|pieces|dozen|dz|doz)$/i);
+                if (m) { qn = +m[1]; qu = unitAlias(m[2]); tok.splice(i, 1); break; }
+                if (/^\d+(?:\.\d+)?$/.test(tok[i]) && tok[i + 1] && UNIT_BASE[unitAlias(tok[i + 1])]) { qn = +tok[i]; qu = unitAlias(tok[i + 1]); tok.splice(i, 2); break; }
+            }
+            const name = titleCase(tok.join(' ')); if (!name) return null;
+            out.push({ n: name, qn, qu, p: +pm[1] });
+        }
+        const sum = out.reduce((t, x) => t + x.p, 0);
+        return Math.abs(sum - amt) < 0.51 ? out : null;
+    }
+    function basketOf(e) {
+        if (!e || e.share || e.kind === 'adjust' || e.kind === 'import') return null;
+        if (Array.isArray(e.items) && e.items.length) return e.items;
+        return e.note ? parseBasket(e.note, e.full || e.amt) : null;
+    }
+    const bookCache = new WeakMap();
+    // every item you bought, by category and name, oldest first
+    function itemBook(D) {
+        if (bookCache.has(D)) return bookCache.get(D);
+        const book = new Map(), seen = new Set();
+        const take = e => {
+            if (seen.has(e.id)) return; seen.add(e.id);
+            const b = basketOf(e); if (!b) return;
+            b.forEach(it => {
+                const key = e.cat + '|' + it.n.toLowerCase(), o = book.get(key) || { key, cat: e.cat, name: it.n, buys: [] };
+                o.name = it.n; o.buys.push({ ts: e.ts, qn: +it.qn || 0, qu: it.qu || '', ql: qLabel(+it.qn || 0, it.qu), p: +it.p || 0 }); book.set(key, o);
+            });
+        };
+        D.months.forEach(r => r.exps.forEach(e => { if (!e.share) take(e); }));
+        (D.lasting || []).forEach(l => { const ev = (D.events || []).find(x => x.id === l.id); if (ev) take(ev); });
+        book.forEach(o => o.buys.sort((a, b) => a.ts - b.ts));
+        bookCache.set(D, book); return book;
+    }
+    const score = (n, ts, now) => n + 2 * Math.exp(-Math.max(0, now - ts) / (45 * DAY));
+    // the few best suggestions: most used and most recent mixed
+    function rank(map, now, k) { return [...map.values()].map(o => Object.assign(o, { sc: score(o.n, o.ts, now) })).sort((a, b) => b.sc - a.sc).slice(0, k || 99); }
+    function itemSuggest(D, catId, k) {
+        const m = new Map(); itemBook(D).forEach(o => { if (o.cat !== catId) return; m.set(o.key, { name: o.name, n: o.buys.length, ts: o.buys[o.buys.length - 1].ts }); });
+        return rank(m, D.now, k);
+    }
+    function qtySuggest(D, catId, name, k) {
+        const o = itemBook(D).get(catId + '|' + String(name).toLowerCase()), m = new Map(); if (!o) return [];
+        o.buys.forEach(b => { if (!b.ql) return; const x = m.get(b.ql) || { label: b.ql, qn: b.qn, qu: b.qu, n: 0, ts: 0 }; x.n++; x.ts = Math.max(x.ts, b.ts); m.set(b.ql, x); });
+        return rank(m, D.now, k);
+    }
+    function unitSuggest(D, catId, name) {
+        const o = itemBook(D).get(catId + '|' + String(name).toLowerCase()), m = new Map(); if (!o) return [];
+        o.buys.forEach(b => { if (!b.qu) return; const x = m.get(b.qu) || { u: b.qu, n: 0, ts: 0 }; x.n++; x.ts = Math.max(x.ts, b.ts); m.set(b.qu, x); });
+        return [...m.values()].sort((a, b) => b.n - a.n || b.ts - a.ts).map(x => x.u);
+    }
+    function priceSuggest(D, catId, name, label, k) {
+        const o = itemBook(D).get(catId + '|' + String(name).toLowerCase()), m = new Map(); if (!o) return [];
+        o.buys.forEach(b => { if (label && b.ql !== label) return; const x = m.get(b.p) || { p: b.p, n: 0, ts: 0 }; x.n++; x.ts = Math.max(x.ts, b.ts); m.set(b.p, x); });
+        const r = rank(m, D.now, k); if (r.length) { const top = r.slice().sort((a, b) => b.n - a.n || b.ts - a.ts)[0]; r.forEach(x => { x.usual = x === top; }); }
+        return r;
+    }
+    // price per kg, litre or piece
+    function unitPrice(b) { const u = UNIT_BASE[b.qu]; if (!u || !(b.qn > 0) || !(b.p > 0)) return null; return { v: b.p / (b.qn * u[1]), per: u[0] }; }
+    const median = a => { const s = a.slice().sort((x, y) => x - y); return s.length ? (s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2) : 0; };
+    // how a price compares with what you usually pay per unit: { pct, usual, per }
+    function priceNote(D, catId, name, qn, qu, p) {
+        const o = itemBook(D).get(catId + '|' + String(name).toLowerCase()); if (!o || !(p > 0)) return null;
+        const now = unitPrice({ qn, qu, p }); if (!now) return null;
+        const prev = o.buys.map(unitPrice).filter(x => x && x.per === now.per).map(x => x.v); if (prev.length < 2) return null;
+        const usual = median(prev), pct = (now.v - usual) / usual * 100; return Math.abs(pct) < 1 ? null : { pct, usual, per: now.per };
+    }
+    // what the baskets say: price moves, what is running out, what the rest of the month will cost, unnamed spending
+    function basketInsights(D) {
+        const now = D.now, out = { prices: [], due: [], forecast: [], misc: null };
+        const mEnd = new Date(new Date(now).getFullYear(), new Date(now).getMonth() + 1, 1).getTime();
+        const mStart = new Date(new Date(now).getFullYear(), new Date(now).getMonth(), 1).getTime();
+        let basketTotal = 0, miscTotal = 0;
+        itemBook(D).forEach(o => {
+            const last = o.buys[o.buys.length - 1];
+            if (o.name.toLowerCase() === 'misc') { o.buys.forEach(b => { if (b.ts >= mStart) miscTotal += b.p; }); }
+            o.buys.forEach(b => { if (b.ts >= mStart) basketTotal += b.p; });
+            const ups = o.buys.map(unitPrice).filter(Boolean);
+            if (ups.length >= 3) { const per = ups[ups.length - 1].per, same = ups.filter(x => x.per === per).map(x => x.v); if (same.length >= 3) { const cur = same[same.length - 1], base = median(same.slice(0, -1)), pct = (cur - base) / base * 100; if (Math.abs(pct) >= 3) out.prices.push({ name: o.name, per, from: base, to: cur, pct }); } }
+            if (o.buys.length >= 3 && o.name.toLowerCase() !== 'misc') {
+                const gaps = []; for (let i = 1; i < o.buys.length; i++) gaps.push((o.buys[i].ts - o.buys[i - 1].ts) / DAY);
+                const gap = median(gaps); if (gap >= 5) { const dueTs = last.ts + gap * DAY, left = Math.round((dueTs - now) / DAY); out.due.push({ name: o.name, cat: o.cat, gap: Math.round(gap), left, frac: Math.max(0, Math.min(1, (now - last.ts) / (gap * DAY))), usual: median(o.buys.slice(-5).map(b => b.p)) });
+                    if (dueTs < mEnd) out.forecast.push({ name: o.name, cat: o.cat, p: median(o.buys.slice(-5).map(b => b.p)) }); }
+            }
+        });
+        out.due.sort((a, b) => a.left - b.left); out.prices.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+        if (basketTotal > 0 && miscTotal > 0) out.misc = { amt: miscTotal, share: miscTotal / basketTotal };
+        return out;
+    }
+    function assess(D, cat, price) {
+        const b = cat.bucket;
+        const has = b.allow > 0;
+        const rate = b.allow / 30;
+        const lastP = D.purchases.find(p => p.cat === cat.id) || null;
+        const poolShort = D.pool.init && price > D.pool.bal + 1e-9;
+        const cdAfter = has && b.bal - price < 0 ? Math.ceil(-(b.bal - price) / rate - 1e-9) : 0;
+        return {
+            poolBal: D.pool.bal, poolShort, has, bal: b.bal, cdNow: b.cool, cdAfter, last: lastP,
+            blocked: poolShort || b.cool > 0,
+            opens: poolShort ? poolOpensFor(D, price) : null
+        };
+    }
+    // What would this expense do to the month? level: ok | tight | risk | broken
+    function preview(D, catId, amt) {
+        const cat = D.catsById[catId];
+        const T = D.today, P = D.P;
+        const leftAfter = P - (D.cur.spent + amt);
+        const base = P > 0 ? P / T.dm : 0;
+        const futureBefore = T.future;
+        const futureAfter = T.daysAfter > 0 && P > 0 ? leftAfter / T.daysAfter : null;
+        // Monthly thinking only: compare how much of the pool is used with how much of the month has passed
+        const elapsedFrac = (T.day - 1) / T.dm;
+        const usedAfter = P > 0 ? (D.cur.spent + amt) / P : 0;
+        let level = 'ok';
+        if (P > 0) {
+            if (leftAfter < 0) level = 'broken';
+            else if (usedAfter > elapsedFrac + 0.2) level = 'risk';
+            else if (usedAfter > elapsedFrac + 0.08) level = 'tight';
+        }
+        const overLimit = cat ? Math.max(0, cat.spent + amt - cat.limit) : 0;
+        return {
+            level, leftAfter, usedAfter, elapsedFrac, futureBefore, futureAfter, todayLeftAfter: T.left - amt, overLimit,
+            drop: futureBefore > 0 && futureAfter !== null ? 1 - futureAfter / futureBefore : 0,
+            counted: cat ? counted(D, cat, amt) : 0
+        };
+    }
+
+    /* ---------- Carrying over data from the first generation of the app ---------- */
+    function migrateV1(old, now) {
+        now = now || Date.now();
+        const out = [];
+        const state = old.state || null;
+        const history = Array.isArray(old.history) ? old.history : [];
+        const purch = old.purch && typeof old.purch === 'object' ? old.purch : null;
+        if (!state || !Array.isArray(state.categories)) return out;
+        const cfg = (purch && purch.cfg) || {};
+        const allow = Number(cfg.allowance) > 0 ? Number(cfg.allowance) : 3000;
+        const minAmt = Number(cfg.minAmt) > 0 ? Number(cfg.minAmt) : 500;
+        const firstTs = history.length ? new Date(history[0].year, history[0].month, 1).getTime() : new Date(state.year, state.month, 1).getTime();
+        const base = firstTs - 1000;
+        state.categories.forEach(c => out.push({ t: 'cat', op: 'add', ts: base, c: normCat(Object.assign({}, c, { id: c.id })) }));
+        const iconOf = {}, nameOf = {};
+        state.categories.forEach(c => { iconOf[c.id] = c.icon; nameOf[c.id] = c.name; });
+        const purOf = {};
+        if (purch && Array.isArray(purch.list)) purch.list.forEach(p => { if (p.tx !== undefined) purOf[p.tx] = p; });
+        const addMonth = (y, m, pool, bank, cats, tx, isCurrent) => {
+            const start = new Date(y, m, 1, 0, 1).getTime();
+            if (!isCurrent) out.push({ t: 'plan', ts: start, y, m, pool, bank: bank || 0, cash: 0, save: 0, allow, minAmt, hist: true });
+            const useTx = Array.isArray(tx) && tx.length;
+            if (useTx) {
+                tx.forEach(x => {
+                    const cid = x.cat;
+                    const e = { t: 'exp', ts: x.ts, cat: cid, name: x.name || nameOf[cid] || 'Imported', icon: iconOf[cid] || guessIcon(x.name), amt: Number(x.amt) || 0, acct: 'bank', note: '', kind: x.kind === 'adjust' ? 'adjust' : 'add' };
+                    const p = purOf[x.id];
+                    if (p) e.pur = { c: Number(p.amt) || 0, need: p.need === 'want' ? 'want' : 'need', reason: String(p.reason || ''), emg: !!p.emergency };
+                    out.push(e);
+                });
+            } else {
+                (cats || []).forEach(c => {
+                    if (Number(c.spent) > 0) out.push({ t: 'exp', ts: new Date(y, m, 15, 12).getTime(), cat: c.id, name: c.name, icon: c.icon || guessIcon(c.name), amt: Number(c.spent), acct: 'bank', note: 'imported total', kind: 'import' });
+                });
+            }
+        };
+        history.forEach(h => addMonth(h.year, h.month, Number(h.pool || h.budget) || 0, Number(h.bank) || 0, h.categories || h.data, h.tx, false));
+        addMonth(state.year, state.month, Number(state.pool) || 0, Number(state.bank) || 0, state.categories, state.tx, true);
+        if (purch) {
+            const seed = { t: 'seed', ts: now };
+            if (purch.poolBal !== undefined && isFinite(Number(purch.poolBal))) seed.poolBal = Number(purch.poolBal);
+            if (purch.cats && typeof purch.cats === 'object') seed.cats = purch.cats;
+            if (seed.poolBal !== undefined || seed.cats) out.push(seed);
+        }
+        return out;
+    }
+
+    /* ---------- Spending by weekday, worked out from real (non-void, non-adjusting) expenses only ----------
+       Each weekday is divided by how many of that weekday really passed in the period counted (days with no
+       spending count as zero), not by a fixed number of weeks. One very large entry is flagged and also shown left out. */
+    function weekdayStats(exps, now, maxDays) {
+        const lim = maxDays || 56, today0 = startOfDay(now);
+        const list = (exps || []).filter(e => e && e.kind !== 'import' && e.kind !== 'adjust' && e.amt > 0 && e.ts < today0 && e.ts >= today0 - lim * DAY);
+        if (!list.length) return { ready: false, spanDays: 0, days: [] };
+        const first = startOfDay(Math.min.apply(null, list.map(e => e.ts)));
+        const amts = list.map(e => e.amt).sort((a, b) => a - b), med = amts[Math.floor(amts.length / 2)];
+        const big = e => !!e.pur || e.amt >= Math.max(1000, 10 * med);
+        const days = [0, 1, 2, 3, 4, 5, 6].map(w => ({ w, n: 0, withSpend: 0, sum: 0, bigSum: 0, big: [], keys: new Set() }));
+        let spanDays = 0;
+        for (let t = first; t < today0; t += DAY) { const d = new Date(t); days[d.getDay()].n++; spanDays++; }
+        list.forEach(e => {
+            const r = days[new Date(e.ts).getDay()]; r.sum += e.amt; r.keys.add(dateKey(e.ts));
+            if (big(e)) { r.bigSum += e.amt; r.big.push({ ts: e.ts, amt: e.amt, name: e.name }); }
+        });
+        days.forEach(r => { r.withSpend = r.keys.size; delete r.keys; r.avg = r.n ? r.sum / r.n : 0; r.avgEx = r.n ? (r.sum - r.bigSum) / r.n : 0; });
+        return { ready: true, spanDays, first, days, enough: spanDays >= 28 && days.every(r => r.n >= 3) };
+    }
+
+    const E = {
+        DAY, ymKey, keyOfTs, dateKey, dim, startOfDay, ICONS, guessIcon, defaultPur, normPur, normCat, defaultLump,
+        DEFAULT_CATS, bootstrapEvents, derive, weekdayStats, counted, assess, learnLasts, parseBasket, qLabel, titleCase, basketOf, itemBook, itemSuggest, qtySuggest, unitSuggest, priceSuggest, priceNote, unitPrice, basketInsights, coverOf, poolOpensFor, preview, migrateV1
+    };
+    if (typeof module !== 'undefined' && module.exports) module.exports = E;
+    else root.Engine = E;
 })(typeof window !== 'undefined' ? window : globalThis);

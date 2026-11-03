@@ -1,17 +1,12 @@
-/* Rustam's Goal Manager: screens, storage, security. The commitment rules live in engine.js. */
+/* Rustam's Budget Manager, generation 2: screens, storage, security. The money rules live in engine.js. */
 (function () {
     'use strict';
-    const E = window.GEngine;
+    const E = window.Engine;
     const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const DAY = E.DAY;
     const $ = id => document.getElementById(id);
     // a screen is only rebuilt when what it shows has really changed: no needless repaint (and no re-blur of the glass) on the quiet minute refresh
-    function put(el, h) { if (el.__h === h && el.firstChild) return false; el.__h = h; el.innerHTML = h; if (window.GSections) GSections.apply(el); wdFit(el); return true; }
-    /* a line too long for its space never touches the ring: it fades and slides, then rests */
-    function wdFit(el) {
-        try { el.querySelectorAll('.wd-mid').forEach(m => { m.querySelectorAll('.wd-big,.wd-un').forEach(t => { t.classList.remove('slide'); const over = t.scrollWidth - m.clientWidth; if (over > 2) { t.classList.add('slide'); t.style.setProperty('--dx', (-over - 4) + 'px'); } }); }); } catch (e) {}
-    }
-    window.addEventListener('resize', () => { try { wdFit(document); } catch (e) {} });
+    function put(el, h) { if (el.__h === h && el.firstChild) return false; el.__h = h; el.innerHTML = h; if (window.GSections) GSections.apply(el); return true; }
     const fmt = n => Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 });
     const fmt2 = n => Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
     const money = n => (n < 0 ? '-' : '') + '₹' + fmt(Math.abs(Math.round(n)));
@@ -27,13 +22,13 @@
     const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } };
 
     /* ---------- Storage: one event log + preferences ---------- */
-    const K_EV = 'gl_events', K_PREF = 'gl_prefs', K_PIN = 'gl_pin', K_BG = 'gl_bg';
+    const K_EV = 'bm2_events', K_PREF = 'bm2_prefs', K_PIN = 'bm2_pin', K_BG = 'budgetApp_bg';
     const PREF_DEFAULT = () => ({
-        theme: 'auto', bgBlur: 0, glassBlur: 20,
-        introOn: true, greetOn: true, lineOn: true, smartOn: true, animOn: true, lossOn: true, gainOn: true,
-        remindOn: true, planAsk: true, remindHour: 21, remindSnooze: null, lastBackup: null,
-        lite: false, privacy: false, ageOn: false, autoLock: true, rememberPass: false, pass: '',
-        look: 'flagship', accent: 'sapphire', glow: false, flFont: 'system', follow: true, lastLight: null, lastDark: null, p: {}, acc: [], defDays: {}, open: [], orbMode: 'header', learnOn: true
+        theme: 'auto', look: 'flagship', accent: 'sapphire', glow: false, flFont: 'system', follow: true, lastLight: null, lastDark: null, p: {}, acc: [], bgBlur: 24, glassBlur: 20,
+        introOn: true, greetOn: true, lineOn: true, smartOn: true, forecastOn: true, stripOn: true, animOn: true,
+        remindOn: true, remindHour: 23, remindSnooze: null, lastBackup: null,
+        lite: false, privacy: false, warnOn: true, dayCloseOn: true, waitOn: true, reviewOn: true, purchOn: true,
+        autoLock: true, rememberPass: false, pass: '', pendingSeed: null, learnOn: true, orbMode: 'header'
     });
     let events = [], prefs = PREF_DEFAULT(), nextId = 1, D = null, screen = 'today', storageOK = true;
 
@@ -55,28 +50,43 @@
         storageOK = save(K_EV, events) && save(K_PREF, prefs);
         if (!storageOK) toast('Could not save: the phone storage may be full');
     }
-    // Delete with a way back: the delete is an event, so voiding it brings everything back exactly as it was
-    function delU(gid) {
-        const q = D.goals.get(gid), nm = q && q.title ? (q.title.length > 28 ? q.title.slice(0, 27) + '…' : q.title) : '';
-        const ev = add({ t: 'goal', op: 'del', gid }); render();
-        toast('Deleted' + (nm ? ' "' + nm + '"' : ''), () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
-    }
     function add(e, ts) {
         e.id = nextId++; e.ts = ts || Date.now();
         events.push(e); persist(); return e;
     }
+    function refresh() { D = E.derive(events, Date.now()); return D; }
     function setEvents(list) {
         events = list.map(e => Object.assign({}, e));
         nextId = events.reduce((m, e) => Math.max(m, e.id || 0), 0) + 1;
         events.forEach(e => { if (!e.id) e.id = nextId++; });
     }
 
+    function firstRun() {
+        const old = { state: load('budgetApp_state'), history: load('budgetApp_history'), purch: load('budgetApp_purch') };
+        const om = load('budgetApp_meta');
+        if (om && typeof om === 'object') {
+            ['bgBlur', 'glassBlur'].forEach(k => { if (typeof om[k] === 'number') prefs[k] = om[k]; });
+            ['introOn', 'greetOn', 'lineOn', 'animOn', 'remindOn'].forEach(k => { if (typeof om[k] === 'boolean') prefs[k] = om[k]; });
+            if (om.theme === 'auto' || ['sky', 'marigold', 'dusk', 'forest'].indexOf(om.theme) >= 0) prefs.theme = om.theme;
+            if (om.lastBackup) prefs.lastBackup = om.lastBackup;
+        }
+        let evs = [];
+        if (old.state && Array.isArray(old.state.categories)) {
+            evs = E.migrateV1(old, Date.now());
+            const si = evs.findIndex(e => e.t === 'seed');
+            if (si >= 0) { prefs.pendingSeed = evs[si]; evs.splice(si, 1); }
+            prefs.migrated = true;
+        } else evs = E.bootstrapEvents(Date.now());
+        setEvents(evs.map((e, i) => Object.assign({ id: i + 1 }, e)));
+        persist();
+    }
     function initStore() {
-        const ev = load(K_EV), pf = load(K_PREF);
+        const ev = load(K_EV);
+        const pf = load(K_PREF);
         if (pf && typeof pf === 'object') prefs = Object.assign(PREF_DEFAULT(), pf);
-        // v5.16: the Flagship theme becomes the default once. An untouched Paper look moves to it; a customised Paper page stays.
-        if (!prefs.flagshipV) { prefs.flagshipV = 1; if (pf && (pf.look === 'paper' || !pf.look) && !(pf.p && Object.keys(pf.p).length)) prefs.look = 'flagship'; try { localStorage.setItem(K_PREF, JSON.stringify(prefs)); } catch (e) {} }
-        if (Array.isArray(ev)) setEvents(ev);
+        // v2.13: the Flagship theme becomes the default once. An untouched Aurora or Paper look moves to it; a customised Paper page stays.
+        if (!prefs.flagshipV) { prefs.flagshipV = 1; if (pf && (pf.look === 'aurora' || pf.look === 'paper' || !pf.look) && !(pf.p && Object.keys(pf.p).length)) prefs.look = 'flagship'; try { localStorage.setItem(K_PREF, JSON.stringify(prefs)); } catch (e) {} }
+        if (Array.isArray(ev) && ev.length) setEvents(ev); else firstRun();
     }
 
     /* ---------- Themes ---------- */
@@ -92,12 +102,17 @@
         const h = new Date().getHours();
         return h >= 5 && h < 12 ? 'sky' : (h >= 12 && h < 17 ? 'marigold' : 'dusk');
     }
+    // Nothing to redo when nothing about the look changed. Redoing it on every tab switch made the glass layers draw again (a blink).
+    let themeSig = '';
     function applyTheme() {
+        let bgLen = 0; try { bgLen = (localStorage.getItem(K_BG) || '').length; } catch (e) {}
+        const sig = JSON.stringify([prefs.tsize, prefs.titleFont, prefs.look, prefs.accent, prefs.glow, prefs.flFont, prefs.lite, prefs.privacy, prefs.glassBlur, prefs.bgBlur, prefs.theme, prefs.p, prefs.glassStyle, prefs.lqFrost, prefs.lqTint, prefs.lqLight, prefs.lqLightBlur, prefs.lqDark, prefs.lqDarkBlur, prefs.lqShadow, prefs.lqShine, prefs.lqStreak, bgLen, document.documentElement.getAttribute('data-look') === null]);
+        if (sig === themeSig) return; themeSig = sig;
         const id = themeId(), root = document.documentElement;
         root.setAttribute('data-theme', id);
         const fx = GLook.FIXED[prefs.look], base = !fx ? null : ({ flagship: prefs.accent === 'gold' ? '#f7f6f2' : '#f6f7fa', flagshipd: prefs.accent === 'gold' ? '#18181a' : '#17191d', royal: '#0e0b17', midnight: '#07130e', deepocean: '#04121f', ember: '#170c0b', graphite: '#131415' })[prefs.look];
-        document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.setAttribute('content', base || THEMES[id].mL));
-                root.style.fontSize = ({ s: '70%', m: '', l: '82%', x: '86%' })[prefs.tsize || 'm'] || '';
+        document.querySelectorAll('meta[name="theme-color"]').forEach(m => { const v = base || THEMES[id].mL; if (m.getAttribute('content') !== v) m.setAttribute('content', v); });
+        root.style.fontSize = ({ s: '70%', m: '', l: '82%', x: '86%' })[prefs.tsize || 'm'] || '';
         root.setAttribute('data-voice', prefs.titleFont === 'serif' ? 'serif' : 'sans');
         root.classList.toggle('lite', !!prefs.lite);
         root.classList.toggle('pm', !!prefs.privacy);
@@ -109,7 +124,7 @@
     function phoneDark() { try { return !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); } catch (e) { return false; } }
     function followNow() {
         if (!prefs.follow) return; GLook.remember(prefs);
-        const t = GLook.followTarget(prefs, phoneDark()); if (t !== prefs.look) { setLook(t); persist(); applyTheme(); if (typeof render === 'function' && D) render(); }
+        const t = GLook.followTarget(prefs, phoneDark()); if (t !== prefs.look) { setLook(t); persist(); applyTheme(); if (D) render(); }
     }
     const hex2rgb = h => { h = h.trim().replace('#', ''); if (h.length === 3) h = h.split('').map(x => x + x).join(''); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
     const mixRGB = (x, y, t) => x.map((v, i) => Math.round(v + (y[i] - v) * t));
@@ -129,7 +144,7 @@
     function applyBackground() {
         let data = null; try { data = localStorage.getItem(K_BG); } catch (e) {}
         const el = $('bg-layer'), root = document.documentElement;
-        if (data) { el.style.backgroundImage = `url("${data}")`; root.classList.add('has-bg'); }
+        if (data) { el.style.backgroundImage = `url("${data}")`; el.style.filter = `blur(${prefs.bgBlur}px) saturate(1.2)`; root.classList.add('has-bg'); }
         else { el.style.backgroundImage = ''; root.classList.remove('has-bg'); }
     }
     function processWallpaper(file) {
@@ -151,7 +166,7 @@
 
     /* ---------- Toast and sheets ---------- */
     function toast(msg, undo) {
-        if (window.GCompanion && typeof GC !== 'undefined' && GC && GC.respond && GCompanion.prefs.get().place !== 'off') { GC.respond(msg, { undo, tone: /^(Locked|Wrong|Enter|Could not|Too many|That is|That date)/i.test(msg) ? 'bad' : '' }); return; }
+        if (window.GCompanion && typeof GC !== 'undefined' && GC && GC.respond && GCompanion.prefs.get().place !== 'off') { GC.respond(msg, { undo, tone: /^(Over|Blocked|Wrong|Enter|Could not|Too many|That is|More than|Encryption|A PIN|Open this)/i.test(msg) ? 'bad' : '' }); return; }
         const t = $('toast');
         t.innerHTML = `<span>${esc(msg)}</span>` + (undo ? '<button class="mini-btn" data-act="toast-undo">Undo</button>' : '');
         t.classList.toggle('act', !!undo);
@@ -170,7 +185,7 @@
         if (onMount) onMount(box);
         const first = box.querySelector('[autofocus]'); if (first && !(opts && opts.noFocus)) setTimeout(() => { try { first.focus(); } catch (e) {} }, 60);
     }
-    function closeSheet() { $('sheet-bg').classList.remove('show'); const f = sheetCloser; sheetCloser = null; if (f) f(); if (window.GFresh) setTimeout(GFresh.afterBusy, 60); }
+    function closeSheet() { if (GC) GC.pose('none'); $('sheet-bg').classList.remove('show'); const f = sheetCloser; sheetCloser = null; if (f) f(); if (window.GFresh) setTimeout(GFresh.afterBusy, 60); }
     // Icon-only Edit (Lucide square-pen) and Delete (Lucide trash-2): same size, tooltip and spoken label
     const ICO = { edit: '<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/>', del: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/>' };
     const icoBtn = (kind, attrs, what) => `<button type="button" class="ico-btn ico-${kind}" ${attrs} title="${kind === 'edit' ? 'Edit' : 'Delete'}" aria-label="${kind === 'edit' ? 'Edit' : 'Delete'} ${what}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICO[kind]}</svg></button>`;
@@ -185,49 +200,85 @@
     const val = (box, sel) => { const el = box.querySelector(sel); return el ? el.value : ''; };
     const numv = (box, sel) => { const v = parseFloat(val(box, sel)); return isFinite(v) ? v : NaN; };
 
-    /* ---------- Daily lines: time, commitment, recovery ---------- */
+    /* ---------- Daily lines ---------- */
     const LINES = {
         general: [
-            ['Haba na haba hujaza kibaba: little by little fills the measure.', 'Swahili proverb'],
-            ['Well begun is half done.', 'Proverb'],
-            ['A journey of a thousand miles begins with a single step.', 'Proverb'],
-            ['Little strokes fell great oaks.', 'Proverb'],
-            ['Drop by drop the pot is filled.', 'Proverb'],
-            ['Do the hard thing first; the rest of the day is lighter.', 'Tip'],
-            ['A page a day is a book in a season.', 'Tip'],
-            ['Small, steady pages beat rare, heroic weekends.', 'Tip'],
-            ['Protect the first hour. Everything else can bend around it.', 'Tip'],
-            ['What you finish early becomes time you own.', 'Tip']
+            ['A penny saved is a penny earned.', 'Proverb'],
+            ['Waste not, want not.', 'Proverb'],
+            ['Many a little makes a mickle.', 'Proverb'],
+            ['Take care of the pennies, and the pounds will take care of themselves.', 'Proverb'],
+            ['A small leak will sink a great ship.', 'Proverb'],
+            ['Cut your coat according to your cloth.', 'Proverb'],
+            ['Don\'t put all your eggs in one basket.', 'Proverb'],
+            ['Don\'t count your chickens before they hatch.', 'Proverb'],
+            ['Boond boond se sagar bharta hai: drop by drop, the ocean fills.', 'Hindi saying'],
+            ['Apni chadar dekh kar pair phailao: stretch your feet only as far as your blanket reaches.', 'Hindi saying'],
+            ['Enough is a blessing: ask for what feeds your family and the guest at your door.', 'After Kabir'],
+            ['Contentment is the greatest wealth.', 'Old wisdom'],
+            ['Rich is not having much; it is needing little.', 'Old wisdom'],
+            ['Do not save what is left after spending; spend what is left after saving.', 'Old wisdom'],
+            ['If you buy what you do not need, soon you will sell what you need.', 'Old wisdom'],
+            ['The cheapest thing is the one you did not buy.', 'Old wisdom'],
+            ['The best time to plant a tree was twenty years ago. The second best time is now.', 'Proverb'],
+            ['Wealth is built in small steps, not in big leaps.', 'Old wisdom'],
+            ['Spend less than you earn, and let time do the rest.', 'Old wisdom'],
+            ['A budget is a promise to your future self.', 'Old wisdom'],
+            ['Count it before you spend it, not after.', 'Old wisdom'],
+            ['Save a little today; smile a lot tomorrow.', 'Old wisdom']
         ],
-        behind: [
-            ['Kal kare so aaj kar, aaj kare so ab: what you plan for tomorrow, do today; what you plan for today, do now.', 'After Kabir'],
-            ['Procrastination is the thief of time.', 'Proverb'],
-            ['Time and tide wait for no one.', 'Proverb'],
-            ['Do not put off till tomorrow what can be done today.', 'Proverb'],
-            ['The debt grows quietly. Pay a little of it now.', 'Tip'],
-            ['You are not behind forever. You are behind until the next page.', 'Tip'],
-            ['One focused hour today lowers the pile tomorrow.', 'Tip']
+        tips: [
+            ['Pay yourself first: set the saving aside before anything else.', 'Tip'],
+            ['Try the 24-hour rule: wait a day before any non-essential purchase.', 'Tip'],
+            ['Keep an emergency fund of three to six months of expenses.', 'Tip'],
+            ['Needs first, wants later, and a little saved in between.', 'Tip'],
+            ['Review your spending once a week; small corrections beat big repairs.', 'Tip'],
+            ['When income rises, raise your savings before your lifestyle.', 'Tip'],
+            ['Write wants on a list. Most of them fade within a week.', 'Tip'],
+            ['Cash you can see leaving is easier to control than money you cannot feel.', 'Tip'],
+            ['Every rupee gets a job: name it before you spend it.', 'Tip'],
+            ['Avoid debt for things that lose value the moment you buy them.', 'Tip'],
+            ['One simple split to start: half for needs, a third for wants, the rest for saving.', 'Tip'],
+            ['Cook at home, carry water, walk when you can: small habits compound.', 'Tip']
         ],
-        ahead: [
-            ['Early work buys quiet years.', 'Tip'],
-            ['Every page banked is a day you will not have to borrow.', 'Tip'],
-            ['This is how a peaceful final year is built.', 'Tip'],
-            ['Steady and early: the best kind of ahead.', 'Tip']
+        restrain: [
+            ['Pause before you pay: is it a need, or a want in disguise?', 'Slow down'],
+            ['Today\'s small yes can become next week\'s big no.', 'Slow down'],
+            ['You are not behind; the next choice is a fresh start.', 'Slow down'],
+            ['Before you buy, wait a day. Most wishes fade by morning.', 'Slow down'],
+            ['Spending ahead of the calendar? Trim the small things first.', 'Slow down'],
+            ['Cut your coat according to your cloth.', 'Proverb'],
+            ['Waste not, want not.', 'Proverb']
+        ],
+        cheer: [
+            ['Steady and under pace: this is how wealth is built.', 'Well done'],
+            ['Every untouched rupee is a quiet win.', 'Well done'],
+            ['Small, steady choices beat grand plans.', 'Well done'],
+            ['Pay yourself first; then enjoy what remains without guilt.', 'Well done'],
+            ['You are ahead of the calendar. Keep it gentle and keep it up.', 'Well done']
+        ],
+        cool: [
+            ['The cheapest thing is the one you did not buy.', 'While you wait'],
+            ['If the wish is real, it will still be there when the wait is over.', 'While you wait'],
+            ['A waiting period is a gift: it turns an impulse into a decision.', 'While you wait']
         ]
     };
     let lineBump = 0;
     function lineContext() {
-        if (!D.cfg) return 'general';
-        if ((D.thesis && D.thesis.lost > 0) || D.tasks.some(t => t.status === 'behind') || (D.pieces && D.pieces.open.some(p => p.status === 'late'))) return 'behind';
-        if ((D.thesis && D.thesis.gained > 0) || D.tasks.some(t => t.status === 'ahead')) return 'ahead';
+        if (!D.P) return 'general';
+        if (D.P - D.cur.spent < 0 || (D.forecast.ready && D.forecast.free < 0)) return 'restrain';
+        if (prefs.purchOn && D.cats.some(c => c.bucket.cool > 0) && new Date().getDate() % 4 === 0) return 'cool';
+        if (D.forecast.ready && D.forecast.free > 0.08 * D.P) return 'cheer';
         return 'general';
     }
     function pickLine() {
-        const now = new Date(), doy = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / 86400000), n = doy + lineBump;
-        const pool = LINES[lineContext()];
+        const now = new Date(), doy = Math.floor((now - new Date(now.getFullYear(), 0, 0)) / DAY), n = doy + lineBump;
+        let ctx = lineContext();
+        if (ctx === 'general' && n % 3 === 2) ctx = 'tips';
+        const pool = LINES[ctx];
         return pool[((n % pool.length) + pool.length) % pool.length];
     }
     const greeting = () => { const h = new Date().getHours(); return (h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening') + ', ' + (prefs.name || 'Rustam'); };
+
     /* ---------- Security: PIN and encrypted backups (WebCrypto) ---------- */
     const enc = new TextEncoder(), dec = new TextDecoder();
     const b64 = buf => { let s = ''; const u = new Uint8Array(buf); for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); };
@@ -241,7 +292,7 @@
         const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
         const key = await deriveKey(pass, salt, ['encrypt'], 200000);
         const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(text));
-        return { app: 'rustams-goals', v: 1, enc: true, kdf: 'PBKDF2-SHA256-200000', salt: b64(salt), iv: b64(iv), data: b64(ct) };
+        return { app: 'rustams-budget', v: 2, enc: true, kdf: 'PBKDF2-SHA256-200000', salt: b64(salt), iv: b64(iv), data: b64(ct) };
     }
     async function decryptText(obj, pass) {
         const key = await deriveKey(pass, unb64(obj.salt), ['decrypt'], 200000);
@@ -295,10 +346,10 @@
 
     /* ---------- Backups ---------- */
     function backupObject() {
-        const p = Object.assign({}, prefs); delete p.pass;
-        return { app: 'rustams-goals', v: 1, exportedAt: new Date().toISOString(), events, prefs: p };
+        const p = Object.assign({}, prefs); delete p.pass; delete p.pendingSeed;
+        return { app: 'rustams-budget', v: 2, exportedAt: new Date().toISOString(), events, prefs: p };
     }
-    const backupBase = () => { const d = new Date(); return `goals-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+    const backupBase = () => { const d = new Date(); return `budget-backup-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
     function markBackedUp() { prefs.lastBackup = Date.now(); prefs.remindSnooze = null; persist(); renderBanner(); if (screen === 'set') render(); }
     async function buildBackupText(pass) {
         const json = JSON.stringify(backupObject());
@@ -315,13 +366,12 @@
             for (const [name, type] of [[base + '.txt', 'text/plain'], [base + '.json', 'application/json']]) {
                 let file; try { file = new File([text], name, { type }); } catch (e) { continue; }
                 try { if (navigator.canShare && !navigator.canShare({ files: [file] })) { why = 'the phone would not accept the file'; continue; } } catch (e) {}
-                try { await navigator.share({ files: [file], title: "Rustam's Goal Manager backup" }); return { ok: true }; }
+                try { await navigator.share({ files: [file], title: "Rustam's Budget Manager backup" }); return { ok: true }; }
                 catch (e) { if (e && e.name === 'AbortError') return { cancelled: true }; why = (e && e.name) || 'an error'; }
             }
         }
         return { ok: false, why };
     }
-    // The phone sometimes reports "closed" even when the file was saved (for example after sending it to Drive), so ask once instead of guessing.
     function toastAsk(msg, label, fn) {
         const t = $('toast'); t.innerHTML = `<span>${esc(msg)}</span><button class="mini-btn" data-act="toast-undo">${esc(label)}</button>`;
         t.classList.add('act', 'show'); t._undo = fn; clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 12000);
@@ -357,7 +407,7 @@
         let text; try { text = await file.text(); } catch (e) { toast('Could not read that file'); return; }
         let obj; try { obj = JSON.parse(text); } catch (e) { toast('That file is not a valid backup'); return; }
         let payload = null;
-        if (obj && obj.enc && obj.app === 'rustams-goals') {
+        if (obj && obj.enc && obj.app === 'rustams-budget') {
             if (!hasCrypto()) { toast('Open this on the https page to decrypt'); return; }
             sheet(`<h2>Backup password</h2><p>This backup is encrypted.</p><label class="field"><span>Password</span><input type="password" id="rp" autofocus></label><div class="error" id="rpe"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="rpgo">Unlock</button></div>`, box => {
                 box.querySelector('#rpgo').onclick = async () => {
@@ -365,802 +415,96 @@
                     closeSheet(); applyRestore(payload);
                 };
             });
-        } else if (obj && obj.app === 'rustams-goals' && Array.isArray(obj.events)) applyRestore(obj);
-        else toast('That file is not a valid backup');
+        } else if (obj && obj.app === 'rustams-budget' && Array.isArray(obj.events)) applyRestore(obj);
+        else if (obj && obj.app === 'minimal-budget' && obj.state) {
+            const evs = E.migrateV1({ state: obj.state, history: obj.history, purch: obj.purch }, Date.now());
+            applyRestore({ events: evs, old: true, exportedAt: obj.exportedAt });
+        } else toast('That file is not a valid backup');
     }
     async function applyRestore(p) {
         const when = p.exportedAt ? fmtDay(new Date(p.exportedAt).getTime()) : 'an unknown date';
         if (!await confirmSheet({ title: 'Restore backup?', sub: `This replaces everything in the app now with the backup from ${when}.`, ok: 'Restore', danger: true })) return;
         let evs = p.events.slice();
+        prefs.pendingSeed = null;
+        if (p.old) { const si = evs.findIndex(e => e.t === 'seed'); if (si >= 0) { prefs.pendingSeed = evs[si]; evs.splice(si, 1); } evs = evs.map((e, i) => Object.assign({ id: i + 1 }, e)); }
         setEvents(evs);
         if (p.prefs) { const keep = { pass: prefs.pass, rememberPass: prefs.rememberPass }; prefs = Object.assign(PREF_DEFAULT(), p.prefs, keep); }
         persist(); applyTheme(); render(); toast('Backup restored');
     }
 
-
-    /* ---------- Helpers for this app ---------- */
-    const N = n => { const r = Math.round(n * 10) / 10; return r.toLocaleString('en-IN', { maximumFractionDigits: 1 }); };
-    const dN = n => plural(Math.round(Math.abs(n)), 'day');
-    const keyDate = k => { const p = String(k).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); };
-    const fmtK = k => keyDate(k).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-    const fmtDNum = n => fmtK(E.keyOf(n));
-    const fmtDNshort = n => keyDate(E.keyOf(n)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-    const unitIcon = u => ({ pages: '📖', words: '✍️', hours: '⏱️', sessions: '🎯', items: '✔️' })[u] || '✔️';
-    const unitWord = (u, n) => (Math.abs(n - 1) < 1e-9 && /s$/.test(u)) ? u.slice(0, -1) : u;
-    const todayKey = () => E.localKey(Date.now());
-    const slipText = s => s > 0.5 ? `${dN(s)} late` : s < -0.5 ? `${dN(s)} early` : 'on time';
-    function statusChip(t) {
-        if (t.status === 'done') return '<span class="chip good">Finished</span>';
-        if (t.status === 'later') return `<span class="chip">Starts ${fmtDNshort(t.startN)}</span>`;
-        if (t.status === 'behind') return `<span class="chip bad">${N(t.behindQty)} ${unitWord(t.unit, t.behindQty)} behind · ${dN(Math.max(1, t.behindDays))}</span>`;
-        if (t.status === 'ahead') return `<span class="chip good">${N(t.aheadQty)} ${unitWord(t.unit, t.aheadQty)} ahead · ${dN(Math.max(0.1, t.aheadDays))}</span>`;
-        return '<span class="chip">On schedule</span>';
-    }
-    const projTitle = t => { const p = D.goals.get(t.g.parent); return p ? p.title : 'Standalone'; };
-
+    /* ---------- Rendering helpers ---------- */
+    const cd = d => d >= 60 ? `${Math.round(d / 30)} mo` : `${d}d`;
     function renderBanner() {
         const el = $('banner'), h = new Date().getHours(), out = [];
-        if (!D.cfg) out.push(`<div class="banner"><span>Set your JRF dates to begin.</span><span class="b-act"><button class="on" data-act="cfg">Set up</button></span></div>`);
-        else if (prefs.remindOn && h >= prefs.remindHour && D.tasks.some(t => t.left > 0.05 && t.started && !t.finished)) {
-            const n = D.tasks.filter(t => t.left > 0.05 && t.started && !t.finished).length;
-            out.push(`<div class="banner"><span>🌙 Evening check: ${plural(n, 'task')} still ${n === 1 ? 'has' : 'have'} work left today.</span><span class="b-act"><button class="on" data-act="to-today">See</button></span></div>`);
-        }
-        const due = prefs.remindOn && (h >= 22 || h < 4) && !(prefs.lastBackup && Date.now() - prefs.lastBackup < 18 * 3600e3) && !(prefs.remindSnooze && Date.now() < prefs.remindSnooze);
-        if (due) out.push(`<div class="banner"><span>🌙 Back up today's progress?</span><span class="b-act"><button data-act="b-later">Later</button><button class="on" data-act="b-now">Back up</button></span></div>`);
+        if (D.pendingClose) out.push(`<div class="banner"><span>${MONTHS[D.pendingClose.m]} ended with ${mh(D.pendingClose.left)} unspent. Decide where it goes.</span><span class="b-act"><button class="on" data-act="close-month">Decide</button></span></div>`);
+        if (D.needPlan) out.push(`<div class="banner"><span>Set up ${MONTHS[D.cur.m]} to start.</span><span class="b-act"><button class="on" data-act="plan">Set up</button></span></div>`);
+        const due = prefs.remindOn && (h >= prefs.remindHour || h < 4) && !(prefs.lastBackup && Date.now() - prefs.lastBackup < 18 * 3600e3) && !(prefs.remindSnooze && Date.now() < prefs.remindSnooze);
+        if (due) out.push(`<div class="banner"><span>🌙 It's late. Back up today's entries?</span><span class="b-act"><button data-act="b-later">Later</button><button class="on" data-act="b-now">Back up</button></span></div>`);
         el.innerHTML = out.join('');
     }
-    function ringSvg(frac, label) {
-        const r = Math.max(0, Math.min(1, frac)), g = statusGrad(0);
-        return `<div class="ring"><svg viewBox="0 0 80 80"><circle class="ring-track" cx="40" cy="40" r="36" fill="none" stroke-width="7"/><circle class="ring-arc" cx="40" cy="40" r="36" fill="none" stroke-width="7" stroke-linecap="round" stroke="${rgb(g.mid)}" stroke-dasharray="${(r * 226.2).toFixed(1)} 226.2"/></svg><div class="ring-center"><div class="ring-pct">${Math.round(r * 100)}%</div><div class="ring-cap">${label}</div></div></div>`;
+    // spoken details: tap a graphic and the Companion explains it in a sentence or two (no amounts when privacy mode is on)
+    const tl = (text, tone) => ` data-tell="${esc(text)}"${tone ? ` data-tone="${tone}"` : ''}`;
+    const mTell = v => prefs.privacy ? 'an amount you have hidden' : money(v);
+    function ringSvg(ratio) {
+        const r = Math.max(0, Math.min(1, ratio)), g = statusGrad(ratio);
+        return `<div class="ring"><svg viewBox="0 0 80 80"><circle class="ring-track" cx="40" cy="40" r="36" fill="none" stroke-width="7"/><circle class="ring-arc" cx="40" cy="40" r="36" fill="none" stroke-width="7" stroke-linecap="round" stroke="${rgb(g.mid)}" stroke-dasharray="${(r * 226.2).toFixed(1)} 226.2"/></svg><div class="ring-center"><div class="ring-pct">${Math.round(ratio * 100)}%</div><div class="ring-cap">used</div></div></div>`;
     }
-
-    function taskRow(t, i) {
-        const behind = t.status === 'behind', over = behind ? statusGrad(1) : statusGrad(0);
-        const doneAll = t.target > 0 && t.left < 0.05, nothing = t.target < 0.05;
-        const frac = nothing ? 1 : Math.min(1, t.doneToday / t.target);
-        let line = '';
-        if (nothing) line = t.aheadQty > 0 ? `Nothing due: you are ${N(t.aheadQty)} ${unitWord(t.unit, t.aheadQty)} ahead` : (t.started ? 'Rest or leave day. Nothing due.' : '');
-        else if (doneAll) line = `Done for today · ${N(t.doneToday)} ${t.unit}`;
-        else line = t.carried > 0.05 ? `${N(t.fresh)} new + ${N(t.carried)} carried from before` : `${N(t.fresh)} new`;
-        if (t.derived && t.next && !nothing && !doneAll) line += ' · Next: ' + itemLabel(t.next);
-        const big = nothing ? '0' : N(t.left > 0.05 ? t.left : t.target);
-        return `<div class="cat-item2 trow" data-id="${t.id}" data-act="task" style="--i:${i};--g1:${rgb(over.g1)};--g2:${rgb(over.g2)};--glow:${rgb(over.mid, 0.35)}">
-            <div class="cat-meta" style="min-width:0"><div class="cat-name"><span class="cat-ico">${unitIcon(t.unit)}</span>${esc(t.g.title)}</div>
-            <div class="cat-bar"><div style="width:${frac * 100}%"></div></div></div>
-            <div class="cat-spent">${doneAll ? '✓' : big}<span class="hint" style="font-family:var(--font-sans);font-weight:400;font-size:0.98rem"> ${doneAll || nothing ? '' : esc(t.unit)}</span></div>
-            <div class="cat-nums" style="opacity:1">${esc(line)}<div style="margin-top:4px">${statusChip(t)} <span class="chip">${esc(projTitle(t))}</span></div></div>
-            <button class="add-btn sm" data-act="log" data-id="${t.id}" aria-label="Log progress">+</button></div>`;
+    const catTell = (c, ratio) => c.limit > 0 ? (prefs.privacy ? `${c.name} has used ${Math.round(ratio * 100)}% of its limit.` : `${c.name}: ${money(c.spent)} of ${money(c.limit)} used. ${c.spent > c.limit ? money(c.spent - c.limit) + ' over.' : money(c.limit - c.spent) + ' left.'}`) : `${c.name} has no limit set.`;
+    function catCard(c, i) {
+        const ratio = c.limit > 0 ? c.spent / c.limit : (c.spent > 0 ? 1 : 0), g = statusGrad(ratio), over = c.spent > c.limit && c.limit > 0;
+        const left = c.limit - c.spent;
+        const wait = prefs.purchOn && c.bucket.cool > 0 ? `<span class="cd-chip">wait ${cd(c.bucket.cool)}</span>` : '';
+        return `<div class="cat-item2" data-id="${c.id}" data-act="entry" style="--i:${i};--g1:${rgb(g.g1)};--g2:${rgb(g.g2)};--glow:${rgb(g.mid, 0.35)}">
+            <div class="cat-meta" style="min-width:0"><div class="cat-name"><span class="cat-ico">${esc(c.icon)}</span>${esc(c.name)}${wait}</div>
+            <div class="cat-bar" data-tell-first="1"${tl(catTell(c, ratio), over ? 'bad' : '')}><div style="width:${Math.min(100, ratio * 100)}%"></div></div></div>
+            <div class="cat-spent priv" style="${over ? 'color:var(--warning)' : ''}">${money(c.spent)}</div>
+            <div class="cat-nums ${over ? 'over' : ''}"><span class="priv">${over ? money(-left) + ' over' : money(left) + ' left'} · ${money(c.limit)}</span></div>
+            <button class="add-btn sm" data-act="${c.type === 'fixed' && c.price > 0 ? 'quick' : 'entry'}" data-id="${c.id}" aria-label="Add">+</button></div>`;
     }
-
-    const pathOf = id => { const out = []; let g = D.goals.get(id); while (g) { if (!g.isPhase) out.unshift(g.title); g = g.parent ? D.goals.get(g.parent) : null; } return out.join(' › '); };
-    const pctTxt = p => Math.round(p * 100) + '%';
-    function timelineHtml() {
-        const J = D.jrf, T = D.thesis, tot = J.total;
-        const pos = n => Math.max(0, Math.min(100, (n - J.startN) / tot * 100));
-        const tgt = pos(J.targetN), today = pos(D.todayN), proj = pos(T.projN);
-        const late = T.slip > 0.5;
-        return `<div class="tl"><div class="tl-track"><div class="tl-fill" style="width:${today}%"></div><div class="tl-buf" style="left:${tgt}%"></div></div>
-            <div class="tl-mark up ${today > 70 ? 'l' : 'r'}" style="left:${today}%"><b>Today</b></div>
-            <div class="tl-mark dn ${tgt > 70 ? 'l' : 'c'}" style="left:${tgt}%"><b>Year ${J.target} target</b></div>
-            ${(D.tasks.length || P().list.length) && Math.abs(proj - tgt) > 0.4 ? `<div class="tl-mark up ${late ? 'red' : 'green'} ${proj > 70 ? 'l' : 'r'}" style="left:${proj}%;top:18px"><b>At this pace</b></div>` : ''}</div>
-            <div class="tl-years">${Array.from({ length: J.years }, (_, i) => `<span>Y${i + 1}</span>`).join('')}</div>`;
+    function avgPerDay() { const d = Math.max(1, D.today.day); return Math.round(D.cur.spent / d); }
+    function overdrawnAmt() { return D.cats.reduce((t, c) => t + (c.limit > 0 && c.spent > c.limit ? c.spent - c.limit : 0), 0); }
+    function paceLine() {
+        const T = D.today, P = D.P, d = T.day;
+        if (d < 3) return 'Early in the month: the pace estimate appears after day 3.';
+        let lump = 0, rest = 0;
+        D.cats.forEach(c => { if (c.type === 'fixed' && c.limit > 0 && c.price >= 0.5 * c.limit) lump += c.spent; else rest += c.spent; });
+        const diff = P - (lump + rest / d * T.dm), r = Math.round(Math.abs(diff) / 10) * 10;
+        return diff >= 0 ? `At this pace you'll finish with about ${mh(r)} to spare.` : `At this pace you'll overshoot the pool by about ${mh(r)}.`;
     }
-
-    const CATS = ['Marriage', 'Family & children', 'Health', 'Home', 'Learning', 'Other'];
-    function ageOn(n) { return D.cfg && D.cfg.birth ? Math.floor((n * 86400000 - Date.UTC(+D.cfg.birth.slice(0, 4), +D.cfg.birth.slice(5, 7) - 1, +D.cfg.birth.slice(8, 10))) / (365.2425 * 86400000)) : null; }
-    function renderLife() {
-        if (!D.cfg) { $('s-life').innerHTML = '<div class="card"><p class="hint">Set your timeline first (Settings).</p></div>'; return; }
-        const J = D.jrf, T = D.thesis; let h = '';
-        const purpose = D.cfg.purpose ? esc(D.cfg.purpose) : 'the life beyond the thesis';
-        h += `<div class="card" data-sec="life:time"><h3>Time</h3>
-            <div class="row"><span class="muted">Since the JRF began</span><b class="num">${dN(J.elapsed)}</b></div>
-            <div class="row"><span class="muted">To the year-${J.target} target</span><b class="num">${dN(J.daysToTarget)}</b></div>
-            <div class="row"><span class="muted">To the end of the JRF</span><b class="num">${dN(J.daysToEnd)}</b></div>
-            ${prefs.ageOn && D.cfg.birth ? `<div class="row"><span class="muted">Your age now · at target · at JRF end</span><b class="num">${ageOn(D.todayN)} · ${ageOn(J.targetN)} · ${ageOn(J.endN)}</b></div>` : ''}</div>`;
-        let oc;
-        if (T.projects.length && D.tasks.length) {
-            if (T.slip > 0.5) oc = `Delay so far has already taken ${dN(T.slip)} from the buffer you set aside for ${purpose}. That is time, not a prediction about any single goal. Marriage and family do not move by the same number of days, but they do share the same limited years.`;
-            else if (T.slip < -0.5) oc = `You have banked ${dN(-T.slip)}. That is time that can go to ${purpose}.`;
-            else oc = `Your buffer is intact: ${Math.round(T.planned)} days set aside for ${purpose}.`;
-        } else oc = `Your plan sets aside ${Math.round(T.planned)} days of the fifth year for ${purpose}.`;
-        const F5 = T.fifth;
-        h += `<div class="card" data-sec="life:what-the-buffer-is-for"><h3>My fifth year</h3><p style="font-family:var(--font-serif);font-size:1.15rem;line-height:1.4">${oc}</p>
-            <div class="row"><span class="muted">Fifth year</span><b class="num">${dN(F5.days)}</b></div>
-            <div class="row"><span class="muted">Editing and proofreading</span><b class="num">${dN(F5.edit)}</b></div>
-            <div class="row"><span class="muted">Finalising and submission</span><b class="num">${dN(F5.fin)}</b></div>
-            <div class="row"><span class="muted">Free for ${purpose}</span><b class="num ${F5.free < 0 ? 'bad' : ''}">${dN(F5.free)}</b></div>
-            <div class="hint mt">Editing and proofreading begin only when all reading and drafting are done.</div>
-            <button class="btn-line" data-act="fifth">Plan my fifth year</button></div>`;
-        h += `<div class="list-header"><span>Life goals</span><button class="mini-btn btn-quiet" data-act="life-add">Add</button></div>`;
-        D.life.forEach(l => {
-            h += `<div class="card"><div class="row"><h3 style="margin:0">${esc(l.title)}</h3><span class="chip">${esc(l.cat)}</span></div>
-                ${l.notes ? `<p class="tight" style="margin-top:6px">${esc(l.notes)}</p>` : ''}
-                ${l.due ? `<div class="hint">Aim: ${fmtK(l.due)} · ${l.daysLeft < 0 ? dN(l.daysLeft) + ' past' : dN(l.daysLeft) + ' to go'}</div>` : ''}
-                ${l.ms.map(m => `<label class="ms ${m.done ? 'done' : ''}"><input type="checkbox" data-ms="${m.id}" ${m.done ? 'checked' : ''}><span style="flex:1">${esc(m.title)}</span>${m.due && !m.done ? `<span class="chip ${m.daysLeft < 0 ? 'bad' : ''}">${m.daysLeft < 0 ? dN(m.daysLeft) + ' overdue' : dN(m.daysLeft)}</span>` : ''}</label>`).join('')}
-                <div class="grid2 mt"><button class="btn-line" data-act="ms-add" data-id="${l.id}">Add a step</button><button class="btn-line" data-act="life-edit" data-id="${l.id}">Edit</button></div></div>`;
-        });
-        if (!D.life.length) h += `<div class="card"><p class="hint">Add a goal such as "Family", then small, concrete steps with dates: talk to relatives and friends about meeting someone, a health check-up, visiting a place you want to live. These steps do not wait for the thesis.</p></div>`;
-        put($('s-life'), h);
+    function ringTell(P, spent, left, pct, daysLeft) {
+        if (left < 0) return prefs.privacy ? 'You have used more than this month\'s pool. No blame. Slow down for now.' : `You have gone ${money(-left)} past this month's pool. No blame. Slow down for now.`;
+        return prefs.privacy ? `You have used ${Math.round(pct)}% of this month's pool, with ${plural(daysLeft, 'day')} to go.` : `You have used ${Math.round(pct)}% of the pool. ${money(left)} is left for ${plural(daysLeft, 'day')}.`;
     }
-
-    const sw = (k, t, d) => `<div class="sw-row"><div><div>${t}</div>${d ? `<div class="set-meta">${d}</div>` : ''}</div><label class="switch"><input type="checkbox" data-pref="${k}" ${prefs[k] ? 'checked' : ''}><i></i></label></div>`;
-    const slider = (id, l, max, v) => `<div class="bg-row"><span>${l}</span><input type="range" id="${id}" min="0" max="${max}" value="${v}"><b class="bg-val" id="${id}-v">${v}</b></div>`;
-    /* ================= Version 3: chapters, tasks and the chain clock ================= */
-    const DEFD0 = { skim: 3, scan: 5, intro: 14, review: 40, concl: 14, orient: 5, def: 2, inst: 5, ta: 5, trans: 1, synth: 5, struct: 1, lang: 1, cite: 3, proof: 3 };
-    const DEFD_LABEL = [['skim', 'Skim Reading'], ['scan', 'Scan Reading'], ['orient', 'Orientation'], ['def', 'Definition'], ['inst', 'Instances and Ramifications'], ['ta', 'Theoretical Application'], ['trans', 'Concluding lines (transition)'], ['synth', 'Synthesis'], ['intro', 'Introduction chapter, drafting'], ['review', 'Theory and Review chapter, drafting'], ['concl', 'Conclusion chapter, drafting'], ['struct', 'Structural edit, per theme or part'], ['lang', 'Language edit, per theme or part'], ['cite', 'Citations and MLA check'], ['proof', 'Final proofread']];
-    const defDays = k => { const v = Number((prefs.defDays || {})[k]); return v > 0 ? v : DEFD0[k]; };
-    const nd = (title, children, f) => ({ kind: 'project', title, children: children || [], f: f || {} });
-    const H3 = 3, daysOfH = h => Math.max(1, Math.ceil(h / H3 - 1e-9)), hTxt = h => (Math.round(h * 2) / 2) + ' h';
-    const pc = (title, days, f) => ({ kind: 'piece', title, f: Object.assign({ pdays: days }, f || {}) });
-    let lastAdded = [];
-    // show where a new task or section landed: open every card above it, scroll to it, and let it glow
-    function revealAdded(parentId, what) {
-        const ids = lastAdded.slice(); if (!ids.length) return;
-        let x = D.goals.get(parentId), n = 0; const open = new Set(prefs.open || []);
-        while (x && n++ < 30) { open.add(x.id); x = x.parent ? D.goals.get(x.parent) : null; }
-        prefs.open = [...open]; persist(); screen = 'plan'; render();
-        setTimeout(() => {
-            const el = ids.map(i => document.querySelector(`.ol-row[data-id="${i}"]`)).find(Boolean);
-            if (el) { el.scrollIntoView({ block: 'center', behavior: document.body.classList.contains('still') ? 'auto' : 'smooth' }); ids.forEach(i => { const r = document.querySelector(`.ol-row[data-id="${i}"]`); if (r) r.classList.add('just-added'); }); setTimeout(() => document.querySelectorAll('.just-added').forEach(r => r.classList.remove('just-added')), 2600); }
-            toast(`${what} added to ${pathOf(parentId) || 'the plan'}`);
-        }, 120);
+    function paceTell(pct, elapsed) {
+        const d = pct - elapsed;
+        return d > 8 ? 'The bar is your spending and the tick is the calendar. Spending is ahead, so slow down a little.' : d < -8 ? 'The bar is your spending and the tick is the calendar. You are well behind it, which is good.' : 'The bar is your spending and the tick is the calendar. They are close: a steady pace.';
     }
-    function commit(parentId, specs) {
-        refresh();
-        let n = D.nextGoalId; const out = [];
-        const walk = (pid, sp) => { const id = n++; sp.id = id; const g = Object.assign({ id, kind: sp.kind, title: sp.title, parent: pid || null }, sp.f); if (sp.mirrorOf) g.mirror = sp.mirrorOf.id; out.push(g); (sp.children || []).forEach(c => walk(id, c)); };
-        specs.forEach(sp => walk(parentId, sp));
-        lastAdded = out.map(g => g.id);
-        if (out.length) add({ t: 'goal', op: 'addmany', gs: out });
-        refresh();
-        return out.length;
-    }
-    const themeSpec = name => nd(name, [pc('Definition', defDays('def')), pc('Instances and Ramifications', defDays('inst')), pc('Theoretical Application', defDays('ta')), pc('Concluding lines: transition to the next theme', defDays('trans'))], { role: 'theme' });
-    const mirrors = units => units.map(u => { const m = pc(u.title, 0); m.mirrorOf = u; return m; });
-    function chapterSpec(title, type, themes) {
-        const reading = nd('Reading', [pc('Skim Reading', defDays('skim')), pc('Scan Reading', defDays('scan'))], { grp: 'reading' });
-        let draftKids = [], units = [];
-        if (type === 'novel') {
-            const o = nd('Part 1: Orientation', [pc('Orientation', defDays('orient'))], { role: 'part' });
-            const a = nd('Part 2: Analysis', (themes || []).map(themeSpec), { role: 'analysis' });
-            const s = nd('Part 3: Synthesis', [pc('Synthesis', defDays('synth'))], { role: 'part' });
-            draftKids = [o, a, s]; units = [o].concat(a.children, [s]);
-        } else if (type === 'review') {
-            const a = nd('Part 1: Theoretical Framework', [pc('Draft the theoretical framework', Math.ceil(defDays('review') / 2))], { role: 'part' });
-            const b = nd('Part 2: Review of Literature', [pc('Draft the review of literature', Math.floor(defDays('review') / 2))], { role: 'part' });
-            draftKids = [a, b]; units = [a, b];
-        } else if (type === 'intro') draftKids = [pc('Draft the chapter', defDays('intro'))];
-        else if (type === 'concl') draftKids = [pc('Draft the chapter', defDays('concl'))];
-        const draft = nd('Drafting', draftKids, { grp: 'drafting' });
-        const mk = (name, key, role) => { const k = units.length ? mirrors(units).map(m => { m.f.pdays = defDays(key); return m; }) : [pc(name + ' pass', defDays(key))]; return nd(name, k, { role }); };
-        const edit = nd('Editing and proofreading', [mk('Structural edit', 'struct', 'structural'), mk('Language edit', 'lang', 'language'), pc('Citations and MLA check', defDays('cite')), pc('Final proofread', defDays('proof'))], { grp: 'editing' });
-        return nd(title, [reading, draft, edit], { chap: true });
-    }
-    function descendants(id, pred) { const out = []; const go = x => (D.kidsOf.get(x) || []).forEach(c => { if (pred(c)) out.push(c); go(c.id); }); go(id); return out; }
-    function addThemes(chapterId, names) {
-        refresh();
-        const an = descendants(chapterId, g => g.role === 'analysis')[0]; if (!an) return 0;
-        const st = descendants(chapterId, g => g.role === 'structural')[0], lg = descendants(chapterId, g => g.role === 'language')[0];
-        const specs = names.map(themeSpec); commit(an.id, specs);
-        if (st) commit(st.id, mirrors(specs).map(m => { m.f.pdays = defDays('struct'); return m; }));
-        if (lg) commit(lg.id, mirrors(specs).map(m => { m.f.pdays = defDays('lang'); return m; }));
-        return names.length;
-    }
-    function lockPass() {
-        refresh();
-        const nl = D.pieces.needLock; if (!nl.length) return;
-        const groups = new Map();
-        nl.forEach(p => { const T = (p.g.createdAt || 0) + 86400000; if (!groups.has(T)) groups.set(T, []); groups.get(T).push(p); });
-        groups.forEach((ps, T) => {
-            const d2 = E.derive(events.filter(e => e.ts <= T), T), map = {};
-            ps.forEach(p => { const q = d2.pieces.byId.get(p.id); if (q && q.projN !== null) map[p.id] = E.keyOf(q.projN); });
-            if (Object.keys(map).length) add({ t: 'lock', map }, T);
-        });
-        refresh();
-    }
-    const P = () => D.pieces;
-    const chapOf = pid => { let g = D.goals.get(pid); while (g) { if (g.chap) return g; g = g.parent ? D.goals.get(g.parent) : null; } return null; };
-    const pTitle = p => p.g.mirror && D.goals.get(p.g.mirror) ? D.goals.get(p.g.mirror).title : p.title;
-    const dShort = n => fmtDNshort(n);
-    function pieceRight(p) {
-        if (p.done) return p.doneUndated ? '<span class="muted">done earlier</span>' : `<span class="muted">done ${dShort(p.finN)}${p.over > 0 ? ` · <b class="bad">${p.over} over</b>` : p.over < 0 ? ` · <b class="good">${-p.over} early</b>` : ''}</span>`;
-        if (p.status === 'late') return `<b class="bad">${p.lateDays} d late</b>`;
-        if (p.status === 'due') return '<b>due today</b>';
-        if (p.status === 'on') return `<span class="muted">due ${dShort(p.due)}</span>`;
-        if (p.status === 'ready') return '<span class="muted">ready to start</span>';
-        return `<span class="muted">starts ${dShort(p.start)}</span>`;
-    }
-    const dayF = n => { const r = Math.round(Math.abs(n) * 10) / 10; return N(r) + (r === 1 ? ' day' : ' days'); };
-    // work done on a task against where the clock says it should be
-    function pieceWorkBar(p, cls) {
-        if (p.done || !p.hasWork) return '';
-        return `<span class="${cls}"><i style="width:${Math.round(p.work * 100)}%"></i>${p.workExp !== null ? `<b style="left:${Math.round(p.workExp * 100)}%"></b>` : ''}</span>`;
-    }
-    function pieceWorkRows(p) {
-        if (p.done || !p.hasWork) return '';
-        const ah = p.workAhead, tone = ah === null || Math.abs(ah) < 0.25 ? '' : ah > 0 ? 'good' : 'bad';
-        const vs = ah === null ? 'Starts later' : Math.abs(ah) < 0.25 ? 'On the clock' : ah > 0 ? dayF(ah) + ' ahead' : dayF(ah) + ' behind';
-        return `<div class="row mt"><span class="muted">Work done</span><b class="num">${p.workQty !== null ? N(p.workQty) + ' of ' + N(p.workTotal) + ' ' + esc(p.workUnit) + ' · ' : ''}${pctTxt(p.work)}</b></div>
-            ${pieceWorkBar(p, 'pw big')}
-            <div class="row"><span class="muted">Against the clock</span><b class="num ${tone}">${vs}</b></div>
-            ${p.workExp !== null ? `<div class="hint">The clock expects ${pctTxt(p.workExp)} by today (the small mark on the bar).</div>` : ''}`;
-    }
-    const gripHtml = () => '<span class="grip" role="button" aria-label="Drag to move" title="Drag to move"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg></span>';
-    const workOnBtn = p => (p.done || p.locked || p.picked || (P().active || []).some(x => x.id === p.id)) ? '' : `<button type="button" class="wo-btn" data-act="${P().pickMode ? 'begin' : 'next'}" data-id="${p.id}" aria-label="Work on this" title="Work on this"><svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>`;
-    // hidden Edit and Delete buttons: the swipe gesture (swipe.js) clicks them, so one delete path serves the row, the sheet and the swipe
-    const swipeBtns = (id, canDel, what) => `<span class="sw-only">${icoBtn('edit', `data-act="swedit" data-id="${id}"`, what)}${canDel ? icoBtn('del', `data-act="swdel" data-id="${id}"`, what) : ''}</span>`;
-    function pieceRow(p, depth) {
-        return `<div class="ol-row ol-item pr ${p.done ? 'is-done' : ''}" data-act="pc" data-id="${p.id}" style="padding-left:${depth * 14}px"><button class="tick ${p.done ? 'on' : ''}" data-act="tick" data-id="${p.id}" aria-label="${p.done ? 'Done' : 'Mark done'}">${p.done ? '✓' : p.locked ? '🔒' : ''}</button><span class="ol-title">${esc(pTitle(p))}</span>${pieceWorkBar(p, 'pw')}<span class="ol-sub">${hTxt(p.hrs)}</span><span class="ol-sub">${pieceRight(p)}</span>${workOnBtn(p)}${movable(p.id) ? gripHtml() : ''}${swipeBtns(p.id, p.locked ? 0 : 1, 'task')}</div>`;
-    }
-    function nodeRow(g, depth) {
-        const a = P().agg.get(g.id), open = (prefs.open || []).indexOf(g.id) >= 0, has = (D.kidsOf.get(g.id) || []).length > 0;
-        const late = a && a.slip > 0.5 ? `<span class="chip bad">${dN(a.slip)} late</span>` : '';
-        return `<div class="ol-row nr" data-act="nodeS" data-id="${g.id}" style="padding-left:${depth * 14}px"><button class="ol-chev" data-act="toggle" data-id="${g.id}" aria-label="Open or close">${has ? (open ? '▾' : '▸') : ''}</button><span class="ol-title">${esc(g.title)}</span>${late}<span class="ol-sub">${a ? a.doneCount + '/' + a.count : ''}</span><div class="ol-bar"><i style="width:${(a ? a.pct : 0) * 100}%"></i></div>${movable(g.id) ? gripHtml() : ''}${swipeBtns(g.id, g.grp || g.chap ? 0 : 1, 'section')}</div>` + (open ? treeHtml(g.id, depth + 1) : '');
-    }
-    function treeHtml(parentId, depth) {
-        return (D.kidsOf.get(parentId) || []).map(c => {
-            if (c.kind === 'project') return nodeRow(c, depth);
-            if (c.kind === 'piece') { const p = P().byId.get(c.id); return p ? pieceRow(p, depth) : ''; }
-            return '';
-        }).join('');
-    }
-    function renderPlan() {
-        const T = D.thesis, J = D.jrf, PP = P();
-        let h = '';
-        if (!D.cfg) { $('s-plan').innerHTML = '<div class="card"><p class="hint">Set your timeline first (Settings).</p><button class="btn-line btn-accent" data-act="cfg">Set up my timeline</button></div>'; return; }
-        if (PP.list.length && T) {
-            const open = PP.open.length, need = PP.list.filter(p => !p.done).reduce((s, p) => s + p.days, 0);
-            const F5 = T.fifth, fit = F5.baseWriteN - J.targetN, wOpenN = PP.open.filter(p => p.grp !== 'editing').length;
-            h += `<div class="card"><h3>The plan as you set it</h3>
-                <div class="row"><span class="muted">Open tasks</span><b class="num">${open} · ${dN(need)} of work</b></div>
-                <div class="row"><span class="muted">Days left to the year-${J.target} target</span><b class="num">${dN(Math.max(0, J.daysToTarget))}</b></div>
-                <div class="row"><span class="muted">Reading and drafting finish (if every task takes its allotted days)</span><b class="num ${fit > 0 ? 'bad' : 'good'}">${wOpenN ? fmtDNum(F5.baseWriteN) : 'Done'}</b></div>
-                <div class="row"><span class="muted">Editing and proofreading (year ${J.years})</span><b class="num">${dN(F5.edit)}</b></div>
-                <div class="hint mt">${wOpenN ? (fit > 0 ? `Reading and drafting end ${dN(fit)} after your target, so that much of the fifth year is used before editing can begin.` : `Reading and drafting end ${dN(-fit)} before your target.`) : 'Reading and drafting are done. Editing and proofreading are unlocked.'} After editing, ${dN(F5.fin)} are kept for finalising and submission. ${F5.free >= 0 ? `${dN(F5.free)} of the fifth year stay free.` : `The fifth year is over-full by ${dN(-F5.free)}.`}</div></div>`;
+    function dashCard() {
+        const T = D.today, P = D.P, spent = D.cur.spent, left = P - spent, ratio = P > 0 ? spent / P : 1, g = statusGrad(ratio);
+        const pct = Math.max(0, Math.min(ratio * 100, 100)), elapsed = ((T.day - 1) + new Date().getHours() / 24) / T.dm * 100;
+        const daysLeft = T.dm - T.day + 1, over = overdrawnAmt();
+        const C = 2 * Math.PI * 36;
+        const sorted = D.cats.slice().sort((a, b) => (b.count || 0) - (a.count || 0) || a.id - b.id).slice(0, 3);
+        const chips = sorted.map(c => { const r = c.limit > 0 ? c.spent / c.limit : (c.spent > 0 ? 1 : 0); return `<div class="fchip" data-act="entry" data-id="${c.id}"><span class="dot" style="background:${rgb(statusGrad(r).mid)}"></span><span class="cat-ico">${esc(c.icon)}</span>${esc(c.name)}</div>`; }).join('');
+        let pch = '';
+        if (prefs.purchOn) {
+            const bal = D.pool.bal, waiting = D.cats.filter(c => c.bucket && c.bucket.cool > 0).length, used = bal < (D.pool.min || 0);
+            pch = `<div class="fchip pchip${used ? ' bad' : ''}" data-act="goto" data-s="mind"><span>🛍️ Big purchases · ${used ? 'pool used up this month' : mh(bal) + ' left this month'}${waiting ? ` · ${waiting} waiting` : ''}</span></div>`;
         }
-        h += chainStrip() + chapterBars();
-        h += `<div class="grid2" style="margin-bottom:14px"><button class="btn-line btn-accent" data-act="chap-add">Add a chapter</button><button class="btn-line" data-act="custom-add">Add a custom task</button></div>`;
-        const chapters = D.pieces.chapters.concat([...D.goals.values()].filter(g => g.chap && D.pieces.chapters.indexOf(g.id) < 0).map(g => g.id));
-        const chs = [...D.goals.values()].filter(g => g.chap).sort((a, b) => a.id - b.id);
-        if (!chs.length) h += `<div class="card"><h3>Start with your whole thesis</h3><p class="hint">Type your five primary novels and the app builds eight chapters: Introduction, Theoretical Framework and Review of Literature, five novel-analysis chapters and the Conclusion. Each has Reading, Drafting and Editing with allotted days you can change. Then tick off everything you have already finished.</p><button class="btn-line btn-accent" data-act="outline">Build my thesis outline</button></div>`;
-        chs.forEach(c => {
-            const a = PP.agg.get(c.id) || { pct: 0, count: 0, doneCount: 0, slip: 0, late: 0 };
-            const open = (prefs.open || []).indexOf(c.id) >= 0;
-            const kids = (D.kidsOf.get(c.id) || []).filter(k => k.kind === 'project');
-            h += `<div class="card"><div class="phase-h" data-act="chap" data-id="${c.id}" style="cursor:pointer"><h3>${esc(c.title)}</h3><span class="chip ${a.slip > 0.5 ? 'bad' : ''}">${a.slip > 0.5 ? dN(a.slip) + ' late' : pctTxt(a.pct)}</span></div>
-                <div class="slipbar"><i style="width:${a.pct * 100}%;background:linear-gradient(90deg,var(--blue-a),var(--blue-b))"></i></div><div style="margin-top:6px">`;
-            kids.forEach(k => {
-                const ga = PP.agg.get(k.id), ico = k.grp === 'reading' ? '📖' : k.grp === 'drafting' ? '✍️' : k.grp === 'editing' ? '🔍' : '•', isOpen = (prefs.open || []).indexOf(k.id) >= 0;
-                const nx = ga && ga.next ? ga.next : null;
-                h += `<div class="ol-row gr" data-act="grp" data-id="${k.id}"><button class="ol-chev" data-act="toggle" data-id="${k.id}" aria-label="Open or close">${isOpen ? '▾' : '▸'}</button><span class="ol-title">${ico} ${esc(k.title)}</span>${ga && ga.slip > 0.5 ? `<span class="chip bad">${dN(ga.slip)} late</span>` : ''}<span class="ol-sub">${(() => { const tk = PP.tracks.find(x => x.id === k.id); if (tk) return tk.finished ? 'done' : N(tk.done) + '/' + N(tk.total) + ' ' + esc(tk.unit); return ga ? (ga.count && ga.doneCount === ga.count ? 'done' : ga.doneCount + '/' + ga.count) : ''; })()}</span><div class="ol-bar"><i style="width:${(ga ? ga.pct : 0) * 100}%"></i></div></div>`;
-                if (isOpen) h += treeHtml(k.id, 1);
-            });
-            h += `</div></div>`;
-        });
-        const customs = PP.list.filter(p => p.g.custom);
-        if (customs.length) h += `<div class="card" data-sec="plan:custom-tasks"><h3>Custom tasks</h3>${customs.map(p => pieceRow(p, 0)).join('')}</div>`;
-        if (D.tasks.length) h += `<div class="card" data-sec="plan:earlier-daily-tasks"><h3>Earlier tasks</h3><p class="tight">Quantity-based tasks from before. They still count in their own pace.</p>${D.tasks.map(t => `<div class="ol-row ol-plan" data-act="task" data-id="${t.id}"><span class="ol-chev">📅</span><span class="ol-title">${esc(t.g.title)} · ${N(t.done)}/${N(t.total)} ${esc(t.unit)}</span>${statusChip(t)}</div>`).join('')}</div>`;
-        h += `<button class="btn-line" data-act="defaults">Default days for each kind of task</button>`;
-        put($('s-plan'), h); dragInit();
+        return `<div class="card panel"><div class="panel-top"><div class="label">Pool ${mh(P)}</div><div class="pill">${plural(daysLeft, 'day')} left</div></div>
+            <div class="hero-row"><div><div class="total-remaining priv ${left < 0 ? 'bad' : ''}" id="safe-val">${left < 0 ? '-' : ''}${money(Math.abs(left))}</div><div class="hint">left this month</div></div>
+            <div class="ring"${tl(ringTell(P, spent, left, pct, daysLeft))}><svg viewBox="0 0 84 84" aria-hidden="true"><defs><linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${rgb(g.g1)}"/><stop offset="1" stop-color="${rgb(g.g2)}"/></linearGradient></defs><circle class="ring-track" cx="42" cy="42" r="36" fill="none" stroke-width="8"/><circle class="ring-arc" cx="42" cy="42" r="36" fill="none" stroke="url(#ringGrad)" stroke-width="8" stroke-linecap="${pct > 0 ? 'round' : 'butt'}" stroke-dasharray="${(pct / 100) * C} ${C}"/></svg><div class="ring-center"><div class="ring-pct">${Math.round(pct)}%</div><div class="ring-cap">used</div></div></div></div>
+            <div class="pace"${tl(paceTell(pct, elapsed))}><div class="progress-container"><div class="progress-bar" style="width:${pct}%;background:linear-gradient(90deg,${rgb(g.g1)},${rgb(g.g2)})"></div></div><div class="pace-tick" style="left:${elapsed}%"></div></div>
+            <div class="hint" style="margin-top:8px"${tl(`Today is day ${T.day} of ${T.dm}. ${plural(T.dm - T.day, 'day')} after today.`)}>Day ${T.day} of ${T.dm}</div>
+            ${prefs.forecastOn ? `<div class="pace-note">${paceLine()}</div>` : ''}
+            <div class="tiles"><div class="tile t1"${tl(`Spent is everything you have paid out this month: ${mTell(spent)}.`)}><div class="t-label">Spent</div><div class="t-val priv">${money(spent)}</div></div><div class="tile t2"${tl(`Per day is your average so far: ${mTell(avgPerDay())} a day.`)}><div class="t-label">Per day</div><div class="t-val priv">${money(avgPerDay())}</div></div><div class="tile t3${over > 0 ? ' bad' : ''}"${tl(over > 0 ? `Overdrawn adds up how far envelopes went past their limits: ${mTell(over)}.` : 'Overdrawn is zero. No envelope has gone past its limit.', over > 0 ? 'bad' : '')}><div class="t-label">Overdrawn</div><div class="t-val priv">${money(over)}</div></div></div>
+            ${todayGauge()}
+            <div class="freq">${chips}</div>${pch}</div>`;
     }
-
-    /* ---------- finishing, undoing, bulk ticks ---------- */
-    function consequence(p, finKey) {
-        const f = E.dn(finKey), took = f - p.start + 1, over = took - p.days;
-        if (over > 0) return `<div class="pwarn">Allotted ${dN(p.days)}, taking ${dN(took)}: ${dN(over)} over. Everything after it moves ${dN(over)} later.</div>`;
-        if (over < 0) return `<div class="pinfo">Allotted ${dN(p.days)}, taking ${dN(took)}: ${dN(-over)} early. The next task can start ${dN(-over)} sooner.</div>`;
-        return `<div class="pinfo">Exactly on time: ${dN(p.days)} allotted, ${dN(took)} taken.</div>`;
-    }
-    /* Done: one tap finishes the task AND logs the sitting (start to now), so Today, the slots, the balance and the report all move together. */
-    function lastEndToday() {
-        const k = todayKey(); let end = -1;
-        D.logs.forEach(l => { if ((l.day || E.localKey(l.ts)) === k && typeof l.st === 'number' && l.st >= 0 && l.min > 0) end = Math.max(end, l.st + l.min); });
-        return end;
-    }
-    function finishSheet(id) {
-        const p = P().byId.get(id); if (!p || p.done) return;
-        const today = todayKey(), nowM = new Date().getHours() * 60 + new Date().getMinutes();
-        const le = lastEndToday(), pre = le >= 0 && le < nowM ? le : Math.max(0, nowM - 60);
-        minBind.pre = pre;
-        sheet(`<h2>${esc(pTitle(p))}</h2><div class="hint">${esc(pathOf(p.parent))}</div>
-            <div class="row mt"><span class="muted">Clock started</span><b class="num">${fmtDNum(p.start)}</b></div><div class="row"><span class="muted">Allotted</span><b class="num">${dN(p.days)} · due ${fmtDNum(p.due)}</b></div>
-            <label class="field"><span>I finished it on</span><input type="date" id="f-d" value="${today}" max="${today}"></label><div id="f-pv"></div>
-            ${minRowHtml()}<div class="hint" id="f-hrs"></div><div class="error" id="f-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="f-go">Mark done</button></div>
-            <button class="btn-line" id="f-un" style="margin-top:8px">Done earlier, date not known</button>`, box => {
-            const getMin = minBind(box), sb = getMin.sb;
-            const day = () => val(box, '#f-d') || today;
-            const overlap = (s0, e0) => { let o = 0; D.logs.forEach(l => { if ((l.day || E.localKey(l.ts)) === today && typeof l.st === 'number' && l.st >= 0 && l.min > 0) o += Math.max(0, Math.min(e0, l.st + l.min) - Math.max(s0, l.st)); }); return o; };
-            const credit = () => { const d = day(), mn = getMin(d); if (!(mn > 0)) return { mn: 0, ov: 0 }; const st = getMin.st(); let ov = 0; if (d === today && st !== null && st !== undefined) ov = overlap(st, st + mn); return { mn: Math.max(0, mn - ov), ov }; };
-            const upd = () => {
-                const d = day(); box.querySelector('#f-pv').innerHTML = d ? consequence(p, d) : ''; sb.hide(d !== today);
-                const c = credit(); box.querySelector('#f-hrs').textContent = c.mn > 0 ? `${hrsTxt(c.mn / 60)} will be logged for this task${c.ov > 0 ? `. ${c.ov} min overlap an earlier sitting and are not counted twice.` : '.'}` : 'No hours will be logged. Choose a start time or a length to log them.';
-            };
-            box.addEventListener('click', () => setTimeout(upd, 0)); box.addEventListener('change', () => setTimeout(upd, 0)); box.querySelector('#f-d').oninput = upd;
-            sb.open(); upd();
-            const commitFin = (d, hours) => {
-                const made = []; let lg = null;
-                if (hours) { const c = credit(); if (c.mn > 0) { const st = getMin.st(); lg = add(Object.assign({ t: 'log', sit: 1, goal: id, qty: Math.round(c.mn / 60 * 100) / 100, day: d || today, late: (d || today) !== today, min: c.mn }, d === today && st !== null && st !== undefined ? { st } : {})); made.push(lg); } }
-                const ev = add(Object.assign({ t: 'fin', goal: id, day: d }, lg ? { lg: lg.id } : {})); closeSheet(); render(); vibrate(20);
-                const q = P().byId.get(id); let m = 'Done. ';
-                if (d && q.over > 0) m += `${dN(q.over)} over: later work moves ${dN(q.over)}.`; else if (d && q.over < 0) m += `${dN(-q.over)} early, banked.`; else m += 'On time.';
-                if (lg) m += ` ${hrsTxt(lg.min / 60)} logged.`;
-                toast(m, () => { add({ t: 'void', target: ev.id }); if (lg) add({ t: 'void', target: lg.id }); render(); fx('down'); });
-            };
-            box.querySelector('#f-go').onclick = () => { const d = val(box, '#f-d'); if (!d) { box.querySelector('#f-e').textContent = 'Choose the day you finished'; return; } if (d > today) { box.querySelector('#f-e').textContent = 'That day has not come yet'; return; } const st = getMin.st(); if (d === today && st !== null && st !== undefined && st > nowM) { box.querySelector('#f-e').textContent = 'The start must be earlier than now'; return; } commitFin(d, true); };
-            box.querySelector('#f-un').onclick = () => commitFin(null, false);
-        });
-    }
-    function bulkSheet(ids, label) {
-        const open = ids.map(i => P().byId.get(i)).filter(p => p && !p.done).sort((a, b) => a.i - b.i);
-        if (!open.length) { toast('Everything here is already done'); return; }
-        const today = todayKey();
-        const needRead = new Set();
-        open.forEach(p => { if (p.locked && p.lockWhy === 'reading' && p.chapter != null) P().list.filter(r => r.grp === 'reading' && r.chapter === p.chapter && !r.done).forEach(r => needRead.add(r.id)); });
-        const all = open.concat([...needRead].filter(i => !open.find(o => o.id === i)).map(i => P().byId.get(i))).sort((a, b) => a.i - b.i);
-        sheet(`<h2>Mark as done</h2><p>${esc(label)}: ${plural(all.length, 'task')} will be ticked as finished${needRead.size ? ', including the chapter reading that unlocks it' : ''}.</p>
-            <label class="field"><span>Finished around (optional)</span><input type="date" id="b-d" max="${today}"></label>
-            <p class="hint">Leave it blank if you do not remember. Dates are only used to learn your real speed and to place later work after them. Work finished before today never counts as late.</p>
-            <div class="error" id="b-e"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="b-go">Mark ${all.length} done</button></div>`, box => {
-            box.querySelector('#b-go').onclick = () => {
-                const d = val(box, '#b-d') || null; if (d && d > today) { box.querySelector('#b-e').textContent = 'That day has not come yet'; return; }
-                const made = all.map(p => add({ t: 'fin', goal: p.id, day: d }));
-                closeSheet(); render(); toast(plural(all.length, 'task') + ' marked done', () => { made.forEach(e => add({ t: 'void', target: e.id })); render(); fx('down'); });
-            };
-        });
-    }
-    function lockedSheet(p) {
-        if (p.lockWhy === 'edit') {
-            const n = P().rdOpen;
-            sheet(`<h2>Editing comes last</h2><p>Editing and proofreading begin only after all reading and drafting for the whole thesis is done. ${plural(n, 'reading or drafting task')} still ${n === 1 ? 'remains' : 'remain'}.</p>
-                <div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button><button class="btn-primary" id="l-rd">I have already done this</button></div>`, box => {
-                box.querySelector('#l-rd').onclick = () => { closeSheet(); bulkSheet([p.id], pTitle(p)); };
-            });
-            return;
-        }
-        const rd = P().list.filter(r => r.grp === 'reading' && r.chapter === p.chapter && !r.done);
-        sheet(`<h2>Reading comes first</h2><p>Drafting of <b>${esc((chapOf(p.id) || {}).title || 'this chapter')}</b> stays locked until its reading is finished: ${rd.map(r => esc(r.title)).join(', ')}.</p>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button><button class="btn-primary" id="l-rd">I have already done the reading</button></div>`, box => {
-            box.querySelector('#l-rd').onclick = () => { closeSheet(); bulkSheet(rd.map(r => r.id), 'Reading for ' + ((chapOf(p.id) || {}).title || 'this chapter')); };
-        });
-    }
-    function tick(id) {
-        const p = P().byId.get(id); if (!p) return;
-        if (p.done) { confirmSheet({ title: 'Mark as not done?', sub: 'The finish date is removed, the hours logged with it are removed, and the clock runs again.', ok: 'Not done' }).then(ok => { if (ok) { const fe = D.events.find(e => e.id === p.finId); if (fe && fe.lg && D.logs.some(l => l.id === fe.lg)) add({ t: 'void', target: fe.lg }); add({ t: 'unfin', goal: p.id }); render(); fx('down'); toast('Reopened'); } }); return; }
-        if (p.locked) { lockedSheet(p); return; }
-        finishSheet(id);
-    }
-
-    /* ---------- sheets: task, section, group, chapter ---------- */
-    function pieceSheet(id) {
-        const p = P().byId.get(id); if (!p) return;
-        const g = p.g, young = Date.now() - (g.createdAt || 0) <= 86400000, canStartEarlier = P().pickMode ? (!p.done && !p.picked && !p.locked) : (!p.done && p.start > D.todayN);
-        sheet(`<h2>${esc(pTitle(p))}</h2><div class="hint">${esc(pathOf(p.parent))}</div>
-            <div class="row mt"><span class="muted">Status</span>${p.done ? '<span class="chip good">Done</span>' : p.status === 'late' ? `<span class="chip bad">${dN(p.lateDays)} late</span>` : p.status === 'later' ? `<span class="chip">Starts ${dShort(p.start)}</span>` : p.status === 'ready' ? '<span class="chip">Ready to start</span>' : '<span class="chip">In progress</span>'}</div>
-            <div class="row"><span class="muted">Clock</span><b class="num">${fmtDNum(p.start)} to ${fmtDNum(p.due)}</b></div>
-            ${pieceWorkRows(p)}
-            ${p.dl0 !== null ? `<div class="row"><span class="muted">Original deadline (fixed)</span><b class="num">${fmtDNum(p.dl0)}</b></div>` : '<div class="hint">The deadline is fixed 24 hours after you create the task.</div>'}
-            ${p.done && !p.doneUndated ? `<div class="row"><span class="muted">Finished</span><b class="num">${fmtDNum(p.finN)}${p.over !== null ? ` · ${p.over > 0 ? dN(p.over) + ' over' : p.over < 0 ? dN(-p.over) + ' early' : 'on time'}` : ''}</b></div>` : ''}
-            ${p.locked ? '<div class="pwarn">Locked until all reading and drafting is done.</div>' : p.advise ? '<div class="pinfo">Reading in this chapter is still open. You may start this now.</div>' : ''}
-            <div class="grid2 mt"><label class="field"><span>Allotted work hours</span><input type="number" inputmode="decimal" step="0.5" id="pc-d" value="${p.hrs}"><span class="hint" id="pc-dd">${dN(p.days)} at 3 h a day</span></label>
-            <label class="field"><span>Hard finish date ${p.fixed && !young ? '(locked)' : '(optional)'}</span><input type="date" id="pc-f" value="${g.fixedEnd || ''}" ${p.fixed && !young ? 'disabled' : ''}></label></div>
-            ${g.mirror ? '' : `<label class="field"><span>Name</span><input type="text" id="pc-t" value="${esc(g.title)}"></label>`}
-            <div class="error" id="pc-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button><button class="btn-primary" id="pc-go">Save</button></div>
-            ${trackBlock(trackOf(id))}
-            ${p.done ? '' : `<div class="grid2" style="margin-top:8px">${trackOf(id) ? `<button class="btn-line" data-act="tset" data-id="${trackOf(id).id}">Change daily pace</button>` : `<button class="btn-line" data-act="tset" data-id="${id}">Set a daily pace</button>`}<button class="btn-line" data-act="split" data-id="${id}">Split into sub-sections</button></div>${(D.cfg && D.cfg.order === 'custom') ? `<button class="btn-line" data-act="next" data-id="${id}" style="margin-top:8px">Do this next</button>` : ''}`}
-            <div class="grid2" style="margin-top:8px">${p.done ? `<button class="btn-line" data-act="tick" data-id="${id}">Mark not done</button>` : `<button class="btn-line btn-accent" data-act="tick" data-id="${id}">${p.locked ? 'Why locked?' : 'Mark done'}</button>`}${p.began && !p.hasWork && !p.done && P().pickMode ? '<button class="btn-line" id="pc-stop">Stop working on this</button>' : ''}${canStartEarlier ? `<button class="btn-line btn-accent" id="pc-st">${P().pickMode ? 'Start this task' : 'Start now'}</button>` : '<span></span>'}</div>
-            ${movable(id) ? `<button class="btn-line" data-act="move" data-id="${id}" style="margin-top:8px">Move to…</button>` : ''}
-            <div class="del-row">${icoBtn('del', 'id="pc-del"', 'task')}</div>`, box => {
-            box.querySelector('#pc-go').onclick = () => {
-                const hh = numv(box, '#pc-d'); if (!(hh > 0)) { box.querySelector('#pc-e').textContent = 'Allot some work hours'; return; }
-                const f = { pdays: daysOfH(hh), phrs: hh }; const t = box.querySelector('#pc-t'); if (t && t.value.trim()) f.title = t.value.trim();
-                const fe = box.querySelector('#pc-f'); if (fe && !fe.disabled) f.fixedEnd = fe.value || null;
-                add({ t: 'goal', op: 'edit', gid: id, f }); closeSheet(); render();
-            };
-            const st = box.querySelector('#pc-st'); if (st) st.onclick = () => { if (P().pickMode) { closeSheet(); beginPiece(id); return; } add({ t: 'pstart', goal: id, day: todayKey() }); closeSheet(); render(); toast('Clock started today'); };
-            const sp = box.querySelector('#pc-stop'); if (sp) sp.onclick = () => { add({ t: 'unbegin', goal: id }); closeSheet(); render(); toast('Moved back to the recommended list'); };
-            box.querySelector('#pc-del').onclick = async () => { if (await confirmSheet({ title: 'Delete this task?', sub: 'It leaves the plan. Later tasks move up.', ok: 'Delete', danger: true })) { delU(id); } };
-        });
-    }
-    function nodeSheet2(id) {
-        const g = D.goals.get(id); if (!g) return;
-        const a = P().agg.get(id), isGrp = !!g.grp, isChap = g.chap;
-        const ids = a ? a.pieces.map(p => p.id) : [];
-        sheet(`<h2>${esc(g.title)}</h2><div class="hint">${esc(pathOf(id))}</div>
-            ${a && a.count ? `<div class="row mt"><span class="muted">Done</span><b class="num">${a.doneCount} of ${a.count} · ${pctTxt(a.pct)}</b></div><div class="row"><span class="muted">Days still to do</span><b class="num">${dN(a.openDays)}</b></div>${a.dl0 !== null && a.projN !== null ? `<div class="row"><span class="muted">Finishes</span><b class="num ${a.slip > 0.5 ? 'bad' : a.slip < -0.5 ? 'good' : ''}">${fmtDNum(a.projN)} · ${slipText(a.slip)}</b></div>` : ''}` : '<p class="hint mt">Nothing inside yet.</p>'}
-            ${isGrp ? `<div class="grid2"><label class="field"><span>Days budget (optional)</span><input type="number" inputmode="numeric" id="n-b" value="${g.budget || ''}" placeholder="e.g. 60"></label><div class="field"><span>Tasks add up to</span><b class="num" style="font-size:1.1rem">${a ? a.totalDays : 0} d</b></div></div>
-                ${g.budget && a ? (a.totalDays === g.budget ? '<div class="pinfo">The tasks match the budget.</div>' : `<div class="pwarn">The tasks add up to ${dN(a.totalDays)}, ${dN(Math.abs(a.totalDays - g.budget))} ${a.totalDays > g.budget ? 'over' : 'under'} the budget.</div>`) : ''}
-                ${g.budget ? '<button class="btn-line" id="n-share">Share the budget across the tasks</button>' : ''}` : ''}
-            ${grpOfG(id) === 'editing' && P().rdOpen > 0 ? '<div class="pwarn">Locked until all reading and drafting is done. You cannot add to it yet.</div>' : `<div class="grid2 mt"><button class="btn-line btn-accent" data-act="piece-add" data-id="${id}">Add a task</button><button class="btn-line" data-act="sec-add2" data-id="${id}">Add a section</button></div>`}
-            <button class="btn-line" data-act="tset" data-id="${id}">${P().tracks.find(x => x.id === id) ? 'Change the daily pace' : 'Set a daily pace (pages or steps)'}</button>
-            ${movable(id) ? `<button class="btn-line" data-act="move" data-id="${id}">Move to…</button>` : ''}
-            ${P().tracks.find(x => x.id === id) ? trackBlock(P().tracks.find(x => x.id === id)) : ''}
-            ${g.role === 'analysis' ? `<button class="btn-line" data-act="themes-add" data-id="${chapOf(id).id}">Add themes</button>` : ''}
-            ${ids.length ? `<button class="btn-line" id="n-bulk">Mark everything here as done</button>` : ''}
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button><button class="btn-secondary" id="n-ren">Rename</button>${isGrp ? '' : icoBtn('del', 'id="n-del"', 'entry')}</div>`, box => {
-            const bd = box.querySelector('#n-b'); if (bd) bd.onchange = () => { add({ t: 'goal', op: 'edit', gid: id, f: { budget: Math.max(0, Math.round(+bd.value || 0)) } }); render(); nodeSheet2(id); };
-            const sh = box.querySelector('#n-share'); if (sh) sh.onclick = () => { shareBudget(id); closeSheet(); render(); toast('Budget shared across the tasks'); };
-            const bk = box.querySelector('#n-bulk'); if (bk) bk.onclick = () => { closeSheet(); bulkSheet(ids, g.title); };
-            box.querySelector('#n-ren').onclick = async () => { const v = await promptSheet('Rename', g.title); if (v) { add({ t: 'goal', op: 'edit', gid: id, f: { title: v } }); closeSheet(); render(); } };
-            const dl = box.querySelector('#n-del'); if (dl) dl.onclick = async () => { if (await confirmSheet({ title: 'Delete "' + g.title + '"?', sub: 'Everything inside it is removed.', ok: 'Delete', danger: true })) { closeSheet(); delU(id); } };
-        });
-    }
-    function shareBudget(id) {
-        const g = D.goals.get(id), a = P().agg.get(id); if (!g || !g.budget || !a) return;
-        const ps = a.pieces.filter(p => !p.done); if (!ps.length) return;
-        const done = a.pieces.filter(p => p.done).reduce((s, p) => s + p.days, 0), avail = Math.max(ps.length, g.budget - done);
-        const w = ps.map(p => Math.max(0.25, p.g.wt || p.days)), W = w.reduce((s, x) => s + x, 0);
-        const raw = w.map(x => x / W * avail), fl = raw.map(x => Math.max(1, Math.floor(x)));
-        let left = avail - fl.reduce((s, x) => s + x, 0);
-        raw.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (left > 0) { fl[i]++; left--; } });
-        ps.forEach((p, i) => { if (fl[i] !== p.days) add({ t: 'goal', op: 'edit', gid: p.id, f: { pdays: fl[i] } }); });
-    }
-    function promptSheet(title, value) {
-        return new Promise(res => sheet(`<h2>${esc(title)}</h2><label class="field"><input type="text" id="pr-v" value="${esc(value || '')}" autofocus></label><div class="modal-actions"><button class="btn-secondary" id="pr-c">Cancel</button><button class="btn-primary" id="pr-ok">Save</button></div>`, box => {
-            box.querySelector('#pr-c').onclick = () => { closeSheet(); res(null); }; box.querySelector('#pr-ok').onclick = () => { const v = val(box, '#pr-v').trim(); closeSheet(); res(v || null); };
-        }));
-    }
-    function chapterSheet(id) {
-        const c = D.goals.get(id); if (!c) return;
-        const a = P().agg.get(id) || { count: 0, doneCount: 0, pct: 0, openDays: 0 };
-        const kids = (D.kidsOf.get(id) || []).filter(k => k.kind === 'project');
-        sheet(`<h2>${esc(c.title)}</h2>
-            <div class="row mt"><span class="muted">Done</span><b class="num">${a.doneCount} of ${a.count} · ${pctTxt(a.pct)}</b></div><div class="row"><span class="muted">Days still to do</span><b class="num">${dN(a.openDays)}</b></div>
-            ${kids.map(k => { const ga = P().agg.get(k.id); return `<div class="row"><span>${esc(k.title)}</span><span class="muted">${ga ? ga.doneCount + '/' + ga.count : ''} · ${ga ? ga.totalDays : 0} d${k.budget ? ' of ' + k.budget : ''}</span></div>`; }).join('')}
-            <div class="set-title" style="margin-top:12px">Already finished some of it?</div>
-            ${kids.map(k => `<button class="btn-line" data-act="bulk-grp" data-id="${k.id}">Mark ${esc(k.title)} as done</button>`).join('')}
-            ${descendants(id, g => g.role === 'analysis').length ? `<button class="btn-line btn-accent" data-act="themes-add" data-id="${id}">Add themes to the analysis</button>` : ''}
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button><button class="btn-secondary" id="c-ren">Rename</button>${icoBtn('del', 'id="c-del"', 'chapter')}</div>`, box => {
-            box.querySelector('#c-ren').onclick = async () => { const v = await promptSheet('Rename chapter', c.title); if (v) { add({ t: 'goal', op: 'edit', gid: id, f: { title: v } }); closeSheet(); render(); } };
-            box.querySelector('#c-del').onclick = async () => { if (await confirmSheet({ title: 'Delete "' + c.title + '"?', sub: 'All its reading, drafting and editing tasks are removed.', ok: 'Delete', danger: true })) { closeSheet(); delU(id); } };
-        });
-    }
-
-    /* ---------- moving tasks and sub-tasks: hours, ticks and dates follow the task; both places recompute ---------- */
-    const grpOfG = id => { let x = D.goals.get(id), n = 0; while (x && n++ < 30) { if (x.grp) return x.grp; x = x.parent ? D.goals.get(x.parent) : null; } return null; };
-    const isUnder = (id, anc) => { let x = D.goals.get(id), n = 0; while (x && n++ < 30) { if (x.id === anc) return true; x = x.parent ? D.goals.get(x.parent) : null; } return false; };
-    const movable = id => { const g = D.goals.get(id); return !!g && !g.chap && !g.grp && !g.isPhase && !g.mirror && (g.kind === 'piece' || g.kind === 'project'); };
-    function moveTargets(id) {
-        const g = D.goals.get(id), fam = grpOfG(id), out = [];
-        D.goals.forEach(t => {
-            if (t.kind !== 'project' || t.chap || t.isPhase || t.id === id || isUnder(t.id, id) || t.id === g.parent) return;
-            if (grpOfG(t.id) !== fam || !fam) return;
-            let bad = false, x = t, n = 0; while (x && n++ < 30) { if (x.isPhase) bad = true; x = x.parent ? D.goals.get(x.parent) : null; } if (bad) return;
-            out.push(t);
-        });
-        return out.sort((x, y) => pathOf(x.id).localeCompare(pathOf(y.id)));
-    }
-    function trackAbove(Dx, pid) { let x = Dx.goals.get(pid), n = 0; while (x && n++ < 30) { const t = Dx.pieces.tracks.find(k => k.id === x.id); if (t) return t; x = x.parent ? Dx.goals.get(x.parent) : null; } return null; }
-    function loggedHours(id) {
-        let h = 0; D.logs.forEach(l => { if (!isUnder(l.goal, id)) return; if (l.min > 0) h += l.min / 60; else { const g = D.goals.get(l.goal); if (g && g.qunit === 'hours') h += l.qty; } }); return h;
-    }
-    function moveSummary(id, target) {
-        const p0 = P().byId.get(id), g = D.goals.get(id), old = g.parent;
-        const ev = { t: 'goal', op: 'edit', gid: id, f: { parent: target }, id: -1, ts: Date.now() };
-        let D2; try { D2 = E.derive(events.concat([ev]), Date.now()); } catch (e) { return null; }
-        const rows = [], seen = new Set();
-        [old, target].forEach(pid => {
-            const t0 = trackAbove(D, pid), t1 = t0 ? D2.pieces.tracks.find(k => k.id === t0.id) : null; if (!t0 || !t1 || seen.has(t0.id)) return; seen.add(t0.id);
-            rows.push(`<div class="mv-row"><span>${esc(D.goals.get(t0.id).title)}</span><b>${N(t0.done)} → ${N(t1.done)} of ${N(t1.total)} ${esc(t1.unit)}${t0.pace !== t1.pace ? ` · pace ${N(t0.pace)} → ${N(t1.pace)}` : ''}</b></div>`);
-        });
-        const w0 = D.thesis && D.thesis.fifth ? D.thesis.fifth.writeN : null, w1 = D2.thesis && D2.thesis.fifth ? D2.thesis.fifth.writeN : null;
-        if (w0 !== null && w1 !== null && w0 !== w1) rows.push(`<div class="mv-row"><span>Reading and drafting end</span><b>${fmtDNum(w0)} → ${fmtDNum(w1)}</b></div>`);
-        const h = loggedHours(id); if (h > 0.01) rows.push(`<div class="mv-row"><span>Hours logged on it</span><b>${hrsTxt(h)} go with it</b></div>`);
-        const p1 = D2.pieces.byId.get(id), reopens = !!(p0 && p0.done && p1 && !p1.done);
-        return { rows, reopens, finN: p0 ? p0.finN : null };
-    }
-    function placeLast(parentId, id) {
-        refresh(); const ids = (D.kidsOf.get(parentId) || []).map(k => k.id).filter(k => k !== id).concat([id]);
-        add({ t: 'goal', op: 'reorder', ids });
-    }
-    function doMove(id, target, beforeId) {
-        const sum = moveSummary(id, target), t0 = P().byId.get(id);
-        add({ t: 'goal', op: 'edit', gid: id, f: { parent: target } });
-        refresh();
-        if (beforeId) { const ids = (D.kidsOf.get(target) || []).map(k => k.id).filter(k => k !== id), at = ids.indexOf(beforeId); ids.splice(at < 0 ? ids.length : at, 0, id); add({ t: 'goal', op: 'reorder', ids }); } else placeLast(target, id);
-        if ((prefs.open || []).indexOf(target) < 0) { prefs.open = (prefs.open || []).concat([target]); persist(); }
-        render(); fx('up');
-        return sum;
-    }
-    async function moveConfirm(id, target, beforeId) {
-        const g = D.goals.get(id), t = D.goals.get(target), sum = moveSummary(id, target); if (!sum) return false;
-        const ok = await new Promise(res => {
-            sheet(`<h2>Move "${esc(g.title)}"</h2><div class="hint">to ${esc(pathOf(target))}</div><div class="mv">${sum.rows.join('') || '<div class="hint">Nothing else changes.</div>'}</div>${sum.reopens ? '<div class="pwarn">It was done only because its old task reached its total. In its new place it would be open.</div>' : ''}
-                <div class="modal-actions"><button class="btn-secondary" id="mv-no">Cancel</button><button class="btn-primary" id="mv-go">Move</button></div>`, box => { box.querySelector('#mv-no').onclick = () => { closeSheet(); res(false); }; box.querySelector('#mv-go').onclick = () => { closeSheet(); res(true); }; });
-        });
-        if (!ok) return false;
-        const was = P().byId.get(id), wasDone = !!(was && was.done), finN = was ? was.finN : null;
-        doMove(id, target, beforeId);
-        const now = P().byId.get(id);
-        if (wasDone && now && !now.done) {
-            const keep = await confirmSheet({ title: 'Keep it done?', sub: `"${g.title}" was finished with its old task. Keep it ticked as done in its new place?`, ok: 'Keep done', cancel: 'Leave open' });
-            if (keep) { add({ t: 'fin', goal: id, day: finN !== null ? E.keyOf(finN) : null }); render(); }
-        }
-        toast('Moved. Everything is recounted.');
-        return true;
-    }
-    function moveSheet(id) {
-        const g = D.goals.get(id); if (!g || !movable(id)) { toast('This one cannot be moved'); return; }
-        const ts = moveTargets(id);
-        sheet(`<h2>Move "${esc(g.title)}"</h2><p>Choose where it goes. Its hours, ticks and dates go with it, and both places are recounted.</p>
-            <div class="mv-list">${ts.length ? ts.map(t => `<button type="button" class="mv-opt" data-t="${t.id}">${esc(pathOf(t.id))}</button>`).join('') : '<div class="hint">There is no other place of the same kind to move it to.</div>'}</div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button></div>`, box => {
-            box.querySelectorAll('.mv-opt').forEach(b => b.onclick = () => { const t = +b.dataset.t; closeSheet(); setTimeout(() => moveConfirm(id, t), 60); });
-        });
-    }
-    /* drag and drop in the chapter cards: pull the grip. Before or after a row puts it there; on a task puts it inside. */
-    let dragOff = false;
-    function dragInit() {
-        const root = $('s-plan'); if (!root || root.__dnd) return; root.__dnd = true;
-        root.addEventListener('click', e => { if (e.target.closest('.grip')) { e.stopPropagation(); e.preventDefault(); } }, true);
-        root.addEventListener('pointerdown', e => {
-            const grip = e.target.closest('.grip'); if (!grip || dragOff) return;
-            const row = grip.closest('.ol-row'); if (!row) return; const id = +row.dataset.id; if (!id) return;
-            e.preventDefault(); const rect = row.getBoundingClientRect();
-            const ghost = row.cloneNode(true); ghost.classList.add('dnd-ghost'); ghost.style.cssText += `position:fixed;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;z-index:90;pointer-events:none;`;
-            document.body.appendChild(ghost); row.classList.add('dnd-src');
-            const dy = e.clientY - rect.top; let tgt = null, mode = '', raf = 0, lastY = e.clientY;
-            const clear = () => document.querySelectorAll('.dz-before,.dz-after,.dz-in').forEach(x => x.classList.remove('dz-before', 'dz-after', 'dz-in'));
-            const find = (x, y) => {
-                ghost.style.display = 'none'; const els = document.elementsFromPoint(x, y); ghost.style.display = '';
-                const r = els.map(n => n.closest && n.closest('#s-plan .ol-row[data-id]')).find(n => n && n !== row && +n.dataset.id !== id && !isUnder(+n.dataset.id, id)); return r || null;
-            };
-            const move = ev => {
-                lastY = ev.clientY; ghost.style.top = (ev.clientY - dy) + 'px'; clear(); tgt = find(ev.clientX, ev.clientY); mode = '';
-                if (tgt) { const r = tgt.getBoundingClientRect(), f = (ev.clientY - r.top) / r.height, isNode = tgt.classList.contains('nr') || tgt.classList.contains('gr'); mode = f < 0.28 ? 'before' : f > 0.72 ? 'after' : (isNode ? 'in' : (f < 0.5 ? 'before' : 'after')); tgt.classList.add('dz-' + mode); }
-                const vh = window.innerHeight; cancelAnimationFrame(raf); const step = () => { if (lastY < 90) window.scrollBy(0, -10); else if (lastY > vh - 90) window.scrollBy(0, 10); else return; raf = requestAnimationFrame(step); }; step();
-            };
-            const up = async ev => {
-                document.removeEventListener('pointermove', move); document.removeEventListener('pointerup', up); document.removeEventListener('pointercancel', up); cancelAnimationFrame(raf);
-                ghost.remove(); row.classList.remove('dnd-src'); clear();
-                if (!tgt || !mode || ev.type === 'pointercancel') return;
-                const tid = +tgt.dataset.id, tg = D.goals.get(tid), sg = D.goals.get(id); if (!tg || !sg) return;
-                if (!movable(id)) { toast('This one cannot be moved'); return; }
-                let parent = mode === 'in' ? tid : tg.parent, before = mode === 'before' ? tid : 0;
-                if (mode === 'after') { const sibs = (D.kidsOf.get(parent) || []).map(k => k.id); const at = sibs.indexOf(tid); before = sibs[at + 1] && sibs[at + 1] !== id ? sibs[at + 1] : 0; }
-                if (!parent) return;
-                if (grpOfG(parent) !== grpOfG(id) || (D.goals.get(parent) || {}).chap) { toast(grpOfG(id) === 'drafting' ? 'Drafting stays in Drafting' : grpOfG(id) === 'reading' ? 'Reading stays in Reading' : 'It stays in its own group'); fx('stop'); return; }
-                if (parent === sg.parent) {
-                    const ids = (D.kidsOf.get(parent) || []).map(k => k.id).filter(k => k !== id), at = before ? ids.indexOf(before) : -1; ids.splice(at < 0 ? ids.length : at, 0, id);
-                    const w0 = D.thesis && D.thesis.fifth ? D.thesis.fifth.writeN : null;
-                    add({ t: 'goal', op: 'reorder', ids }); render(); fx('up'); const w1 = D.thesis && D.thesis.fifth ? D.thesis.fifth.writeN : null;
-                    toast(w0 !== null && w1 !== null && w0 !== w1 ? `New order. Reading and drafting now end ${fmtDNum(w1)}. Deadlines stay fixed.` : 'New order. Deadlines stay fixed.');
-                } else moveConfirm(id, parent, before);
-            };
-            document.addEventListener('pointermove', move); document.addEventListener('pointerup', up); document.addEventListener('pointercancel', up);
-        });
-    }
-
-    /* ---------- adding something to a chapter: offer the same in the chapters built the same way ---------- */
-    function sigOf(id) { const t = []; let x = D.goals.get(id), n = 0; while (x && !x.chap && n++ < 30) { t.unshift(x.title); x = x.parent ? D.goals.get(x.parent) : null; } return x && x.chap ? { chap: x.id, path: t } : null; }
-    function similarPlaces(parentId) {
-        const s = sigOf(parentId); if (!s) return [];
-        const out = [];
-        [...D.goals.values()].filter(g => g.chap && g.id !== s.chap).sort((p, q) => p.id - q.id).forEach(c => {
-            let node = c, ok = true;
-            for (const title of s.path) { node = (D.kidsOf.get(node.id) || []).find(k => k.kind === 'project' && k.title === title); if (!node) { ok = false; break; } }
-            if (ok) out.push({ chap: c, node });
-        });
-        return out;
-    }
-    function similarSheet(parentId, items) {
-        const places = similarPlaces(parentId); if (!places.length || !items.length) return false;
-        const what = items.length === 1 ? `"${esc(items[0].title)}"` : plural(items.length, 'task');
-        setTimeout(() => sheet(`<h2>Add the same elsewhere?</h2><p>You added ${what} to <b>${esc(pathOf(parentId))}</b>. These chapters have the same place.</p>
-            <div class="sim-list">${places.map(pl => `<label class="sim-row"><input type="checkbox" data-n="${pl.node.id}" checked><span>${esc(pl.chap.title)}</span></label>`).join('')}</div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Not now</button><button class="btn-primary" id="sim-go">Add to ${places.length}</button></div>`, box => {
-            const upd = () => { const n = box.querySelectorAll('.sim-row input:checked').length; const b = box.querySelector('#sim-go'); b.textContent = n ? 'Add to ' + n : 'Add to none'; b.disabled = !n; };
-            box.querySelectorAll('.sim-row input').forEach(i => i.onchange = upd); upd();
-            box.querySelector('#sim-go').onclick = () => {
-                const ids = [...box.querySelectorAll('.sim-row input:checked')].map(i => +i.dataset.n);
-                ids.forEach(pid => { commit(pid, items.map(it => it.kind === 'section' ? nd(it.title, []) : pc(it.title, it.days, it.f))); if ((prefs.open || []).indexOf(pid) < 0) prefs.open = (prefs.open || []).concat([pid]); });
-                persist(); closeSheet(); render(); toast(`Added to ${plural(ids.length, 'more chapter')}`);
-            };
-        }), 80);
-        return true;
-    }
-    function pieceAddSheet(parentId) {
-        const g = D.goals.get(parentId); if (!g) { toast('Open a section first'); return; }
-        sheet(`<h2>Add tasks</h2><p>One per line. Add the work hours after a bar, for example <i>Definition | 6</i>. Lines without hours use the default below. Three work hours make one work day.</p>
-            <label class="field"><span>Tasks</span><textarea id="a-l" style="min-height:90px" autofocus></textarea></label>
-            <label class="field"><span>Default work hours</span><input type="number" inputmode="decimal" step="0.5" id="a-d" value="3"></label><div class="hint" id="a-dd">3 work hours = 1 day</div><div class="error" id="a-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="a-go">Add</button></div>`, box => {
-            const dd = box.querySelector('#a-d'); dd.oninput = () => { const v = parseFloat(dd.value); box.querySelector('#a-dd').textContent = v > 0 ? `${hTxt(v)} = ${wdText(v)} = ${dN(daysOfH(v))} allotted` : ''; };
-            box.querySelector('#a-go').onclick = () => {
-                const def = numv(box, '#a-d'), lines = parseLines(val(box, '#a-l')); if (!lines.length) { box.querySelector('#a-e').textContent = 'Type at least one task'; return; } if (!(def > 0)) { box.querySelector('#a-e').textContent = 'Default hours must be more than 0'; return; }
-                const items = lines.map(l => { const [a, b] = l.split('|'); const d = parseFloat(b); const hh = d > 0 ? d : def; return { kind: 'piece', title: a.trim(), hrs: hh, days: daysOfH(hh) }; });
-                commit(parentId, items.map(it => pc(it.title, it.days, { phrs: it.hrs })));
-                if ((prefs.open || []).indexOf(parentId) < 0) { prefs.open = (prefs.open || []).concat([parentId]); persist(); }
-                closeSheet(); revealAdded(parentId, items.length > 1 ? items.length + ' tasks' : 'Task'); similarSheet(parentId, items);
-            };
-        });
-    }
-    const parseLines = txt => String(txt || '').split('\n').map(x => x.trim()).filter(Boolean);
-    function sectionAddSheet(parentId) {
-        if (!D.goals.get(parentId)) { toast('Open a section first'); return; }
-        sheet(`<h2>Add a section</h2><label class="field"><span>Name</span><input type="text" id="s-t" autofocus></label><div class="error" id="s-e"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="s-go">Add</button></div>`, box => {
-            box.querySelector('#s-go').onclick = () => { const t = val(box, '#s-t').trim(); if (!t) { box.querySelector('#s-e').textContent = 'Give it a name'; return; } commit(parentId, [nd(t, [])]); prefs.open = (prefs.open || []).concat([parentId]); persist(); closeSheet(); revealAdded(parentId, 'Section'); similarSheet(parentId, [{ kind: 'section', title: t }]); };
-        });
-    }
-    function themesSheet(chapterId) {
-        const c = D.goals.get(chapterId), have = descendants(chapterId, g => g.role === 'theme').length;
-        sheet(`<h2>Add themes</h2><p><b>${esc(c.title)}</b> has ${plural(have, 'theme')}. One theme per line. Each gets Definition (${defDays('def')} d), Instances and Ramifications (${defDays('inst')} d), Theoretical Application (${defDays('ta')} d) and concluding lines for the transition (${defDays('trans')} d), plus a matching task in the structural and language edits. Change the defaults in Plan.</p>
-            <label class="field"><span>Themes</span><textarea id="h-l" style="min-height:110px" placeholder="Memory and Loss&#10;Belonging" autofocus></textarea></label><div class="error" id="h-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="h-go">Add</button></div>`, box => {
-            box.querySelector('#h-go').onclick = () => { const names = parseLines(val(box, '#h-l')); if (!names.length) { box.querySelector('#h-e').textContent = 'Type at least one theme'; return; } addThemes(chapterId, names); closeSheet(); render(); toast(plural(names.length, 'theme') + ' added'); };
-        });
-    }
-    function chapAddSheet() {
-        sheet(`<h2>Add a chapter</h2><div class="seg" id="k-t"><button data-k="novel" class="on">Novel analysis</button><button data-k="review">Theory and Review</button><button data-k="intro">Introduction</button><button data-k="concl">Conclusion</button></div>
-            <label class="field"><span>Chapter name</span><input type="text" id="k-n" placeholder="Chapter 3: Afterlives" autofocus></label>
-            <label class="field" id="k-w"><span>Themes for the analysis (optional, one per line)</span><textarea id="k-l" style="min-height:80px"></textarea></label><div class="error" id="k-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="k-go">Create</button></div>`, box => {
-            let kind = 'novel';
-            box.querySelectorAll('#k-t button').forEach(b => b.onclick = () => { kind = b.dataset.k; box.querySelectorAll('#k-t button').forEach(x => x.classList.toggle('on', x === b)); box.querySelector('#k-w').style.display = kind === 'novel' ? '' : 'none'; const n = box.querySelector('#k-n'); if (!n.value) n.placeholder = { novel: 'Chapter 3: Afterlives', review: 'Theoretical Framework and Review of Literature', intro: 'Introduction', concl: 'Conclusion' }[kind]; });
-            box.querySelector('#k-go').onclick = () => { const t = val(box, '#k-n').trim(); if (!t) { box.querySelector('#k-e').textContent = 'Name the chapter'; return; } commit(0, [chapterSpec(t, kind, kind === 'novel' ? parseLines(val(box, '#k-l')) : [])]); closeSheet(); render(); toast('Chapter created. Adjust the days.'); };
-        });
-    }
-    function outlineSheet() {
-        sheet(`<h2>Build my thesis outline</h2><p>Type your primary novels, one per line. The app creates eight chapters, each with Reading (Skim, Scan), Drafting and Editing. The days are starting guesses; change any of them. Then mark everything you have already finished.</p>
-            <label class="field"><span>Novels</span><textarea id="o-l" style="min-height:110px" placeholder="Afterlives&#10;Gravel Heart&#10;By the Sea" autofocus></textarea></label><div class="error" id="o-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="o-go">Build</button></div>`, box => {
-            box.querySelector('#o-go').onclick = () => {
-                const novels = parseLines(val(box, '#o-l')); if (!novels.length) { box.querySelector('#o-e').textContent = 'Type at least one novel'; return; }
-                const specs = [chapterSpec('Introduction', 'intro'), chapterSpec('Theoretical Framework and Review of Literature', 'review')].concat(novels.map((n, i) => chapterSpec('Chapter ' + (i + 3) + ': ' + n, 'novel')), [chapterSpec('Conclusion', 'concl')]);
-                commit(0, specs); closeSheet(); render(); toast('Outline built. Tick what is already done.');
-            };
-        });
-    }
-    function customSheet() {
-        sheet(`<h2>Add a custom task</h2><p>For anything outside the chapters, such as a conference paper or a supervisor request. It joins the same clock.</p>
-            <label class="field"><span>What will you do?</span><input type="text" id="u-t" autofocus></label>
-            <div class="grid2"><label class="field"><span>Allotted days</span><input type="number" inputmode="numeric" id="u-d" value="3"></label><label class="field"><span>Hard finish date (optional)</span><input type="date" id="u-f"></label></div><div class="error" id="u-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="u-go">Add</button></div>`, box => {
-            box.querySelector('#u-go').onclick = () => { const t = val(box, '#u-t').trim(), d = Math.round(numv(box, '#u-d')); if (!t) { box.querySelector('#u-e').textContent = 'Name the task'; return; } if (!(d >= 1)) { box.querySelector('#u-e').textContent = 'Allot at least one day'; return; }
-                commit(0, [pc(t, d, { custom: true, fixedEnd: val(box, '#u-f') || null })]); closeSheet(); render(); };
-        });
-    }
-    function defaultsSheet() {
-        sheet(`<h2>Default days</h2><p>Used whenever the app creates new tasks. Existing tasks are not changed.</p>${DEFD_LABEL.map(([k, l]) => `<div class="sw-row"><span>${l}</span><input type="number" inputmode="numeric" data-dd="${k}" value="${defDays(k)}" style="width:72px;text-align:right" class="set-select"></div>`).join('')}
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="d-go">Save</button></div>`, box => {
-            box.querySelector('#d-go').onclick = () => { const o = {}; box.querySelectorAll('[data-dd]').forEach(i => { const v = Math.round(+i.value); if (v >= 1) o[i.dataset.dd] = v; }); prefs.defDays = o; persist(); closeSheet(); toast('Defaults saved'); };
-        });
-    }
-    function rebaseSheet() {
-        const T = D.thesis;
-        sheet(`<h2>Re-baseline the plan</h2><p>This resets every open task's deadline to where it stands now, so the delay so far stops showing as lateness. Use it only after a real change of plan, such as adding chapters. The days it forgives (${dN(Math.max(0, T.slip))}) stay on record in the Outlook ledger for good.</p>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="rb-go">Re-baseline</button></div>`, box => {
-            box.querySelector('#rb-go').onclick = () => { const map = {}; P().open.forEach(p => { map[p.id] = E.keyOf(p.projN); }); add({ t: 'lock', map, rebase: true, forgiven: Math.max(0, T.slip) }); closeSheet(); render(); toast('Plan re-baselined. It is on record.'); };
-        });
-    }
-
-    function nowCard(p) {
-        const late = p.status === 'late', dayNo = Math.max(1, Math.min(p.days, D.todayN - p.start + 1));
-        const cost = late ? `<div class="pwarn" style="margin-top:8px">${dN(p.lateDays)} over. Each extra day moves everything after this task one day later${prefs.lossOn ? ` (the thesis now finishes ${fmtDNum(D.thesis.projN)})` : ''}.</div>` : '';
-        const chap = chapOf(p.id);
-        return `<div class="card pnow ${late ? 'late' : ''}" data-act="pc" data-id="${p.id}">
-            <div class="row"><div style="min-width:0"><div class="safe-lbl">${esc(chap ? chap.title : 'Custom task')}</div><div class="pt">${esc(pTitle(p))}</div><div class="hint">${esc(pathOf(p.parent).split(' › ').slice(chap ? 1 : 0).join(' › '))}</div></div>
-            <button class="btn-line btn-accent pdone" data-act="tick" data-id="${p.id}">Done</button></div>
-            <div class="row mt"><span class="chip ${late ? 'bad' : ''}">${late ? 'Late' : p.status === 'due' ? 'Due today' : 'Day ' + dayNo + ' of ' + p.days}</span><span class="muted">due ${fmtDNum(p.due)}</span></div>${cost}${focusBlock(p)}${trackBlock(trackOf(p.id), true)}</div>`;
-    }
-    /* ---------- pick, then start: the Today screen recommends, you choose ---------- */
-    async function beginPiece(id) {
-        const p = P().byId.get(id); if (!p || p.done) return;
-        if (p.locked) { fx('stop'); toast('Locked until all reading and drafting is done.'); return; }
-        if (P().pickMode && !p.picked) {
-            if (P().active.length >= 2) fx('stop');
-            if (P().active.length >= 2 && !(await confirmSheet({ title: 'Two tasks are already under way', sub: 'Two at a time is easier to keep up, and the thesis forecast assumes one steady chain. You can still start a third.', ok: 'Start anyway', cancel: 'Not now' }))) return;
-            add({ t: 'begin', goal: id, day: todayKey() });
-        }
-        render(); howSheet(id);
-    }
-    function howSheet(id) {
-        const p = P().byId.get(id); if (!p) return;
-        sheet(`<h2>${esc(pTitle(p))}</h2><p>This task is now under way and its clock has started. How do you want to work on it?</p>
-            <button class="btn-line btn-accent" data-h="pace">Set a daily pace (pages or steps)</button>
-            <button class="btn-line" data-h="split">Split into sub-sections</button>
-            <button class="btn-line" data-h="clock">Just follow the clock</button>`, box => {
-            box.querySelectorAll('[data-h]').forEach(b => b.onclick = () => {
-                const h = b.dataset.h; closeSheet();
-                if (h === 'pace') setTimeout(() => trackSheet(trackOf(id) ? trackOf(id).id : id), 60);
-                else if (h === 'split') setTimeout(() => splitSheet(id), 60);
-                else toast('Under way. The clock is running.');
-            });
-        });
-    }
-    function newDailySheet() {
-        const PP = P(), rec = PP.active.filter(p => !trackOf(p.id)).concat(PP.upcoming).slice(0, 4);
-        sheet(`<h2>Start a task</h2><p class="hint">Pick a task from the Plan, so the work counts towards your thesis.</p>
-            <div class="set-title">From the Plan</div>
-            ${rec.length ? rec.map((p, i) => `<div class="ledger-row" data-act="begin" data-id="${p.id}" style="cursor:pointer"><span>${esc(pTitle(p))}<span class="muted"> · ${p.days} d${i === 0 ? ' · recommended' : ''}</span></span><span class="muted">Pick</span></div>`).join('') : '<p class="hint">Nothing is waiting in the Plan.</p>'}
-            <button class="btn-line" data-act="pick">Choose another task from the Plan</button>
-            <div class="set-title" style="margin-top:12px">Outside the Plan</div>
-            <p class="hint">For something that is not in the thesis outline. It does not move the thesis clock.</p>
-            <button class="btn-line" data-act="task-add">New task outside the Plan</button>`);
-    }
-    function pickToday(PP) {
-        let h = `<div class="list-header"><span>Working on</span><span class="hint">tap Done on the day you finish</span></div>`;
-        h += PP.active.length ? PP.active.map(nowCard).join('') : `<div class="card"><p class="hint">${PP.upcoming[0] ? 'Nothing is under way yet. Pick a task below to start its clock.' : 'Everything is done. Well earned.'}</p></div>`;
-        if (PP.upcoming.length) {
-            const f = PP.upcoming[0];
-            h += `<div class="card"><h3>${PP.active.length ? 'Recommended next' : 'Recommended to start'}</h3>
-                <div class="ledger-row" style="cursor:default"><span><b>${esc(pTitle(f))}</b><span class="muted"> · ${f.days} d</span><span class="hint" style="display:block">${esc(pathOf(f.parent))}</span></span></div>
-                <button class="btn-line btn-accent" data-act="begin" data-id="${f.id}">Start this</button>
-                ${PP.upcoming.slice(1).map(p => `<div class="ledger-row" data-act="begin" data-id="${p.id}" style="cursor:pointer"><span>${esc(pTitle(p))}<span class="muted"> · ${p.days} d</span></span><span class="muted">Start</span></div>`).join('')}
-                <button class="btn-line" data-act="pick">Choose another task</button></div>`;
-        }
-        return h + (PP.active.length ? `<div class="soft-row"><button class="btn-soft" data-act="newdaily">Start a task</button>${PP.open.length ? '<button class="btn-soft" data-act="pick">Choose another task</button>' : ''}</div>` : `<button class="btn-line" data-act="newdaily" style="margin-bottom:14px">Start a task</button>`);
-    }
-    /* ---------- the top panel of Today: today's work, pace, week and month, and where you are heading ---------- */
-    function todayPanel(PP, T, J) {
-        const R = PP.rhythm, items = [], tt = (txt, tone) => `data-tell="${esc(txt)}" data-tone="${tone || ''}"`;
-        PP.active.forEach(p => { const t = trackOf(p.id); if (!t || t.finished) return; const goal = Math.max(t.pace || 0, t.need || 0); items.push({ name: pTitle(p), unit: t.unit, done: IN ? qtyT(t, D.todayN) : 0, goal, t, p }); });
-        D.tasks.filter(t => t.started && !t.finished && t.target > 0.05).forEach(t => items.push({ name: t.title || (t.g && t.g.title) || 'Task', unit: t.unit, done: t.doneToday, goal: t.target, t: null, p: null }));
-        const goalItems = items.filter(x => x.goal > 0), hit = goalItems.filter(x => x.done >= x.goal - 0.05).length, one = goalItems.length === 1 ? goalItems[0] : null;
-        const frac = goalItems.length ? goalItems.reduce((a, x) => a + Math.min(1, x.done / x.goal), 0) / goalItems.length : 0;
-        const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], mon = n => { const d = new Date(n * 864e5); return MON[d.getUTCMonth()] + ' ' + String(d.getUTCFullYear()).slice(2); };
-        // ---- the ring: the number sits inside; several tasks make a segmented ring
-        const L = 226.2; let ringSvg = '', ringTell = '', ringTone = '';
-        if (goalItems.length) {
-            const n = goalItems.length, gap = n > 1 ? 9 : 0, seg = (L - gap * n) / n;
-            const arcs = goalItems.map((x, i) => { const f = Math.min(1, x.done / x.goal), st = i * (seg + gap), ok = x.done >= x.goal - 0.05; return `<circle cx="40" cy="40" r="36" fill="none" stroke-width="7" class="ring-track" stroke-dasharray="${seg.toFixed(1)} ${(L - seg).toFixed(1)}" stroke-dashoffset="${(-st).toFixed(1)}" stroke-linecap="${n > 1 ? 'butt' : 'round'}"/>${f > 0.005 ? `<circle class="tp-arc" cx="40" cy="40" r="36" fill="none" stroke-width="7" stroke-linecap="${n > 1 ? 'butt' : 'round'}" stroke="${ok ? 'var(--good,#2da872)' : 'url(#mrG)'}" stroke-dasharray="${(seg * f).toFixed(1)} ${(L - seg * f).toFixed(1)}" stroke-dashoffset="${(-st).toFixed(1)}" style="--d:${i * 120}ms"/>` : ''}`; }).join('');
-            const centre = one ? N(one.done) : `${hit}/${n}`, cap = one ? `of ${N(one.goal)} ${esc(one.unit)}` : 'goals';
-            ringSvg = `<div class="ring mring tp-ringbox"><svg viewBox="0 0 80 80" style="transform:rotate(-90deg)">${arcs}<defs><linearGradient id="mrG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--blue-a)"/><stop offset="1" stop-color="var(--blue-b)"/></linearGradient></defs></svg><div class="ring-center"><div class="ring-pct tp-num">${centre}</div><div class="ring-cap">${cap}</div></div></div>`;
-            ringTell = one ? (one.done >= one.goal - 0.05 ? `You did ${N(one.done)} of ${N(one.goal)} ${one.unit} today. The goal is done.` : `You did ${N(one.done)} of ${N(one.goal)} ${one.unit} today. ${N(one.goal - one.done)} more to go.`) : `${hit} of ${n} daily goals are done. ${hit === n ? 'All finished for today.' : n - hit + ' still to do.'}`; ringTone = hit === n ? 'good' : '';
-        } else if (PP.active.length) {
-            const p = PP.active[0], dayNo = Math.max(1, Math.min(p.days, D.todayN - p.start + 1));
-            ringSvg = mring(Math.max(0, Math.min(1, dayNo / p.days)), 'Day ' + dayNo, 'of ' + p.days).replace('class="ring mring"', 'class="ring mring tp-ringbox"');
-            ringTell = `This is day ${dayNo} of ${p.days} for ${pTitle(p)}. Set a daily pace to see today's goal.`;
-        } else { ringSvg = mring(0, '–', '').replace('class="ring mring"', 'class="ring mring tp-ringbox"'); ringTell = 'Nothing is under way. Pick a task below to start it.'; }
-        // ---- chips: flame (chain), clock (pace), arrow (week against week)
-        const ico = { flame: '<path d="M12 3c1 3 4 5 4 9a4 4 0 0 1-8 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 0-8z"/>', clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7v5l3 2"/>', up: '<path d="M12 19V6M6 12l6-6 6 6"/>', down: '<path d="M12 5v13M6 12l6 6 6-6"/>' };
-        const chip = (k, txt, tell, tone) => `<button type="button" class="tp-chip ${tone || ''}" ${tt(tell, tone)}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ico[k]}</svg><b>${txt}</b></button>`;
-        const chips = [];
-        if (IN && (IN.streak > 0 || IN.atRisk)) chips.push(chip('flame', IN.streak, `Your chain is ${plural(IN.streak, 'day')} long. ${IN.atRisk ? 'Log something today to keep it.' : IN.workedToday ? 'Today is already counted.' : 'Keep it going.'}`, IN.atRisk ? 'bad' : IN.workedToday ? 'good' : ''));
-        const lead = (goalItems.find(x => x.t) || {}).t || null, wp = PP.active.find(p => p.hasWork && p.workAhead !== null && Math.abs(p.workAhead) >= 1);
-        if (lead && lead.avg7 > 0) chips.push(chip('clock', N(lead.avg7) + '/d', `Your pace is ${N(lead.avg7)} ${lead.unit} a day over 7 days. ${lead.need !== null && !lead.finished ? 'You need ' + N(lead.need) + ' a day to make the deadline.' : 'That is steady work.'}`, lead.behind ? 'bad' : ''));
-        else if (wp) chips.push(chip(wp.workAhead > 0 ? 'up' : 'down', dayF(Math.abs(wp.workAhead)), `${pTitle(wp)} is ${dayF(Math.abs(wp.workAhead))} ${wp.workAhead > 0 ? 'ahead of' : 'behind'} the clock.`, wp.workAhead > 0 ? 'good' : 'bad'));
-        if (R.hasP7 && R.p7.days > 0.3) { const d = (R.w7.days - R.p7.days) / R.p7.days, up = d >= 0; chips.push(chip(up ? 'up' : 'down', Math.round(Math.abs(d) * 100) + '%', `Last 7 days: ${N(R.w7.days)} plan days, against ${N(R.p7.days)} the week before. You are ${up ? 'faster' : 'slower'} by ${Math.round(Math.abs(d) * 100)}%.`, Math.abs(d) < 0.05 ? '' : up ? 'good' : 'bad')); }
-        // ---- the last 14 days as bars: one plan day is the goal line
-        const days = R.days14, mx = Math.max(1.25, ...days.map(d => d.v)), H = 46, base = 54, wk = n => WDN[new Date(n * 864e5).getUTCDay()];
-        const bars = days.map((d, i) => { const h = d.v > 0 ? Math.max(3, d.v / mx * H) : 0, x = i * 20 + 3, strong = i >= 7, met = d.v >= 0.95, cls = met ? 'met' : 'part', tell = d.leave ? `${wk(d.n)} ${fmtDNshort(d.n)} was a rest day.` : d.v > 0 ? `${wk(d.n)} ${fmtDNshort(d.n)}: ${N(d.v)} plan days. ${met ? 'That meets the plan.' : 'Below one plan day.'}` : `${wk(d.n)} ${fmtDNshort(d.n)}: no work logged.`; return `<rect class="tp-bar ${cls} ${strong ? 's' : 'w'} ${i === 13 ? 'now' : ''}" x="${x}" y="${(base - Math.max(h, 8)).toFixed(1)}" width="14" height="${Math.max(h, 8).toFixed(1)}" rx="4" style="--d:${i * 35}ms;${h ? '' : 'fill:transparent'}"/><rect class="tp-hit" x="${x - 3}" y="2" width="20" height="${base}" fill="transparent" ${tt(tell, '')}/>${d.leave ? `<circle cx="${x + 7}" cy="${base - 4}" r="2.5" class="tp-rest"/>` : ''}${!h && !d.leave ? `<rect x="${x}" y="${base - 2}" width="14" height="2" rx="1" class="tp-zero"/>` : ''}`; }).join('');
-        const gy = base - 1 / mx * H, strip = `<div class="tp-bars"><svg viewBox="0 0 280 ${base + 4}" preserveAspectRatio="none" role="img" aria-label="Last 14 days">${bars}<line x1="0" x2="280" y1="${gy.toFixed(1)}" y2="${gy.toFixed(1)}" class="tp-goal"/></svg></div>`;
-        // ---- the road to the target and the end of the JRF
-        let road = '';
-        if (R.endN) {
-            const a = D.todayN, end = R.endN, tg = R.targetN, fin = R.atSpeedN, far = Math.max(end, fin || 0), span = Math.max(30, (far - a) * 1.1), X = n => 14 + Math.max(0, Math.min(1, (n - a) / span)) * 272, y = 38;
-            const F5 = T && T.fifth, finW = fin !== null && F5 ? fin - F5.editN : fin, tone = fin === null ? '' : finW <= tg ? 'good' : fin <= end - (F5 ? F5.fin : 0) ? 'warn' : 'bad';
-            const flag = (n, lbl, cls) => `<g class="tp-flag ${cls}"><line x1="${X(n)}" x2="${X(n)}" y1="${y - 22}" y2="${y}"/><path d="M${X(n)} ${y - 22}l12 5-12 5z"/></g><text x="${X(n)}" y="${y + 18}" class="tp-lbl" text-anchor="middle">${lbl}</text>`;
-            const dotClose = fin !== null && (Math.abs(X(fin) - X(end)) < 40 || Math.abs(X(fin) - X(tg)) < 40);
-            const tell = fin === null ? `Log some work for a week and the road will show where your speed leads.` : `At your speed everything, including editing, ends about ${fmtDNum(fin)}. Reading and drafting are due ${fmtDNum(tg)}, and the JRF ends ${fmtDNum(end)}.`;
-            road = `<div class="tp-road" ${tt(tell, tone === 'bad' ? 'bad' : tone === 'good' ? 'good' : '')}><svg viewBox="0 0 300 76" role="img" aria-label="Road to the end of the JRF"><line x1="${X(a)}" x2="${X(end)}" y1="${y}" y2="${y}" class="tp-track"/>${fin !== null && fin > end ? `<line x1="${X(end)}" x2="${X(fin)}" y1="${y}" y2="${y}" class="tp-over"/>` : ''}${fin !== null ? `<line x1="${X(a)}" x2="${X(Math.min(fin, far))}" y1="${y}" y2="${y}" class="tp-way ${tone}"/>` : ''}${tg > a ? flag(tg, mon(tg), 'tg') : ''}${flag(end, mon(end), 'en')}<circle cx="${X(a)}" cy="${y}" r="5" class="tp-now"/>${fin !== null ? `<circle cx="${X(fin)}" cy="${y}" r="7" class="tp-fin ${tone}"/><text x="${X(fin)}" y="${dotClose ? y + 32 : y - 12}" class="tp-lbl b" text-anchor="middle">${mon(fin)}</text>` : `<circle cx="${X(a) + 40}" cy="${y}" r="5" class="tp-ghost"/>`}</svg></div>`;
-        }
-        // ---- the buffer gauge
-        const delta = T.buffer - T.planned, bt = T.buffer < 0 || delta < -0.5 ? 'bad' : delta > 0.5 ? 'good' : '', pl = Math.max(1, T.planned), bf = Math.max(0, Math.min(1, T.buffer / (pl * 1.5))), mk = Math.min(1, pl / (pl * 1.5));
-        const gauge = `<div class="tp-gauge ${bt}" ${tt(`Your buffer is ${Math.round(T.buffer)} days. ${delta < -0.5 ? dN(delta) + ' lost since the start.' : delta > 0.5 ? dN(delta) + ' gained.' : 'It is all yours.'}`, bt)}><span class="muted">Buffer</span><div class="tp-gtrack"><i style="width:${(bf * 100).toFixed(1)}%"></i><u style="left:${(mk * 100).toFixed(1)}%"></u></div><b class="num">${Math.round(T.buffer)} d</b><span class="tp-sh">${bt === 'bad' ? '▼' : bt === 'good' ? '▲' : '●'}</span></div>`;
-        const sub = one ? (one.done >= one.goal - 0.05 ? 'Goal done' : N(one.goal - one.done) + ' to go') : goalItems.length ? (hit === goalItems.length ? 'All done' : goalItems.length - hit + ' to do') : PP.active.length ? 'No pace set' : 'Not started';
-        return `<div class="card tp"><div class="tp-top"><div class="tp-ringwrap" ${tt(ringTell, ringTone)}>${ringSvg}</div><div class="tp-side"><div class="safe-lbl">Today</div><div class="tp-sub">${sub}</div><div class="tp-chips">${chips.slice(0, 3).join('')}</div></div></div>${strip}${tideLine()}${road}${gauge}</div>`;
-    }
-    // ---- today against yesterday, and where the last sitting ended
-    function dayQty(n) { let q = 0, u = ''; D.logs.forEach(l => { if (!l.sit && (l.day ? E.dn(l.day) : E.dn(E.localKey(l.ts))) === n) { q += l.qty; const t = trackOf(l.goal) || P().tracks.find(x => x.id === l.goal); if (t && t.unit) u = t.unit; } }); return { q, u }; }
-    function lastSitting() {
-        const ls = D.logs.filter(l => !l.sit).sort((a, b) => b.ts - a.ts)[0]; if (!ls) return null;
-        let at = 0; const evs = [];
-        D.logs.filter(l => l.goal === ls.goal).forEach(l => evs.push({ ts: l.ts, q: l.qty }));
-        (D.poses || []).filter(p => p.goal === ls.goal).forEach(p => evs.push({ ts: p.ts, pg: p.page }));
-        evs.sort((a, b) => a.ts - b.ts).forEach(x => { if (x.pg !== undefined) at = x.pg; else at += x.q; });
-        const t = trackOf(ls.goal);
-        return { page: at, qty: ls.qty, unit: (t && t.unit) || 'pages', ts: ls.ts, goal: ls.goal };
-    }
-    function tideLine() {
-        const a = dayQty(D.todayN), b = dayQty(D.todayN - 1), u = a.u || b.u || 'pages', mx = Math.max(a.q, b.q, 1) * 1.12;
-        const ahead = a.q > b.q, diff = N(Math.abs(b.q - a.q));
-        const note = a.q === 0 && b.q === 0 ? 'Start today' : ahead ? `▲ ${diff} more than yesterday` : a.q === b.q ? 'Same as yesterday' : `${diff} to match yesterday`;
-        const say = `Today you did ${N(a.q)} ${u}. Yesterday you did ${N(b.q)}. ${a.q === 0 && b.q === 0 ? 'Nothing logged yet.' : ahead ? 'You are ahead of yesterday. The gold part is your extra.' : a.q === b.q ? 'The same as yesterday.' : diff + ' more ' + u + ' will match yesterday.'}`;
-        const bp = b.q / mx * 100;
-        return `<div class="tide" data-tell="${esc(say)}"><div class="tide-top"><span class="tide-n">${N(a.q)}</span><span class="tide-u">${esc(u)} today</span><span class="tide-d ${ahead ? 'good' : ''}">${note}</span></div><div class="tide-track"><i class="tide-fill" style="width:${Math.min(a.q, b.q) === a.q ? a.q / mx * 100 : a.q / mx * 100}%"></i>${ahead ? `<i class="tide-beat" style="left:${bp}%;width:${(a.q - b.q) / mx * 100}%"></i>` : ''}<b class="tide-mark" style="left:${bp}%;--sh:${bp < 14 ? '-10%' : bp > 86 ? '-90%' : '-50%'}"><em>yesterday ${N(b.q)}</em></b></div></div>`;
-    }
+    // The five most used categories stay on top, in order of use. The rest rest under a small arrow.
+    // ---- today against yesterday, and your last entry
+    const dk = ts => { const d = new Date(ts); return d.getFullYear() * 400 + d.getMonth() * 32 + d.getDate(); };
+    function dayTotal(ts) { const k = dk(ts); let t = 0; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && dk(e.ts) === k) t += e.amt; })); return t; }
     const whenWords = ts => {
         const d = new Date(ts), t0 = new Date().setHours(0, 0, 0, 0), days = Math.round((t0 - new Date(ts).setHours(0, 0, 0, 0)) / 864e5);
         const tm = d.toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true });
@@ -1168,298 +512,363 @@
         return `${day} at ${tm}`;
     };
     function tornStrip() {
-        const L = lastSitting(), next = () => { lineBump++; return pickLine(); };
-        const lastAny = D.logs.slice().sort((a, b) => b.ts - a.ts)[0];
-        if (!L && !lastAny) return GBanner.html({ last: null, tips: prefs.lineOn, next });
-        const short = id => { const t = (D.goals.get(id) || {}).title || ''; return t.length > 26 ? t.slice(0, 25) + '…' : t; };
-        const kindWord = id => { const k = kindOfGoal(id); return k && KIND_N[k] ? KIND_N[k] : ''; };
-        let txt, tell, act = 'hist';
-        if (lastAny && lastAny.sit && (!L || lastAny.ts >= L.ts)) {       // the newest thing is a timed sitting: say what kind of work, which task, how long
-            const k = kindWord(lastAny.goal), hrs = (lastAny.min > 0 ? lastAny.min / 60 : lastAny.qty);
-            txt = `Last work: <b>${k ? esc(k) + ' · ' : ''}${esc(short(lastAny.goal))}</b>, ${hrsTxt(hrs)}, ${whenWords(lastAny.ts)}.`;
-            tell = `Your last sitting was ${hrsTxt(hrs)}${k ? ' of ' + k.toLowerCase() : ''}. Tap Log history to see all of them.`;
-        } else {
-            const k = kindWord(L.goal), tl = `${k ? '<b>' + esc(k) + '</b> · ' : ''}${esc(short(L.goal))}: `;
-            txt = L.unit === 'pages' ? `${tl}you last stopped at page <b>${N(L.page)}</b>, ${whenWords(L.ts)}.` : `${tl}you last stopped at <b>${N(L.page)}</b> ${esc(L.unit)}, ${whenWords(L.ts)}.`;
-            tell = `Your last entry was ${N(L.qty)} ${L.unit}. Tap Log history to see all of them.`;
-        }
-        return GBanner.html({ last: { html: txt, tell, act }, tips: prefs.lineOn, next });
+        const next = () => { lineBump++; return pickLine(); };
+        let last = null; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'adjust' && e.kind !== 'import' && (!last || e.ts > last.ts)) last = e; }));
+        if (!last) return GBanner.html({ last: null, tips: prefs.lineOn, next });
+        const txt = prefs.privacy ? `Your last entry was ${whenWords(last.ts)}.` : `Your last entry was <b class="priv">${money(last.amt)}</b> for <b>${esc(last.name)}</b>, ${whenWords(last.ts)}.`;
+        return GBanner.html({ last: { html: txt, tell: prefs.privacy ? 'Your last entry.' : `${last.name}: ${money(last.amt)}, ${whenWords(last.ts)}.` }, tips: prefs.lineOn, next });
     }
-    /* work-day balance this week: hours worked against 3 h a work day. Today counts only once it is met (or in the evening), so a half-finished day never shows as a loss. */
-    function weekInfo() {
-        let diff = 0, any = false, worked = 0, days = 0, per = [], todayI = -1;
-        try {
-            const r = GReport.report(Object.assign({ kind: 'week', back: 0 }, gInputs())), hr = new Date().getHours();
-            for (let i = 0; i < r.elapsed; i++) {
-                const v = r.day[i] || 0, isToday = i === r.elapsed - 1, rest = r.leaveIdx[i] && !r.worked[i];
-                per[i] = rest ? null : v; if (isToday) todayI = i;
-                if (rest) continue; any = true; worked += v;
-                if (isToday) { if (v >= WD_H || hr >= 21) { diff += v - WD_H; days++; } } else { diff += v - WD_H; days++; }
-            }
-        } catch (e) { return null; }
-        return any ? { diff, worked, days, per, todayI, len: 7 } : null;
-    }
-    /* what the target really asks of one day, from the engine: the plan days still open before the year-N target, spread over the days left, at 3 hours a plan day */
-    function needHours() {
-        const J = D.jrf; if (!J) return null;
-        const rem = P().open.filter(p => p.grp !== 'editing').reduce((s, p) => s + p.days * (1 - (p.work || 0)), 0);
-        if (!(rem > 0)) return { rem: 0, hours: 0 };
-        return { rem, hours: rem / Math.max(1, J.daysToTarget) * WD_H };
-    }
-    /* ---- Today's plan: "How many hours will you work today?" asked once, then used to forecast ---- */
-    const hrsTxt = h => { const m = Math.round(h * 60); return m >= 60 ? Math.floor(m / 60) + ' h' + (m % 60 ? ' ' + (m % 60) + ' min' : '') : m + ' min'; };
-    function planCard(PP) {
-        if (prefs.planAsk === false) return '';
-        const k = todayKey(), pl = prefs.planToday && prefs.planToday.k === k ? prefs.planToday : null;
-        if (pl && pl.skip) return '';
-        if (!pl) return `<div class="card pl-ask" data-sec="none"><div class="set-title">Good ${new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}</div><h3 class="pl-q">How many hours will you work today?</h3><div class="wz-chips">${[1, 2, 3, 4, 5, 6, 8].map(n => `<button type="button" class="wz-chip" data-act="plan-set" data-h="${n}">${n} h</button>`).join('')}<button type="button" class="wz-chip" data-act="plan-set" data-h="0">Not today</button></div><p class="hint">A rough guess is fine. It helps the app forecast your tasks.</p><button type="button" class="link-btn" data-act="plan-skip">Ask me later</button></div>`;
-        if (pl.h === 0) return `<div class="card pl-line"><span class="muted">Today is a rest day. Your chain is safe.</span> <button type="button" class="link-btn" data-act="plan-change">Change</button></div>`;
-        let done = 0; try { const n0 = E.dn(todayKey()); done = GReport.prep(gInputs()).filter(l => l.day === n0).reduce((s, l) => s + l.h, 0); } catch (e) {}
-        const left = Math.max(0, pl.h - done), nd = needHours(), wk = weekInfo(), T = D.thesis, R = PP.rhythm, J = D.jrf;
-        const act = PP.active[0] || null, tk = act ? trackOf(act.id) : null, slots = tk ? slotsOf(tk) : null;
-        // the one next step, chosen from the engine's own state
-        let btn;
-        if (nd && nd.hours > pl.h + 0.25 && left > 0.02 && nd.hours <= 8) { const hh = Math.ceil(nd.hours * 2) / 2; btn = { t: `Plan ${hrsTxt(hh)} today`, a: `data-act="plan-set" data-h="${hh}"` }; }
-        else if (nd && nd.hours > 8) btn = { t: 'The target is out of reach. Open Plan', a: 'data-act="goto" data-s="plan"' };
-        else if (act && slots && slots.full === slots.sl.length) btn = { t: `Finish ${pTitle(act)}`, a: `data-act="tick" data-id="${act.id}"` };
-        else if (act && left > 0.02) btn = tk ? { t: `Log work · ${pTitle(act)}`, a: `data-act="tlog" data-id="${tk.id}"` } : { t: `Finish ${pTitle(act)}`, a: `data-act="tick" data-id="${act.id}"` };
-        else if (act) btn = tk ? { t: 'Plan met. Bank an extra hour', a: `data-act="tlog" data-id="${tk.id}"` } : { t: `Finish ${pTitle(act)}`, a: `data-act="tick" data-id="${act.id}"` };
-        else if (PP.upcoming[0]) btn = { t: `Start ${pTitle(PP.upcoming[0])}`, a: `data-act="begin" data-id="${PP.upcoming[0].id}"` };
-        else btn = { t: 'Choose a task', a: 'data-act="pick"' };
-        const ic = d => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
-        const I = { target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.2"/>', week: '<rect x="4" y="5" width="16" height="15" rx="3"/><path d="M4 10h16M9 3v4M15 3v4"/>', flag: '<path d="M6 21V4M6 5h11l-2 4 2 4H6"/>' };
-        const frac = h => { const q = wdParts(h); return (q.w ? q.w : '') + (WD_G[q.r] || (q.w ? '' : '0')); };
-        const rows = [];
-        if (nd && nd.rem > 0) {
-            const sc = Math.max(pl.h, nd.hours, done, 0.1) * 1.06, warn = nd.hours > pl.h + 0.25;
-            rows.push(`<div class="wd-g" role="img" data-tell="${esc(`To reach year ${J.target}, you need about ${hrsTxt(nd.hours)} a day. You planned ${hrsTxt(pl.h)} and have done ${hrsTxt(done)}.${warn ? ' The plan is below the need.' : ' Your plan covers it.'}`)}" data-tone="${warn ? 'bad' : 'ok'}" aria-label="The year-${J.target} target needs about ${hrsTxt(nd.hours)} a day. You planned ${hrsTxt(pl.h)}."><span class="wd-gi">${ic(I.target)}</span><div class="wd-bar"><i class="wd-plan" style="width:${(pl.h / sc * 100).toFixed(1)}%"></i><i class="wd-fill" style="width:${Math.min(100, done / sc * 100).toFixed(1)}%"></i><u class="wd-tick ${warn ? 'warn' : ''}" style="left:${Math.min(98, nd.hours / sc * 100).toFixed(1)}%"></u></div><b class="wd-gv ${warn ? 'warn' : ''}">${hrsTxt(nd.hours)}</b></div>`);
-        }
-        if (wk) {
-            const L = ['M', 'T', 'W', 'T', 'F', 'S', 'S'], up = wk.diff >= 0.25, dn = wk.diff <= -0.25;
-            rows.push(`<div class="wd-g" role="img" data-tell="${esc(`This week you worked ${hrsTxt(wk.worked)}. That is ${Math.abs(wk.diff) < 0.25 ? 'level with' : wdText(Math.abs(wk.diff)) + (wk.diff > 0 ? ' ahead of' : ' behind')} ${WD_H} h a day. Tap a bar for its day.`)}" aria-label="This week ${hrsTxt(wk.worked)} worked. ${Math.abs(wk.diff) < 0.25 ? 'Level with' : wdText(Math.abs(wk.diff)) + (wk.diff > 0 ? ' ahead of' : ' behind')} ${WD_H} h a day."><span class="wd-gi">${ic(I.week)}</span><div class="wd-wk">${Array.from({ length: 7 }, (_, k) => { const v = wk.per[k]; const hh = v === undefined ? 0 : v === null ? 0 : v; return `<i data-tell="${esc(WDN[(k + 1) % 7] + ': ' + (v === undefined ? 'still to come.' : v === null ? 'a rest day. Your chain is safe.' : hh < 0.02 ? 'no work logged.' : hrsTxt(hh) + (hh >= WD_H ? ', a full 3 h day.' : ', under 3 h.')))}" class="${k === wk.todayI ? 'now' : ''} ${v === undefined ? 'fut' : v === null ? 'rest' : hh >= WD_H ? 'ok' : ''}" style="height:${Math.max(8, Math.min(100, hh / (WD_H * 1.25) * 100)).toFixed(0)}%"><em>${L[k]}</em></i>`; }).join('')}</div><b class="wd-gv ${up ? 'ok' : dn ? 'warn' : ''}">${up ? '+' : dn ? '−' : ''}${Math.abs(wk.diff) < 0.25 ? '0' : frac(Math.abs(wk.diff))}</b></div>`);
-        }
-        if (R && R.speed >= 0.03 && nd && nd.rem > 0) {
-            const fw = D.todayN + Math.ceil(nd.rem / R.speed) - 1, span = Math.max(J.targetN, fw) - D.todayN || 1, pos = n => Math.max(0, Math.min(100, (n - D.todayN) / (span * 1.04) * 100)), okp = fw <= J.targetN;
-            rows.push(`<div class="wd-g" role="img" data-tell="${esc(`At your last ${R.basisDays} days' pace, reading and drafting end on ${fmtDNum(fw)}. Your target is ${fmtDNum(J.targetN)}, so you are ${okp ? dN(J.targetN - fw) + ' early' : dN(fw - J.targetN) + ' late'}.`)}" data-tone="${okp ? 'ok' : 'bad'}" aria-label="At your last ${R.basisDays} days' pace, reading and drafting end ${fmtDNum(fw)}. The target is ${fmtDNum(J.targetN)}."><span class="wd-gi">${ic(I.flag)}</span><div class="wd-tl"><i class="ln"></i><i class="ln on ${okp ? 'ok' : 'warn'}" style="width:${pos(fw).toFixed(1)}%"></i><u data-tell="${esc('Where your pace ends reading and drafting: ' + fmtDNum(fw) + '.')}" class="dot ${okp ? 'ok' : 'warn'}" style="left:${pos(fw).toFixed(1)}%"></u><u data-tell="${esc('Your year-' + J.target + ' target: ' + fmtDNum(J.targetN) + '.')}" class="flag" style="left:${pos(J.targetN).toFixed(1)}%"></u><small class="${okp ? 'ok' : 'warn'}" style="left:${Math.min(80, pos(fw)).toFixed(1)}%">${dShort(fw)}</small><small class="tg" style="left:${Math.min(88, pos(J.targetN)).toFixed(1)}%">${dShort(J.targetN)}</small></div></div>`);
-        }
-        const tone = left > 0.02 ? 'blue' : 'green';
-        let hint = ''; try { const n = +localStorage.getItem('gl_tellhint') || 0; if (n < 12) { localStorage.setItem('gl_tellhint', String(n + 1)); hint = ' wd-hint'; } } catch (e) {}
-        return wdCard({ hint, cap: 'Today · plan', ic: left > 0.02 ? 'clock' : 'up', tone, h: done, big: hrsTxt(done), unit: `of ${hrsTxt(pl.h)} planned${left > 0.02 ? '' : ' · plan met'}`, size: 60, label: 1, sub: `${wdText(done)} done today${(() => { const kl = kindsLine(hoursByKind(D.todayN)); return kl ? ' · ' + kl : ''; })()}`, more: `${rows.join('')}<button type="button" class="btn-line btn-accent wd-go" ${btn.a}>${esc(btn.t)}</button><button type="button" class="link-btn" data-act="plan-change">Change today's hours</button>` });
+    let moreOpen = false;
+    function catsHTML() {
+        const L = D.cats, TOP = 5;
+        if (L.length <= TOP + 1) return L.map(catCard).join('');
+        const top = L.slice(0, TOP), rest = L.slice(TOP);
+        const unused = rest.filter(c => !c.uses).length;
+        const hint = unused === rest.length ? 'not used lately' : 'used less';
+        return top.map(catCard).join('') + `<div class="cat-more${moreOpen ? ' open' : ''}" id="cat-more"><button class="more-btn" data-act="more" aria-expanded="${moreOpen}"><i class="tri" aria-hidden="true"></i><span>${rest.length} more · ${hint}</span></button><div class="more-wrap"><div class="more-in">${rest.map((c, i) => catCard(c, i + TOP)).join('')}</div></div></div>`;
     }
     function renderToday() {
-        const el = $('s-today'); let h = '';
-        const PP = P();
-        if (!D.cfg) {
-            h += `<div class="card"><h3>Welcome</h3><p class="hint">Tell the app when your JRF began and when you want the main work finished. Then build your thesis outline and tick off what you have already done. Everything else follows from that.</p><button class="btn-line btn-accent" data-act="cfg">Set up my timeline</button></div>`;
+        const T = D.today, P = D.P, el = $('s-today');
+        let h = '';
+        if (!P) {
+            h += `<div class="card"><h3>Welcome</h3><p class="hint">Tell the app your bank balance and this month's budget. Everything else follows from that.</p><button class="btn-line btn-accent" data-act="plan">Set up ${MONTHS[D.cur.m]}</button></div>`;
         } else {
-            const T = D.thesis, J = D.jrf, hasPlan = PP.list.length > 0;
-            if (!hasPlan) {
-                h += `<div class="card"><h3>Next step</h3><p class="hint">Your timeline is set: ${dN(J.daysToTarget)} to the year-${J.target} target. Build your thesis outline in Plan and tick what you have already finished.</p><button class="btn-line btn-accent" data-act="goto" data-s="plan">Open Plan</button></div>`;
-            } else {
-                h += tornStrip() + planCard(PP) + todayPanel(PP, T, J);
-            }
+            h += tornStrip() + (window.GWizard ? GWizard.laterHTML() : '') + dashCard();
         }
-        if (window.GWizard) h += GWizard.laterHTML();
-        h += histCard();
-        h += chainCard();
-        if (PP.onTimeRun >= 3) h += `<div class="streak" data-sec="today:streak" style="margin:0 0 10px 4px">🔥 ${plural(PP.onTimeRun, 'task')} in a row finished on time</div>`;
-        if (PP.list.length && PP.pickMode) h += pickToday(PP);
-        else if (PP.list.length) {
-            h += `<div class="list-header"><span>Working on</span><span class="hint">tap Done on the day you finish</span></div>`;
-            h += PP.active.length ? PP.active.map(nowCard).join('') : `<div class="card"><p class="hint">${PP.upcoming[0] ? `Done for today. Next is <b>${esc(pTitle(PP.upcoming[0]))}</b>, starting ${fmtDNum(PP.upcoming[0].start)}. You can press Start on it if you want to begin sooner.` : 'Everything is done. Well earned.'}</p>${PP.upcoming[0] ? `<button class="btn-line" data-act="pc" data-id="${PP.upcoming[0].id}">Open it</button>` : ''}</div>`;
-            if (PP.upcoming.length) h += foldCard(`<div class="card"><h3>Coming up</h3>${PP.upcoming.map(p => `<div class="ledger-row" data-act="pc" data-id="${p.id}" style="cursor:pointer"><span>${esc(pTitle(p))}${p.locked ? ' 🔒' : ''}<span class="muted"> · ${p.days} d</span></span><span class="muted">${fmtDNshort(p.start)}</span></div>`).join('')}</div>`, 'tdy-up', PP.upcoming.length <= 2, plural(PP.upcoming.length, 'task'));
-        }
-        if (PP.list.length && D.cfg && D.cfg.order === 'custom') h += `<button class="btn-line btn-accent" data-act="pick" style="margin-bottom:14px">Choose my next task</button>`;
-        const active = D.tasks.filter(t => t.started && !t.finished).sort((a, b) => (b.status === 'behind') - (a.status === 'behind'));
-        if (active.length) h += `<div class="list-header"><span>Tasks under way</span><span class="hint">tap + to log</span></div><div id="cats">${active.map(taskRow).join('')}</div>`;
-        const nx = D.life.flatMap(l => l.ms.filter(m => !m.done && m.due).map(m => ({ l, m }))).sort((a, b) => a.m.daysLeft - b.m.daysLeft)[0];
-        if (nx) h += `<div class="card tap" data-sec="today:beyond-the-thesis" data-act="goto" data-s="life"><h3>Beyond the thesis</h3><div class="row"><span>${esc(nx.m.title)}</span><b class="num ${nx.m.daysLeft < 0 ? 'bad' : ''}">${nx.m.daysLeft < 0 ? dN(nx.m.daysLeft) + ' overdue' : nx.m.daysLeft === 0 ? 'today' : dN(nx.m.daysLeft)}</b></div><div class="hint">${esc(nx.l.title)}</div></div>`;
+        if (prefs.dayCloseOn && P && new Date().getHours() >= 18 && !D.dayCloses.has(T.key)) h += `<div class="banner"><span>Close today? ${D.streak ? `Streak: ${plural(D.streak, 'day')}.` : ''}</span><span class="b-act"><button class="on" data-act="dayclose">Close day</button></span></div>`;
+        else if (D.streak > 1) h += `<div class="streak" data-sec="today:streak" style="margin:0 0 10px 4px">🔥 ${plural(D.streak, 'day')} of closed days</div>`;
+        h += `<div class="list-header"><span>Categories</span><span class="hint">tap + to add</span></div><div id="cats">${catsHTML()}</div>`;
+        const before = {};
+        if (prefs.animOn && !reduced()) el.querySelectorAll('.cat-item2').forEach(n => { before[n.dataset.id] = n.getBoundingClientRect().top; });
         put(el, h);
+        if (prefs.animOn && !reduced() && Object.keys(before).length && el.animate !== undefined) {
+            el.querySelectorAll('.cat-item2').forEach(n => {
+                const b = before[n.dataset.id]; if (b === undefined) return;
+                const dy = b - n.getBoundingClientRect().top; if (!dy) return;
+                try { n.animate([{ transform: `translateY(${dy}px)` }, { transform: 'none' }], { duration: 750, easing: 'cubic-bezier(0.22,0.8,0.25,1)' }); } catch (e) {}
+            });
+        }
     }
 
-    function recsList() {
-        const r = [], PP = P(), T = D.thesis, J = D.jrf; if (!T) return r;
-        PP.open.filter(p => p.status === 'late').sort((a, b) => b.lateDays - a.lateDays).slice(0, 3).forEach(p => r.push({ c: 'bad', h: `<b>${esc(pTitle(p))}</b> is ${dN(p.lateDays)} over its allotted time. Finish it, or decide honestly what is blocking it.` }));
-        PP.tracks.filter(t => !t.finished && t.behind).slice(0, 2).forEach(t => r.push({ c: 'bad', h: `<b>${esc(D.goals.get(t.id).title)}</b>: ${N(t.done)} of ${N(t.total)} ${esc(t.unit)} done. At ${N(t.pace)} a day you finish ${fmtDNum(t.projN)}, ${dN(t.projN - t.deadline)} after ${fmtDNum(t.deadline)}. You need ${N(t.need)} a day.` }));
-        if (T.toTarget > 0.5) {
-            const wo = PP.open.filter(p => p.grp !== 'editing'), need = wo.reduce((s, p) => s + p.days, 0), per = wo.length ? Math.max(0, J.daysToTarget) / wo.length : 0;
-            r.push({ c: 'bad', h: `Reading and drafting, as planned, run ${dN(T.toTarget)} past your year-${J.target} target. To fit, the ${wo.length} open reading and drafting tasks would have to average ${N(per)} days each (they now average ${N(need / Math.max(1, wo.length))}). Shorten, merge or drop work worth about ${dN(T.toTarget)}, or accept using that much of the fifth year.` });
+    // The ledger: every day with its total, then that day's entries. Each entry can be fixed or deleted (and both can be undone).
+    let ledShow = 5, ledEdit = 0;
+    const ledTime = ts => new Date(ts).toLocaleTimeString('en-GB', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' am', ' am').replace(' pm', ' pm');
+    function ledgerEntries() { const out = []; D.months.forEach(r => r.exps.forEach(e => { if (e.kind !== 'import' && !e.share) out.push(e); })); (D.lasting || []).forEach(l => { const ev = ledFind(l.id); if (ev) out.push(Object.assign({}, ev, { cover: l })); }); return out.sort((a, b) => b.ts - a.ts); }
+    function monthLedger() {
+        const all = ledgerEntries(); if (!all.length) return '<div class="empty"><span class="em-ico">🌱</span><b>No entries yet</b><p>Tap Add to write your first spend.</p></div>';
+        const shown = all.slice(0, ledShow), older = all.length - shown.length;
+        const dSum = {}, dCnt = {}; all.forEach(e => { const k = E.dateKey(e.ts); dCnt[k] = (dCnt[k] || 0) + 1; if (e.kind !== 'adjust') dSum[k] = (dSum[k] || 0) + e.amt; });
+        const days = []; shown.forEach(e => { const k = E.dateKey(e.ts); let d = days[days.length - 1]; if (!d || d.k !== k) { d = { k, ts: e.ts, list: [], sum: dSum[k] || 0, cnt: dCnt[k] }; days.push(d); } d.list.push(e); });
+        const dn = ts => new Date(ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '');
+        const row = e => {
+            const bsk = E.basketOf(e), itx = it => `${it.n}${it.qn > 0 && it.qu ? ' ' + E.qLabel(it.qn, it.qu) : ''} ₹${fmt2(it.p)}`;
+            const tail = `${e.kind === 'adjust' ? ' · adjustment' : ''}${e.cover ? ` · lasts ${plural(e.cover.days, 'day')}, until ${fmtDay(e.cover.end)}` : ''}${e.pur && e.pur.emg ? ' · emergency: ' + esc(e.pur.reason || '') : ''}`;
+            const head = `${ledTime(e.ts)} · ${e.acct === 'cash' ? 'Cash' : 'Bank'}`;
+            const full = `${head}${bsk ? ' · ' + bsk.map(it => esc(itx(it))).join(' · ') : e.note ? ' · ' + esc(e.note) : ''}${tail}`;
+            const short = bsk && bsk.length > 2 ? `${head} · ${bsk.slice(0, 2).map(it => esc(itx(it))).join(' · ')} · +${bsk.length - 2} more${tail}` : full;
+            const meta = `<span class="led-meta" ${short !== full ? `data-full="${esc(full)}" data-short="${esc(short)}"` : ''}>${short}</span>`;
+            if (ledEdit === e.id) return `<div class="ledger-row led-edit" data-id="${e.id}"><div style="min-width:0;flex:1"><div>${esc(e.icon)} ${esc(e.name)}</div>
+                <div class="led-form"><input type="number" inputmode="decimal" step="any" id="led-amt" value="${e.amt}" aria-label="Amount"><select id="led-acct" aria-label="Paid from"><option value="bank"${e.acct !== 'cash' ? ' selected' : ''}>Bank</option><option value="cash"${e.acct === 'cash' ? ' selected' : ''}>Cash</option></select><input type="text" id="led-note" value="${esc(e.note || '')}" placeholder="Note" aria-label="Note"></div>
+                <div class="led-btns"><button type="button" class="mini-btn btn-accent" data-act="led-save" data-id="${e.id}">Save</button><button type="button" class="mini-btn" data-act="led-cancel">Cancel</button></div></div></div>`;
+            return `<div class="ledger-row" data-id="${e.id}"><div style="min-width:0;flex:1"><div>${esc(e.icon)} ${esc(e.name)}${e.pur ? ' · big' : ''}</div><div class="meta">${meta}</div></div><div class="row" style="gap:6px;flex:none"><b class="num priv">${money(e.amt)}</b>${icoBtn('edit', `data-act="led-edit" data-id="${e.id}"`, esc(e.name))}${icoBtn('del', `data-act="led-del" data-id="${e.id}"`, esc(e.name))}</div></div>`;
+        };
+        return days.map(d => `<div class="led-day"><span>${dn(d.ts)}</span><span class="priv">${money(d.sum)} · ${plural(d.cnt, 'entry').replace('entrys', 'entries')}</span></div>${d.list.map(row).join('')}`).join('')
+            + (older > 0 ? `<button type="button" class="btn-line" data-act="led-more">Show older (${older})</button>` : '');
+    }
+    const ledFind = id => (D.events || []).find(x => x.id === id && x.t === 'exp' && !(D.voided && D.voided.has(id))) || null;
+    const ledCopy = (e, over) => { const c = Object.assign({}, e, over || {}); delete c.id; delete c.ts; return c; };
+    function renderMonth() {
+        const P = D.P, c = D.cur;
+        let h = `<div class="card"><h3>${MONTHS[c.m]} ${c.y}</h3>`;
+        if (P) h += `<div class="row"><span class="muted">Budget</span><b class="num">${mh(P)}</b></div><div class="row"><span class="muted">Spent</span><b class="num">${mh(c.spent)}</b></div><div class="row"><span class="muted">Left</span><b class="num ${P - c.spent < 0 ? 'bad' : ''}">${mh(P - c.spent)}</b></div>
+            <div class="row"><span class="muted">Bank balance</span><b class="num priv ${D.accounts.bank < 0 ? 'bad' : ''}">${money(D.accounts.bank)}</b></div><div class="row"><span class="muted">Cash in hand</span><b class="num priv ${D.accounts.cash < 0 ? 'bad' : ''}">${money(D.accounts.cash)}</b></div>
+            <div class="row"><span class="muted">Bank · Cash spent</span><span class="priv">${money(c.byAcct.bank)} · ${money(c.byAcct.cash)}</span></div>
+            <div class="grid2 mt"><button class="btn-line" data-act="plan">Edit plan</button><button class="btn-line" data-act="check">Reality check</button></div>`;
+        else h += `<button class="btn-line btn-accent" data-act="plan">Set up ${MONTHS[c.m]}</button>`;
+        h += `</div><div class="card" data-sec="month:money-moves"><h3>Money moves</h3><p class="hint">Record cash you withdraw or deposit so Bank and Cash stay true.</p><div class="grid2"><button class="btn-line" data-act="xfer" data-dir="b2c">Bank → Cash</button><button class="btn-line" data-act="xfer" data-dir="c2b">Cash → Bank</button></div></div>`;
+        h += `<div class="card" data-sec="month:savings"><h3>Savings</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(D.savings)}</b><span class="hint">stays in your bank</span></div><div class="grid2 mt"><button class="btn-line" data-act="sav" data-dir="in">Add</button><button class="btn-line" data-act="sav" data-dir="out">Withdraw</button></div>
+            ${D.savLog.slice(-4).reverse().map(s => `<div class="ledger-row"><span class="meta">${fmtDay(s.ts)} · ${esc(s.note || (s.amt > 0 ? 'Deposit' : 'Withdrawal'))}</span><b class="priv">${money(s.amt)}</b></div>`).join('')}</div>`;
+        h += `<div class="card"><h3>Envelopes</h3>${D.cats.map(k => { const r = k.limit > 0 ? k.spent / k.limit : 0, g = statusGrad(r); return `<div class="env"${tl(catTell(k, r), k.spent > k.limit ? 'bad' : '')}><div class="top"><span>${esc(k.icon)} ${esc(k.name)}</span><span class="priv ${k.spent > k.limit ? 'bad' : ''}">${money(k.spent)} / ${money(k.limit)}</span></div><div class="cat-bar"><div style="width:${Math.min(100, r * 100)}%;background:linear-gradient(90deg,${rgb(g.g1)},${rgb(g.g2)})"></div></div></div>`; }).join('')}</div>`;
+        { const act = (D.lasting || []).filter(l => l.end > D.now);
+          if (act.length) h += `<div class="card"><h3>Lasting items</h3><p class="hint">Paid once, counted over the days they last. Your balance already dropped; the budget takes a share each month.</p>${act.map(l => { const used = Math.min(1, (D.now - l.ts) / (l.end - l.ts)); return `<div class="ledger-row"><div style="min-width:0;flex:1"><div>${esc(l.icon)} ${esc(l.item || l.name)} <span class="meta">· ${plural(Math.max(0, Math.ceil((l.end - D.now) / DAY)), 'day')} left, until ${fmtDay(l.end)}</span></div><div class="ls-bar"><i style="width:${(used * 100).toFixed(0)}%"></i></div></div><b class="num priv">${money(l.amt)}</b></div>`; }).join('')}${(D.ahead || []).length ? `<div class="hint mt">Already counted for the months ahead: ${money(D.ahead.reduce((t, x) => t + x.spent, 0))}.</div>` : ''}</div>`; }
+        h += `<div class="card"><h3>Ledger</h3>${monthLedger()}</div>`;
+        put($('s-month'), h);
+    }
+
+    function renderMind() {
+        const p = D.pool;
+        let h = `<div class="card"><h3>Big-purchase pool</h3><div class="row"><b class="num" style="font-size:2rem">${mh(p.bal)}</b><span class="hint">available now</span></div>
+            <p class="hint mt">${mh(p.allow)} arrives each month. Unused money carries forward. Spending of ${mh(p.min)} or more counts as a big purchase and needs a reason. Used this month: ${mh(p.used)}.</p></div>`;
+        const waits = D.cats.filter(c => c.bucket.allow > 0).sort((a, b) => b.bucket.cool - a.bucket.cool || b.bucket.bal - a.bucket.bal);
+        h += `<div class="card" data-sec="mind:waiting-by-category"><h3>Waiting by category</h3>${waits.map(c => `<div class="ledger-row"><div><div>${esc(c.icon)} ${esc(c.name)}</div><div class="meta">${c.bucket.cool > 0 ? 'Opens ' + fmtDay(c.bucket.until) : 'Open now'} · grows ${money(c.bucket.allow)}/month</div></div><div class="right"><b class="num ${c.bucket.cool > 0 ? 'bad' : 'good'}">${c.bucket.cool > 0 ? plural(c.bucket.cool, 'day') : mh(c.bucket.bal)}</b></div></div>`).join('') || '<p class="hint">No category has an allowance yet.</p>'}</div>`;
+        const wantCard = prefs.waitOn ? `<div class="card"><h3>Want list</h3><p class="hint">Write wants down. Each waits 24 hours before you can buy it.</p>${D.wants.filter(w => w.status === 'wait').map(w => { const left = w.ts + DAY - Date.now(); return `<div class="want"><div class="row"><span>${esc(w.name)}</span><b class="num priv">${money(w.price)}</b></div><div class="row mt"><span class="meta muted">${left > 0 ? 'Wait ' + Math.ceil(left / 3600e3) + 'h more' : 'Ready if you still want it'}</span><span><button class="mini-btn" data-act="want-drop" data-id="${w.wid}">Drop it</button> <button class="mini-btn" data-act="want-buy" data-id="${w.wid}" ${left > 0 ? 'disabled style="opacity:.4"' : ''}>Buy</button></span></div></div>`; }).join('') || '<p class="hint">Empty.</p>'}<button class="btn-line" data-act="want-add">Add a want</button></div>` : '';
+        h += wantCard;
+        if (prefs.reviewOn) {
+            const due = D.purchases.filter(x => !x.review && Date.now() - x.ts >= 30 * DAY);
+            if (due.length) h += `<div class="card"><h3>Still glad?</h3>${due.slice(0, 3).map(x => `<div class="want"><div class="row"><span>${esc(x.icon)} ${esc(x.catName)} · ${fmtDay(x.ts)}</span><b class="priv">${money(x.total)}</b></div><div class="p-reason">“${esc(x.reason)}”</div><div class="review-row"><button data-act="rev" data-id="${x.id}" data-v="yes">Yes</button><button data-act="rev" data-id="${x.id}" data-v="meh">Meh</button><button data-act="rev" data-id="${x.id}" data-v="no">No</button></div></div>`).join('')}</div>`;
         }
-        if (PP.paced >= 3 && PP.ratio > 1.1) r.push({ c: 'bad', h: `Over your last ${PP.paced} timed tasks you took ${N(PP.ratio)} times the days you allotted. At that real pace the thesis finishes ${fmtDNum(T.forecastN)}${T.forecastToTarget > 0 ? `, ${dN(T.forecastToTarget)} after the target` : ''}. Allot days you can really keep, or protect more time each day.` });
-        else if (PP.paced >= 3 && PP.ratio < 0.9) r.push({ c: 'good', h: `You are finishing tasks in ${N(PP.ratio)} times your allotted days. Your estimates are generous; you could tighten them and bank more time.` });
-        const lockedCh = [...new Set(PP.list.filter(p => p.lockWhy === 'reading' && !p.done).map(p => (chapOf(p.id) || {}).title).filter(Boolean))];
-        if (PP.rdOpen > 0 && PP.list.some(p => p.lockWhy === 'edit' && !p.done)) r.push({ c: '', h: `Editing and proofreading are locked until all ${PP.rdOpen} remaining reading and drafting tasks are done.` });
-        if (lockedCh.length) r.push({ c: '', h: `Drafting is locked until reading is done: ${lockedCh.slice(0, 3).map(esc).join(', ')}${lockedCh.length > 3 ? ' and more' : ''}.` });
-        const worst = [...D.goals.values()].filter(g => g.chap).map(g => PP.agg.get(g.id)).filter(a => a && a.slip > 0.5).sort((a, b) => b.slip - a.slip)[0];
-        if (worst) r.push({ c: 'bad', h: `The chapter dragging most is <b>${esc(D.goals.get(worst.id).title)}</b>, ${dN(worst.slip)} behind its plan.` });
-        if (PP.earlyDays > 0 && prefs.gainOn) r.push({ c: 'good', h: `You have banked ${dN(PP.earlyDays)} by finishing tasks early.` });
-        if (PP.onTimeRun >= 3) r.push({ c: 'good', h: `${PP.onTimeRun} tasks in a row on time. Keep the chain unbroken.` });
-        const nx = PP.active[0] || PP.upcoming[0]; if (nx && !r.some(x => x.c === 'bad' && /over its allotted/.test(x.h))) r.push({ c: '', h: `Next: <b>${esc(pTitle(nx))}</b>, ${dN(nx.days)} allotted${nx.status === 'later' ? ', starting ' + fmtDNum(nx.start) : nx.status === 'ready' ? ', ready to start' : ''}.` });
-        return r;
+        h += `<div class="card"><h3>Purchases</h3>${D.purchases.slice(0, 30).map(x => `<div class="pitem"><div class="pi-top"><span>${esc(x.icon)} ${esc(x.catName)}</span><b class="priv">${money(x.total)}</b></div><div class="meta muted">${fmtDay(x.ts)}${x.emg ? ' · emergency' : ''}${x.review ? ' · ' + ({ yes: 'glad', meh: 'unsure', no: 'regret' })[x.review] : ''}</div>${x.reason ? `<div class="p-reason">“${esc(x.reason)}”</div>` : ''}</div>`).join('') || '<div class="empty"><b>No big purchases yet</b><p>Large buys will appear here with your reason.</p></div>'}</div>`;
+        put($('s-mind'), h);
     }
-    /* ================= Work report (Outlook) ================= */
-    let grKind = 'week', grBack = 0, grTouched = false, grSel = 0;
-    const GPAL = ['#4f8cff', '#e0679a', '#2fb58a', '#f09a3e', '#7a64f0', '#e5b92b', '#d9534f', '#4cb8c4'];
-    const gCol = t => t.grp === 'reading' ? GPAL[0] : t.grp === 'drafting' ? GPAL[1] : t.grp === 'editing' ? GPAL[2] : GPAL[3 + (Math.abs(t.id) % 5)];
-    const gIco = t => t.grp === 'reading' ? '📖' : t.grp === 'drafting' ? '✍️' : t.grp === 'editing' ? '🔍' : unitIcon(t.unit);
-    const gTile = (t, big) => `<span class="rp-ic${big ? ' big' : ''}" style="background:${gCol(t)}" aria-hidden="true">${gIco(t)}</span>`;
-    /* ---- Work days: one work day is 3 hours (Rustam's standard). Shown as fractions, to the nearest sixth, with the decimal beside. ---- */
-    const WD_H = 3, WD_G = ['', '⅙', '⅓', '½', '⅔', '⅚'], WD_T = ['', '1/6', '1/3', '1/2', '2/3', '5/6'];
-    const wdParts = h => { const sx = Math.round(Math.abs(h) / WD_H * 6); return { sx, w: Math.floor(sx / 6), r: sx % 6, dec: (Math.abs(h) / WD_H).toFixed(2) }; };
-    const wdText = h => { const p = wdParts(h); if (!p.sx) return '0 work days'; const t = (p.w ? p.w : '') + WD_G[p.r]; return t + (p.w === 0 && p.r > 0 ? ' work day' : (p.w === 1 && !p.r ? ' work day' : ' work days')); };
-    const wdBig = h => { const p = wdParts(h), fr = p.r ? `<span class="wd-fr"><sup>${[0, 1, 1, 1, 2, 5][p.r]}</sup><i>⁄</i><sub>${[0, 6, 3, 2, 3, 6][p.r]}</sub></span>` : ''; return `<span class="wdn">${p.w || !p.r ? p.w : ''}${fr}</span>`; };
-    const WD_ICO = { clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', up: '<path d="M12 19V6M6 11l6-6 6 6"/>', down: '<path d="M12 5v13M6 13l6 6 6-6"/>', book: '<path d="M5 5h6a3 3 0 0 1 3 3v11a2 2 0 0 0-2-2H5zM19 5h-5"/>' };
-    /* a ring of three sections, one for each work hour of the part-day; full days wait in the badge */
-    function wdRing(h, tone, size, label) {
-        const p = wdParts(h), fill = (p.r === 0 && p.w > 0) ? 3 : p.r / 2, sw = size > 48 ? 6 : 5, gap = size > 48 ? 24 : 26, r = size / 2 - sw / 2 - 1, c = size / 2; let o = '';
-        for (let k = 0; k < 3; k++) {
-            const a0 = (-90 + k * 120 + gap / 2) * Math.PI / 180, a1 = (-90 + (k + 1) * 120 - gap / 2) * Math.PI / 180, f = Math.max(0, Math.min(1, fill - k));
-            o += `<path d="M${(c + r * Math.cos(a0)).toFixed(1)} ${(c + r * Math.sin(a0)).toFixed(1)} A${r} ${r} 0 0 1 ${(c + r * Math.cos(a1)).toFixed(1)} ${(c + r * Math.sin(a1)).toFixed(1)}" fill="none" class="wd-sec${f > 0 ? ' on' : ''}" ${f > 0 && f < 1 ? 'style="opacity:.55"' : ''} stroke-width="${sw}" stroke-linecap="round"/>`;
+
+
+
+    /* ================= Version 2.3: the Circle Companion and today's spending gauge ================= */
+    let GC = null, lastScreen = null, prevLeft = null;
+    // today's spend against your usual day: the average of this month's earlier days (today does not judge itself)
+    function dayAvg() { const T = D.today; if (!D.P || T.day < 3) return null; return Math.max(0, (D.cur.spent - T.spent) / (T.day - 1)); }
+    // a thin line on the gauge that shows what yesterday cost
+    function yMark(avg) {
+        const y = dayTotal(Date.now() - 864e5), p = Math.min(100, y / (2 * avg) * 100);
+        return `<b class="tg-y" style="left:${p}%;--sh:${p < 16 ? '-10%' : p > 84 ? '-90%' : '-50%'}"><em class="priv">yesterday ${prefs.privacy ? '' : money(y)}</em></b>`;
+    }
+    function todayGauge() {
+        const T = D.today, avg = dayAvg(), spent = T.spent;
+        if (avg === null || avg < 1) return `<div class="tg"${tl('This shows today against your average day. The average appears after day 3.')}><div class="row"><span class="label">Today so far</span><span class="priv"><b>${money(spent)}</b></span></div><div class="hint">Yesterday: <span class="priv">${money(dayTotal(Date.now() - 864e5))}</span>. Your daily average appears after day 3.</div></div>`;
+        const r = spent / avg, diff = Math.abs(spent - avg), pct = Math.min(100, spent / (2 * avg) * 100);
+        const kind = r <= 1 ? 'down' : r <= 1.5 ? 'up' : 'high';
+        const note = spent === 0 ? 'Nothing spent yet today.' : r <= 1 ? `▼ ${money(diff)} below your average` : `▲ ${money(diff)} above your average`;
+        const say = spent === 0 ? 'You have spent nothing today.' : r <= 1 ? (prefs.privacy ? 'Today is below your usual day. Good.' : `Today you spent ${money(spent)}. That is below your usual ${money(avg)}.`) : (prefs.privacy ? 'Today is above your usual day.' : `Today you spent ${money(spent)}. Your usual day is ${money(avg)}.`);
+        return `<div class="tg ${kind}"${tl(say + (prefs.privacy ? '' : ` Yesterday you spent ${money(dayTotal(Date.now() - 864e5))}. The thin line on the bar shows it.`), r > 1.5 ? 'bad' : '')}><div class="row"><span class="label">Today so far</span><span class="tg-note">${esc(note)}</span></div>
+            <div class="tg-track" style="margin-top:34px"><i class="tg-fill grow" style="width:${pct}%"></i><b class="tg-mark" style="left:50%"></b>${yMark(avg)}</div>
+            <div class="tg-scale"><span class="priv">${money(spent)} today</span><span>average ${mh(avg)}</span></div></div>`;
+    }
+    function budgetMood() {
+        if (!D.P) return 'calm';
+        const left = D.P - D.cur.spent, avg = dayAvg(), T = D.today, ratio = D.P > 0 ? D.cur.spent / D.P : 1, frac = (T.day - 1 + new Date().getHours() / 24) / T.dm;
+        if (left < 0) return 'concerned';
+        if (avg !== null && avg > 0 && T.spent > avg * 1.5) return 'thoughtful';
+        if (ratio > frac + 0.2) return 'thoughtful';
+        if (T.spent > 0 && avg !== null && T.spent <= avg && ratio < frac) return 'content';
+        if (ratio < frac - 0.08) return 'happy';
+        return 'calm';
+    }
+    function orbMessage() {
+        if (!D.P) return 'Set up your month and I will keep you company.';
+        const left = D.P - D.cur.spent, avg = dayAvg(), T = D.today;
+        if (left < 0) return 'You are past this month\'s pool. No blame. Let us find a calm way forward.';
+        if (avg !== null && avg > 0 && T.spent > avg * 1.5) return 'Today is well above your usual. A short pause may help.';
+        if (avg !== null && T.spent > 0 && T.spent <= avg) return 'A light day so far. Nicely done.';
+        return 'I am here. Nothing needs your attention right now.';
+    }
+    // a data-based tip for the Companion to say when poked or when it chooses to speak (null = it uses a proverb or tip instead)
+    function orbTip() { const m = orbMessage(); return m.indexOf('I am here') === 0 ? null : m; }
+    const SCREEN_ACT = { ins: 'present', month: 'read', mind: 'think', set: 'stand' };
+    function renderCompanion() {
+        if (!window.GCompanion || !$('orb')) return;
+        if (!GC) GC = window.GCompanion.create($('orb'), { legacyPlace: prefs.orbMode, tip: orbTip, busy: () => $('sheet-bg').classList.contains('show') });
+        GC.mood(budgetMood());
+        if (screen !== lastScreen) { if (lastScreen && SCREEN_ACT[screen] && !GC.state().action) GC.do(SCREEN_ACT[screen]); lastScreen = screen; }
+        const left = D.P ? D.P - D.cur.spent : null;
+        if (left !== null && prevLeft !== null && prevLeft >= 0 && left < 0) { GC.pose('none'); fx('stop'); GC.do('warn', { force: true }); setTimeout(() => GC.say('You have gone past this month\'s pool. No blame. Let us look at what can ease.', 6000), 900); }
+        prevLeft = left;
+    }
+    function companionReturns() {
+        try {
+            const last = +localStorage.getItem('gc_last') || 0; localStorage.setItem('gc_last', String(Date.now()));
+            if (last && Date.now() - last > 6 * 3600e3 && GC && GCompanion.prefs.get().place !== 'off') { GC.wake(); setTimeout(() => GC.say('Welcome back.', 3200), 900); }
+        } catch (e) {}
+    }
+
+    /* ================= Version 2.2: what the app learns from your own entries (on this phone only) ================= */
+    // The amounts you really pay for a category. Newer entries count more. Needs the same amount at least twice.
+    function quickAmounts(catId) {
+        if (prefs.learnOn === false) return [];
+        const now = Date.now(), score = new Map(), seen = new Map();
+        D.months.forEach(m => m.exps.forEach(e => {
+            if (e.cat !== catId || e.kind === 'import' || e.kind === 'adjust' || !(e.amt > 0) || e.ts < now - 180 * DAY) return;
+            const a = Math.round(e.amt * 100) / 100, w = Math.pow(0.5, (now - e.ts) / (30 * DAY));
+            score.set(a, (score.get(a) || 0) + w); seen.set(a, (seen.get(a) || 0) + 1);
+        }));
+        return [...score.keys()].filter(a => seen.get(a) >= 2).sort((x, y) => score.get(y) - score.get(x)).slice(0, 4);
+    }
+    function learnInsights() {
+        if (prefs.learnOn === false) return `<div class="card"><h3>What the app has learned</h3><p class="hint">Learning is switched off in Settings.</p></div>`;
+        const all = []; D.months.forEach(m => m.exps.forEach(e => { if (e.kind !== 'import' && e.kind !== 'adjust' && e.amt > 0) all.push(e); }));
+        const span = all.length ? (Date.now() - Math.min.apply(null, all.map(e => e.ts))) / DAY : 0;
+        if (all.length < 15 || span < 21) return `<div class="card"><h3>What the app has learned</h3><p class="hint">After about three weeks of entries, this card shows your spending habits in plain words. So far: ${(all.length === 1 ? '1 entry' : all.length + ' entries')}.</p></div>`;
+        const out = [], DN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        // days of the week
+        { const S = E.weekdayStats(all, Date.now());
+          if (S.ready && S.enough) {
+            const av = S.days.map(r => r.avgEx), hi = av.indexOf(Math.max.apply(null, av)), lo = av.indexOf(Math.min.apply(null, av));
+            if (av[hi] > av[lo] * 1.4) out.push(`Without very large purchases, you spend most on <b>${DN[hi]}s</b> (about ${mh(av[hi])}) and least on <b>${DN[lo]}s</b> (about ${mh(av[lo])}). This uses ${S.spanDays} days.`);
+          } else if (S.ready) out.push(`Weekday patterns need at least 4 weeks of days. So far the app has counted ${S.spanDays} days, which is too few to say which day costs most.`); }
+        // time of day
+        { const P = [['morning', 5, 12, 0], ['afternoon', 12, 17, 0], ['evening', 17, 22, 0], ['night', 22, 29, 0]]; let n = 0;
+          all.forEach(e => { let h = new Date(e.ts).getHours(); if (h < 5) h += 24; const b = P.find(x => h >= x[1] && h < x[2]); if (b) { b[3] += e.amt; n += e.amt; } });
+          const top = P.slice().sort((a, b) => b[3] - a[3])[0]; if (n > 0 && top[3] / n > 0.4) out.push(`Most of your spending (${Math.round(top[3] / n * 100)}%) happens in the <b>${top[0]}</b>.`); }
+        // categories that keep going over their limit
+        const closed = D.months.filter(m => m.spent > 0).slice(-4, -1).concat([]);
+        const prev = D.months.filter(m => m.spent > 0 && !(m.y === D.cur.y && m.m === D.cur.m)).slice(-3);
+        if (prev.length >= 2) {
+            const over = {}; prev.forEach(m => Object.keys(m.byCat || {}).forEach(id => { const lim = (m.limits || {})[id]; if (lim > 0 && m.byCat[id] > lim * 1.05) over[id] = (over[id] || 0) + 1; }));
+            Object.keys(over).filter(id => over[id] >= 2).slice(0, 2).forEach(id => { const c = D.catsById[id]; if (c) out.push(`<b>${esc(c.name)}</b> went over its limit in ${over[id]} of the last ${prev.length} months. Raise the limit, or plan for it.`); });
         }
-        return `<span class="wd-ring ${tone}" style="width:${size}px;height:${size}px" role="img" aria-label="${esc(wdText(h))}"><svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">${o}</svg>${label ? '<span class="wd-lab"><i>WORK</i><i>HOUR</i></span>' : ''}${p.w > 1 ? `<span class="wd-bd">×${p.w}</span>` : ''}</span>`;
+        // end of the month
+        let early = 0, late = 0; prev.forEach(m => m.exps.forEach(e => { if (e.kind === 'import' || e.kind === 'adjust') return; const d = new Date(e.ts).getDate(); if (d <= 10) early += e.amt; else if (d >= 21) late += e.amt; }));
+        if (early + late > 0 && late / (early + late) > 0.55) out.push('You spend more in the <b>last ten days</b> of the month than in the first ten. Spend a little less early on if you want to finish the month calmly.');
+        const cheap = all.filter(e => e.amt <= 50 && e.ts >= Date.now() - 30 * DAY);
+        if (cheap.length >= 15) out.push(`In the last 30 days you made <b>${cheap.length} small payments</b> of ₹50 or less, about ${mh(cheap.reduce((s, e) => s + e.amt, 0))} in all. Small payments add up quietly.`);
+        return `<div class="card"><h3>What the app has learned</h3>${out.length ? out.map(t => `<div class="learn-row">${t}</div>`).join('') : '<p class="hint">Your spending looks steady. Nothing needs attention.</p>'}<div class="hint mt">These come from your own entries. They stay on this phone.</div></div>`;
     }
-    function wdCard(o) {
-        const p = wdParts(o.h);
-        return `<div class="card wd-card ${o.tone}${o.hint || ''}" data-sec="none"><div class="wd-cap">${o.cap}</div><div class="wd-main"><span class="wd-it"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${WD_ICO[o.ic]}</svg></span><div class="wd-mid"><div class="wd-big">${o.big !== undefined ? o.big : (o.sign || '') + wdBig(o.h)}</div><div class="wd-un">${o.unit}</div></div><span data-tell="${esc('One ring is one ' + WD_H + ' h work day, in three parts of 1 h. You have filled ' + hrsTxt(o.h) + '.')}">${wdRing(o.h, o.tone, o.size || 40, o.label)}</span></div><div class="wd-sub"><span>${o.sub}</span><b>${p.dec}</b></div>${o.more || ''}</div>`;
+
+    /* ===== Recently deleted: entries removed in the last 30 days can be put back ===== */
+    function deletedList() {
+        const lim = Date.now() - 30 * 864e5;
+        return events.filter(v => v.t === 'void' && v.del && v.ts >= lim && !events.some(r => r.t === 'restored' && r.target === v.id))
+            .map(v => ({ v, e: events.find(x => x.id === v.target) })).filter(x => x.e).reverse();
     }
-    const fh = h => h < 0.95 ? `${Math.max(1, Math.round(h * 60 / 5) * 5)} min` : `${N(h)} h`;
-    const fhW = h => { if (h < 0.95) return `${plural(Math.max(1, Math.round(h * 60 / 5) * 5), 'minute')}`; const v = h >= 10 ? Math.round(h) : Math.round(h * 2) / 2; return `${N(v)} ${v === 1 ? 'hour' : 'hours'}${h >= 1.5 ? ' (' + wdText(h) + ')' : ''}`; };
-    // more work is good (green), less is red; the triangle is always the same one
-    const gm = (d, text) => d === 0 ? `<span class="rf neutral">– ${text || 'same'}</span>` : `<span class="rf ${d > 0 ? 'wu' : 'wd'}"><i aria-hidden="true">${d > 0 ? '▲' : '▼'}</i> ${text}</span>`;
-    const gMove = (d, text) => d === 0 ? `<span class="rf neutral">– ${text || 'steady'}</span>` : `<span class="rf neutral"><i aria-hidden="true">${d > 0 ? '▲' : '▼'}</i> ${text}</span>`;
-    const gDay = ts => new Date(ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
-    const gDate = ts => new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    function gInputs() {
-        const tracks = P().tracks.map(t => ({ id: t.id, title: t.g.title, unit: t.unit, total: t.total, done: t.done }));
-        const finished = P().list.filter(p => p.status === 'done' && p.finN != null).map(p => ({ title: pTitle(p), at: p.finN * 864e5 + 12 * 36e5 }));
-        return { events, goals: D.goals, speed: spd(), tracks, leave: D.leave, finished, now: Date.now() };
+    function deletedSheet() {
+        const L = deletedList();
+        sheet(`<h2>Recently deleted</h2><p>Entries you deleted in the last 30 days. Restore puts one back exactly where it was.</p>${L.length ? `<div style="max-height:52vh;overflow:auto">${L.map(x => `<div class="ledger-row"><div style="min-width:0"><div>${esc((x.e.icon||'')+' '+x.e.name+', '+money(x.e.amt))}</div><div class="meta">${esc(fmtDay(x.e.ts)+' · '+(x.e.acct==='cash'?'Cash':'Bank'))}</div></div><button type="button" class="mini-btn" data-rest="${x.v.id}">Restore</button></div>`).join('')}</div>` : '<div class="empty"><b>Nothing deleted</b><p>Deleted entries will wait here for 30 days.</p></div>'}<div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button></div>`, box => {
+            box.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => {
+                const v = events.find(x => x.id === +b.dataset.rest), e0 = v && events.find(x => x.id === v.target); if (!e0) return;
+                add(ledCopy(e0), e0.ts); add({ t: 'restored', target: v.id }); render(); deletedSheet(); toast('Restored');
+            });
+        });
     }
-    function gDonut(r) {
-        const R = 46, L = 2 * Math.PI * R, tot = r.hours, seg = r.tasks.filter(t => t.cur > 0).slice(0, 6);
+    function dataCard() {
+        let kb = 0; try { kb = Math.round((localStorage.getItem(K_EV) || '').length / 1024); } catch (e) {}
+        return `<div class="card"><h3>Your data</h3><p class="hint">Every entry is saved on this phone only: ${events.length} entries, about ${kb} KB. The app learns from them here. Nothing is sent anywhere. Use Backup to keep a safe copy.</p><button type="button" class="btn-line" data-act="deleted">Recently deleted (${deletedList().length})</button>${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}</div>`;
+    }
+
+    /* ================= Weekly and monthly report (Insights) ================= */
+    let repKind = 'week', repBack = 0, repTouched = false, repSel = 0;
+    const RPAL = ['#e0679a', '#4f8cff', '#f09a3e', '#7a64f0', '#2fb58a', '#e5b92b', '#d9534f', '#4cb8c4'];
+    const rfd = ts => new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    const rfw = ts => new Date(ts).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+    // one marker for every rise and fall: a small triangle. For spending, a rise is red and a fall is green.
+    const rf = (d, text) => d === 0 ? `<span class="rf flat">– ${text || 'no change'}</span>` : `<span class="rf ${d > 0 ? 'up' : 'down'}"><i aria-hidden="true">${d > 0 ? '▲' : '▼'}</i> ${text}</span>`;
+    const catCol = id => { const i = D.cats.slice().sort((a, b) => a.id - b.id).findIndex(c => c.id === id); return RPAL[(i >= 0 ? i : id) % RPAL.length]; };
+    const catTile = (id, icon, sz) => `<span class="rp-ic${sz ? ' big' : ''}" style="background:${catCol(id)}" aria-hidden="true">${esc(icon)}</span>`;
+    function allExps() { const a = []; D.months.forEach(m => m.exps.forEach(x => a.push(x))); return a; }
+    function habitName(h) { const n = (prefs.habitNames || {})[h.key]; if (n) return n; return h.text ? h.text.replace(/^./, c => c.toUpperCase()) : h.cname; }
+    function donut(r) {
+        const R = 46, L = 2 * Math.PI * R, top = r.cats.filter(c => c.cur > 0), shown = top.slice(0, 5), rest = top.slice(5).reduce((s, c) => s + c.cur, 0);
+        const seg = shown.map(c => ({ id: c.id, v: c.cur, col: catCol(c.id) })); if (rest > 0) seg.push({ id: -1, v: rest, col: '#8a96ad' });
         let o = 0, s = `<circle cx="65" cy="65" r="${R}" fill="none" stroke="var(--track)" stroke-width="17"/>`;
-        seg.forEach(t => { const f = t.cur / tot, d = Math.max(0.5, f * L - (seg.length > 1 ? 3 : 0)), sel = grSel === t.id;
-            s += `<circle class="rp-dn-seg" data-act="gr-task" data-id="${t.id}" cx="65" cy="65" r="${R}" fill="none" stroke="${gCol(t)}" stroke-width="${sel ? 22 : 17}" stroke-dasharray="${d} ${L - d}" stroke-dashoffset="${-o * L}" transform="rotate(-90 65 65)"/>`; o += f; });
-        const sc = r.tasks.find(t => t.id === grSel), mid = sc ? sc.cur : tot, lab = sc ? sc.title : 'Total';
-        s += `<text x="65" y="60" text-anchor="middle" font-size="10" fill="var(--text-muted)">${esc(lab.length > 12 ? lab.slice(0, 11) + '…' : lab)}</text><text x="65" y="80" text-anchor="middle" font-size="17" font-weight="700" fill="var(--text-main)">${esc(fh(mid))}</text>`;
-        return `<svg class="rp-dn" viewBox="0 0 130 130" role="img" aria-label="Hours of work by task">${s}</svg>`;
+        seg.forEach(g => { const f = g.v / r.spent, d = Math.max(0.5, f * L - (seg.length > 1 ? 3 : 0)), sel = repSel === g.id;
+            s += `<circle class="rp-dn-seg" data-act="rep-cat" data-id="${g.id}" cx="65" cy="65" r="${R}" fill="none" stroke="${g.col}" stroke-width="${sel ? 22 : 17}" stroke-dasharray="${d} ${L - d}" stroke-dashoffset="${-o * L}" transform="rotate(-90 65 65)"/>`; o += f; });
+        const sc = r.cats.find(c => c.id === repSel), mid = sc ? sc.cur : r.spent, lab = sc ? sc.name : 'Total';
+        s += `<text x="65" y="60" text-anchor="middle" font-size="10" fill="var(--text-muted)">${esc(lab.length > 12 ? lab.slice(0, 11) + '…' : lab)}</text><text class="priv" x="65" y="80" text-anchor="middle" font-size="${mid >= 10000 ? 15 : 18}" font-weight="700" fill="var(--text-main)">${money(mid)}</text>`;
+        return `<svg class="rp-dn" viewBox="0 0 130 130" role="img" aria-label="Spending by category">${s}</svg>`;
     }
-    function gDays(r) {
-        const wk = r.kind === 'week', mx = Math.max(0.5, ...r.day.map(v => v || 0));
+    function dayStrip(r) {
+        const wk = r.kind === 'week', mx = Math.max(1, ...r.day.map(v => v || 0), ...r.dayPrev), today = r.running ? r.elapsed - 1 : -1;
         if (wk) {
-            const L = ['M', 'T', 'W', 'T', 'F', 'S', 'S'], WD = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], today = r.running ? r.elapsed - 1 : -1;
-            return `<div class="rp-wkb">${r.day.map((v, i) => { const fut = v === null, lv = !fut && r.leaveIdx[i] && !v, h = fut ? 14 : Math.max(lv ? 14 : 6, (v || 0) / mx * 70);
-                return `<div class="${fut ? 'f' : lv ? 'lv' : ''}${i === today ? ' td' : ''}" role="img" aria-label="${WD[i]}: ${fut ? 'still to come' : lv ? 'rest day' : v ? fh(v) : 'no work logged'}"><span style="height:${h}px"></span><em>${L[i]}</em></div>`; }).join('')}</div>`;
+            const L = ['M', 'T', 'W', 'T', 'F', 'S', 'S'], WD = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+            return `<div class="rp-wkb">${r.day.map((v, i) => { const fut = v === null, val = fut ? r.dayPrev[i] : v, h = Math.max(4, val / mx * 70);
+                return `<div class="${fut ? 'f' : ''}${i === today ? ' td' : ''}"${tl(`${WD[i]}: ${fut ? 'last ' + r.kind + ' this day was ' : ''}${prefs.privacy ? 'hidden' : money(val)}`)}><span style="height:${h}px"></span><em>${L[i]}</em></div>`; }).join('')}</div>`;
         }
-        const off = (r.firstDow + 6) % 7, today = r.running ? r.elapsed - 1 : -1; let cells = '<i class="rp-mo-b"></i>'.repeat(off);
+        const off = (r.firstDow + 6) % 7; let cells = '<i class="rp-mo-b"></i>'.repeat(off);
         r.day.forEach((v, i) => { const fut = v === null, a = fut ? 0 : Math.min(1, (v || 0) / mx);
-            cells += `<b class="${fut ? 'f' : v ? '' : r.leaveIdx[i] ? 'lv' : 'z'}${i === today ? ' td' : ''}" style="${!fut && v ? `--a:${a.toFixed(2)};--o:1` : ''}" aria-label="${gDate(r.start + i * 864e5 + 12 * 36e5)}: ${fut ? 'still to come' : v ? fh(v) : r.leaveIdx[i] ? 'rest day' : 'no work logged'}">${i + 1}</b>`; });
+            cells += `<b class="${fut ? 'f' : v ? '' : 'z'}${i === today ? ' td' : ''}" style="${!fut && v ? `--a:${a.toFixed(2)};--o:1` : ''}"${tl(`${rfd(r.start + i * 864e5 + 12 * 36e5)}: ${fut ? 'still to come' : prefs.privacy ? 'hidden' : money(v || 0)}`)}>${i + 1}</b>`; });
         return `<div class="rp-mo-h">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(x => `<em>${x}</em>`).join('')}</div><div class="rp-mo-g">${cells}</div>`;
     }
-    function gSpark(vals, col) {
-        const v = vals.filter(x => x !== null); if (v.length < 3) return '';
-        const mx = Math.max(...v), mn = Math.min(...v), rg = Math.max(mx - mn, mx * 0.2, 0.1), n = vals.length;
-        const pts = vals.map((x, i) => x === null ? null : `${(2 + i * 66 / (n - 1)).toFixed(1)},${(26 - (x - mn) / rg * 22).toFixed(1)}`).filter(Boolean).join(' ');
+    function spark(vals, col) {
+        const mx = Math.max(1, ...vals), n = vals.length; if (n < 2) return '';
+        const pts = vals.map((v, i) => `${(2 + i * 66 / (n - 1)).toFixed(1)},${(26 - v / mx * 22).toFixed(1)}`).join(' ');
         return `<svg class="rp-spark" viewBox="0 0 70 30" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
     }
-    function gHabit(h) {
-        const t = { id: h.id, grp: h.grp, unit: h.unit }, S = spd().get(h.id), few = h.n < 3;
-        const badge = few || (!h.sure && !h.likely) ? '<span class="rp-chip wait">still learning</span>' : h.sure ? '<span class="rp-chip ok">confident</span>' : '<span class="rp-chip">likely</span>';
+    function habitCard(h, r) {
+        const unit = h.marker ? 'person' : 'each', per = h.marker ? (h.unitsAvg > 1.05 ? `${Math.round(h.unitsAvg * 10) / 10 === Math.round(h.unitsAvg) ? Math.round(h.unitsAvg) : Math.round(h.unitsAvg * 10) / 10} persons · ` : '1 person · ') : '';
+        const rh = h.rhythm === 'weekdays' ? 'most weekdays' : h.rhythm === 'daily' ? 'daily' : h.rhythm === 'weekly' ? 'weekly' : h.rhythm === 'monthly' ? 'monthly' : h.rhythm === 'irregular' ? 'no fixed rhythm' : h.rhythm;
         const dots = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((x, i) => `<i class="${h.share[i] >= 0.5 ? 'on' : ''}" title="${x}"></i>`).join('');
-        const unit = h.unit && h.unit !== 'hours' && h.unit !== 'sessions' ? h.unit : '';
-        let line = few ? `${plural(h.n, 'sitting')} so far · not enough to call it a habit` : [h.rhythm, h.tod, h.perHours ? `about ${fhW(h.perHours)} a sitting` : ''].filter(Boolean).join(' · ');
-        const sp = unit && h.speedNow ? (h.move ? gMove(h.move, `speed ${N(h.speedNow)} ${unit} an hour, was ${N(h.was)}`) : `<span class="rf neutral">– speed steady at ${N(h.speedNow)} ${unit} an hour</span>`) : '';
-        return `<div class="rp-hab" role="group">${gTile(t, 1)}<div class="rp-hb"><div class="rp-hn"><b>${esc(D.goals.get(h.id) ? D.goals.get(h.id).title : h.title)}</b>${badge}</div><div class="rp-dots" aria-hidden="true">${dots}</div><div class="hint">${esc(line)}</div>${sp ? `<div class="rp-hl">${sp}</div>` : ''}</div>${S && S.weeks ? gSpark(S.weeks, gCol(t)) : ''}</div>`;
+        const price = h.priceMove ? rf(h.priceMove, `${money(Math.abs(h.dPrice))} ${h.marker ? 'per person' : 'each'}, was ${money(h.pricePrev)}`) : `<span class="rf flat">– price steady</span>`;
+        const cnt = h.countMove ? rf(h.countMove, `${h.countCur} ${h.countCur === 1 ? 'time' : 'times'} ${r.running ? 'so far' : 'in all'}, was ${h.countPrev}`) : '';
+        const col = h.countMove > 0 ? 'var(--warning)' : h.countMove < 0 ? '#1f9d63' : 'var(--blue-b)';
+        return `<div class="rp-hab" data-act="hab-name" data-k="${esc(h.key)}" role="button" tabindex="0">${catTile(h.cat, h.icon, 1)}<div class="rp-hb"><div class="rp-hn"><b>${esc(habitName(h))}</b><span class="rp-chip">${h.sure ? 'confident' : 'likely'}</span></div><div class="rp-dots" aria-hidden="true">${dots}</div><div class="hint">${per}<span class="priv">${money(h.perUnit)}</span> ${h.marker ? 'per person' : 'each'} · ${rh}</div><div class="rp-hl">${price}${cnt ? '<br>' + cnt : ''}</div></div>${spark(h.weeks, col)}</div>`;
     }
-    function gNote(r, hs) {
-        const mv = hs.find(h => h.move > 0 && h.speedNow);
-        if (r.estimated && r.hours > 0) return 'Some hours are worked out from your speed, because no time was entered. Timing a few sittings makes them more exact.';
-        if (mv) return `${esc(D.goals.get(mv.id) ? D.goals.get(mv.id).title : mv.title)} speed is up a little. That often happens when the material becomes familiar.`;
-        if (r.hours > 0 && r.prevHours > 0 && r.diff < 0) return 'A lighter stretch than before. That is fine; rest is part of the work.';
-        if (r.hours > 0 && r.kept !== null && r.kept >= 0.8) return 'A steady stretch. The plan is being kept well.';
+    function repNote(r, hs) {
+        const up = r.cats.filter(c => c.diff > 0 && c.prev > 0 && c.diff >= Math.max(50, c.prev * 0.25)).sort((a, b) => b.diff - a.diff)[0];
+        const hp = hs.filter(h => h.priceMove > 0).sort((a, b) => b.dPrice / b.pricePrev - a.dPrice / a.pricePrev)[0];
+        if (hp) return `${esc(habitName(hp))} now costs ${mh(hp.pricePerUnitNow)} ${hp.marker ? 'a person' : 'each time'}, up from ${mh(hp.pricePrev)}. Small things add up, so it is good to know.`;
+        if (up) return `${esc(up.name)} is the biggest rise so far: ${mh(up.diff)} more than the same days last ${r.kind}.`;
+        if (r.prevSpent > 0 && r.diff < 0) return `Spending is lower than the same days last ${r.kind}. Steady work.`;
         return '';
     }
-    function gProject() {
-        const pj = GReport.project(gInputs()); if (!pj.items.length) return '';
-        const rows = pj.items.map(x => {
-            const S = spd().get(x.id), t = { id: x.id, grp: (D.goals.get(x.id) || {}).grp, unit: x.unit };
-            if (x.hours === null) return `<div class="rp-pj">${gTile(t)}<div class="rp-pjb"><b>${esc(x.title)}</b><div class="hint">Add how much you do in one hour, and this shows the hours left.</div></div></div>`;
-            const how = S && S.status === 'confident' ? 'confident' : S && S.status === 'learning' ? 'still learning' : 'your setting';
-            const wks = x.lo ? (x.hi <= 1 ? 'about a week' : x.lo === x.hi ? `about ${plural(x.lo, 'week')}` : `about ${x.lo} to ${x.hi} weeks`) : '';
-            return `<div class="rp-pj">${gTile(t)}<div class="rp-pjb"><div class="rp-hn"><b>${esc(x.title)}</b><span class="rp-chip${how === 'confident' ? ' ok' : how === 'still learning' ? ' wait' : ''}">${how}</span></div><div class="hint">About ${fhW(x.hours)} left at ${N(x.speed)} ${esc(x.unit)} an hour${wks ? `, which is ${wks} at your usual hours` : ''}.</div></div></div>`;
-        }).join('');
-        const tot = pj.totalHours !== null ? `<div class="hint mt"><b>In all, about ${fhW(pj.totalHours)}</b> of work remains${pj.perWeek > 0.2 ? `. You have been doing about ${fhW(pj.perWeek)} a week` : ''}.</div>` : '';
-        return `<div class="card" data-sec="out:work-left"><h3>Work left, at your speed</h3>${rows}${tot}<div class="hint mt">This only shows how the work looks at your current speed. It never moves a deadline.</div></div>`;
-    }
     function reportHTML() {
-        const inp = gInputs(), k = grKind, w = k === 'week', noun = w ? 'week' : 'month';
-        let back = grBack, auto = false;
-        const r0 = GReport.report(Object.assign({ kind: k, back: 0 }, inp));
-        if (!grTouched && back === 0 && r0.elapsed <= 1 && r0.count === 0 && GReport.report(Object.assign({ kind: k, back: 1 }, inp)).count > 0) { back = 1; auto = true; }
-        const r = back === 0 ? r0 : GReport.report(Object.assign({ kind: k, back }, inp));
-        const segs = `<div class="seg" role="group" aria-label="Report period"><button type="button" class="${w ? 'on' : ''}" data-act="gr-kind" data-v="week" aria-pressed="${w}">Week</button><button type="button" class="${!w ? 'on' : ''}" data-act="gr-kind" data-v="month" aria-pressed="${!w}">Month</button></div><div class="seg mt" role="group" aria-label="Which ${noun}"><button type="button" class="${back === 0 ? 'on' : ''}" data-act="gr-back" data-v="0" aria-pressed="${back === 0}">This ${noun}</button><button type="button" class="${back === 1 ? 'on' : ''}" data-act="gr-back" data-v="1" aria-pressed="${back === 1}">Last ${noun}</button></div>`;
-        let h = `<div class="card" data-sec="out:report"><h3>Work report</h3>${segs}</div>`;
-        if (!events.some(e => e.t === 'log' && e.qty > 0)) return h + `<div class="card"><p class="hint">Your report appears here after your first logged work. It shows about how many hours you worked, where they went, and how that compares with the ${noun} before.</p></div>`;
-        const span = w ? (r.running ? `${gDay(r.start)} to ${gDay(r.start + (r.elapsed - 1) * 864e5 + 12 * 36e5)}` : `${gDay(r.start)} to ${gDay(r.end - 12 * 36e5)}`) : (r.running ? `1 to ${gDate(r.start + (r.elapsed - 1) * 864e5 + 12 * 36e5)}` : new Date(r.start).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }));
+        const now = Date.now(), ex = allExps(), k = repKind, w = k === 'week';
+        let back = repBack, auto = false;
+        const r0 = Report.report(ex, now, k, 0);
+        if (!repTouched && back === 0 && r0.elapsed <= 1 && r0.count === 0 && Report.report(ex, now, k, 1).spent > 0) { back = 1; auto = true; }
+        const r = back === 0 ? r0 : Report.report(ex, now, k, back), noun = w ? 'week' : 'month';
+        const real = ex.filter(e => e.kind !== 'import' && e.kind !== 'adjust' && e.amt > 0);
+        const segs = `<div class="seg" role="group" aria-label="Report period"><button type="button" class="${w ? 'on' : ''}" data-act="rep-kind" data-v="week" aria-pressed="${w}">Week</button><button type="button" class="${!w ? 'on' : ''}" data-act="rep-kind" data-v="month" aria-pressed="${!w}">Month</button></div>`
+            + `<div class="seg mt" role="group" aria-label="Which ${noun}"><button type="button" class="${back === 0 ? 'on' : ''}" data-act="rep-back" data-v="0" aria-pressed="${back === 0}">This ${noun}</button><button type="button" class="${back === 1 ? 'on' : ''}" data-act="rep-back" data-v="1" aria-pressed="${back === 1}">Last ${noun}</button></div>`;
+        let h = `<div class="card" data-sec="ins:report"><h3>Report</h3>${segs}</div>`;
+        if (!real.length) return h + `<div class="card"><p class="hint">Your report appears here after your first entries. It shows where the money went, compared with the ${noun} before.</p></div>`;
+        const when = w ? (r.running ? `${rfw(r.start)} to ${rfw(r.start + (r.elapsed - 1) * 864e5 + 12 * 36e5)}` : `${rfw(r.start)} to ${rfw(r.end - 12 * 36e5)}`) : (r.running ? `1 to ${rfd(r.start + (r.elapsed - 1) * 864e5 + 12 * 36e5)}` : new Date(r.start).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }));
         const vs = r.running ? `than the same days last ${noun}` : `than the ${noun} before`;
-        const pct = r.kept === null ? null : Math.round(r.kept * 100), C = 2 * Math.PI * 26;
-        const ring = pct === null ? '' : `<svg class="rp-ring" viewBox="0 0 64 64" role="img" aria-label="Plan kept ${pct} per cent"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--track)" stroke-width="7"/><circle cx="32" cy="32" r="26" fill="none" stroke="var(--blue-b)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(r.kept * C).toFixed(1)} ${C}" transform="rotate(-90 32 32)"/><text x="32" y="34" text-anchor="middle" font-size="13" font-weight="700" fill="var(--text-main)">${pct}%</text><text x="32" y="45" text-anchor="middle" font-size="6.5" fill="var(--text-muted)">plan kept</text></svg>`;
-        const cmp = r.hours === 0 && r.prevHours === 0 ? 'No hours yet.' : r.prevHours === 0 ? `Nothing to compare with last ${noun}.` : `${gm(Math.round(r.diff * 10) / 10 === 0 ? 0 : r.diff, `${fh(Math.abs(r.diff))} ${r.diff > 0 ? 'more' : 'less'}`)} ${vs}`;
-        const unk = r.unknown ? ` ${plural(r.unknown, 'entry')} had no time and no speed yet, so ${r.unknown === 1 ? 'it is' : 'they are'} left out.` : '';
-        h += `<div class="card" data-sec="out:hours"><div class="row" style="align-items:center;gap:12px"><div style="flex:1;min-width:0"><div class="label">Work ${r.running ? 'this' : 'last'} ${noun}</div><div class="rp-big">${r.hours > 0 ? 'About ' + fhW(r.hours) : 'No hours yet'}</div><div class="rp-cmp">${cmp}</div></div>${ring}</div><div class="hint mt">${esc(span)}.${auto ? ` A new ${noun} has just begun, so here is last ${noun} in full.` : r.running ? ` Day ${r.elapsed} of ${r.days}. Rest and leave days are never counted as missed.` : ` The full ${noun} against the ${noun} before it. Rest and leave days are never counted as missed.`}${unk}</div></div>`;
-        if (r.hours > 0) {
-            const lg = r.tasks.filter(t => t.cur > 0).slice(0, 6).map(t => `<div class="rp-leg${grSel === t.id ? ' sel' : ''}" data-act="gr-task" data-id="${t.id}" role="button" tabindex="0">${gTile(t)}<span class="rp-ln">${esc(t.title)}</span><b>${fh(t.cur)}</b></div>`).join('');
-            h += `<div class="card" data-sec="out:where-hours-went"><h3>Where your hours went</h3><div class="row" style="align-items:center;gap:10px">${gDonut(r)}<div class="rp-legs">${lg}</div></div><div class="hint mt">Tap a slice or a name to see one task.</div></div>`;
+        const frac = r.elapsed / r.days, C = 2 * Math.PI * 26;
+        const ring = `<svg class="rp-ring" viewBox="0 0 64 64" role="img" aria-label="Day ${r.elapsed} of ${r.days}"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--track)" stroke-width="7"/><circle cx="32" cy="32" r="26" fill="none" stroke="var(--blue-b)" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(frac * C).toFixed(1)} ${C}" transform="rotate(-90 32 32)"/><text x="32" y="${w ? 36 : 35}" text-anchor="middle" font-size="${w ? 13 : 12}" font-weight="700" fill="var(--text-main)">${r.elapsed}/${r.days}</text></svg>`;
+        const cmp = r.prevSpent === 0 && r.spent === 0 ? 'Nothing spent yet.' : r.prevSpent === 0 ? `Nothing to compare with last ${noun}.` : `${rf(r.diff, `${mh(Math.abs(r.diff))}`)} ${vs}`;
+        h += `<div class="card" data-sec="ins:spent"><div class="row" style="align-items:center;gap:12px"><div style="flex:1"><div class="label">${r.running ? 'Spent this ' + noun : 'Spent last ' + noun}</div><div class="rp-big">${mh(r.spent)}</div><div class="rp-cmp">${cmp}</div></div>${ring}</div><div class="hint mt">${esc(when)}.${auto ? ` A new ${noun} has just begun, so here is last ${noun} in full.` : r.running ? ` Day ${r.elapsed} of ${r.days}. When the ${noun} ends, it shows the full ${noun} against the one before.` : ` The full ${noun} against the ${noun} before it.`}</div></div>`;
+        if (r.spent > 0) {
+            const lg = r.cats.filter(c => c.cur > 0).slice(0, 6).map(c => `<div class="rp-leg${repSel === c.id ? ' sel' : ''}" data-act="rep-cat" data-id="${c.id}" role="button" tabindex="0">${catTile(c.id, c.icon)}<span class="rp-ln">${esc(c.name)}</span><b class="priv">${money(c.cur)}</b></div>`).join('');
+            h += `<div class="card" data-sec="ins:where-it-went"><h3>Where it went</h3><div class="row" style="align-items:center;gap:10px">${donut(r)}<div class="rp-legs">${lg}</div></div><div class="hint mt">Tap a slice or a name to see one category.</div></div>`;
         }
-        const mx = Math.max(0.25, ...r.tasks.map(t => Math.max(t.cur, t.prev)));
-        if (r.tasks.length) h += `<div class="card" data-sec="out:this-vs-last"><h3>${r.running ? 'This ' + noun + ' and last, same days' : 'Last ' + noun + ' and the one before'}</h3>${r.tasks.slice(0, 8).map(t => {
-            const un = t.unit && t.unit !== 'hours' && t.unit !== 'sessions' ? t.unit : '', facts = [fh(t.cur), un && t.qty > 0 ? `${N(t.qty)} ${un}` : '', un && t.total > 0 ? `${N(t.done)} of ${N(t.total)} overall` : ''].filter(Boolean).join(' · ');
-            return `<div class="rp-pb">${gTile(t)}<div class="rp-bars2"><div class="rp-pt"><span>${esc(t.title)}</span>${t.cur === 0 && t.prev === 0 ? '' : gm(Math.abs(t.diff) < 0.05 ? 0 : t.diff, Math.abs(t.diff) < 0.05 ? 'same' : fh(Math.abs(t.diff)))}</div><div class="rp-bar"><i style="width:${t.cur / mx * 100}%;background:${gCol(t)}"></i></div><div class="rp-bar old"><i style="width:${t.prev / mx * 100}%;background:${gCol(t)}"></i></div><div class="hint">${esc(facts)}${t.est ? ' · estimated' : ''}</div></div></div>`; }).join('')}<div class="hint">The solid bar is ${r.running ? 'this' : 'last'} ${noun}; the faint bar is the ${noun} before.</div></div>`;
-        const kept = `${r.keptDays} of ${r.planDays} planned ${r.planDays === 1 ? 'day' : 'days'}`;
-        h += `<div class="card" data-sec="out:days-worked"><h3>${w ? 'Days you worked' : 'Your month'}</h3>${gDays(r)}<div class="hint mt">${r.planDays ? `You worked on ${kept}${r.running ? ' so far' : ''}. ` : ''}${r.running ? (w ? 'Dashed days are still to come. ' : 'Dashed days are still to come. ') : ''}Rest and leave days stay out of the count.</div></div>`;
-        const hs = GReport.habits(inp).filter(x => x.n >= 2);
-        h += `<div class="card" data-sec="out:how-you-work"><h3>How you work</h3>${hs.length ? hs.map(gHabit).join('') + `<div class="hint">From the last eight weeks. <b>Confident</b> means three or more clues agree. Speed markers are neutral, because faster is not always better.</div>` : `<p class="hint">After about three sittings on a task, your usual days, times and speed show here.</p>`}</div>`;
-        if (r.finished.length) h += `<div class="card" data-sec="out:finished"><h3>Finished this ${noun}</h3><div class="rp-fin">${(() => { const c = new Map(); r.finished.forEach(t => c.set(t, (c.get(t) || 0) + 1)); return [...c].map(([t, n]) => esc(t) + (n > 1 ? ' ×' + n : '')).join(' · '); })()}</div></div>`;
-        h += gProject();
-        const note = gNote(r, hs); if (note) h += `<div class="card rp-note" data-sec="out:a-small-note"><span aria-hidden="true">🌤</span><span>${note}</span></div>`;
+        const mx = Math.max(1, ...r.cats.map(c => Math.max(c.cur, c.prev)));
+        h += `<div class="card" data-sec="ins:this-vs-last"><h3>${r.running ? 'This ' + noun + ' and last, same days' : 'Last ' + noun + ' and the one before'}</h3>${r.cats.length ? r.cats.slice(0, 8).map(c => `<div class="rp-pb">${catTile(c.id, c.icon)}<div class="rp-bars2"><div class="rp-pt"><span>${esc(c.name)}</span>${c.cur === 0 && c.prev === 0 ? '' : rf(c.diff, mh(Math.abs(c.diff)))}</div><div class="rp-bar"><i style="width:${c.cur / mx * 100}%;background:${catCol(c.id)}"></i></div><div class="rp-bar old"><i style="width:${c.prev / mx * 100}%;background:${catCol(c.id)}"></i></div></div></div>`).join('') + `<div class="hint mt">Solid bar: ${r.running ? 'this' : 'last'} ${noun}. Pale bar: ${r.running ? 'same days last' : 'the'} ${noun}${r.running ? '' : ' before'}.</div>` : '<p class="hint">Nothing to show yet.</p>'}</div>`;
+        const peak = r.peak >= 0 ? (w ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][r.peak] : rfd(r.start + r.peak * 864e5 + 12 * 36e5)) : '';
+        h += `<div class="card" data-sec="ins:your-days"><h3>${w ? 'Your days' : 'Your month'}</h3>${dayStrip(r)}<div class="hint mt">${peak ? `Most spent: ${peak}. ` : ''}${r.running ? (w ? 'Dashed bars are days to come, drawn at last week’s amount.' : 'Dashed days are still to come.') : ''}</div></div>`;
+        let hs = [];
+        if (prefs.learnOn !== false) {
+            hs = Report.habits(ex, now, k, back);
+            h += `<div class="card" data-sec="ins:habits"><h3>Habits I noticed</h3>${hs.length ? hs.map(x => habitCard(x, r)).join('') + `<div class="hint">Tap a habit to give it your own name. <b>Confident</b> means three or more clues agree; <b>likely</b> means two.</div>` : `<p class="hint">After about three entries of the same kind, such as the same category, note and price, they show here as a habit. So far none stand out. Notes like 2N (two persons) are understood.</p>`}</div>`;
+        }
+        const note = repNote(r, hs); if (note) h += `<div class="card rp-note" data-sec="ins:a-small-note"><span aria-hidden="true">🌤</span><span>${note}</span></div>`;
         return h;
     }
-    function renderOutlook() {
-        if (!D.cfg) { $('s-out').innerHTML = '<div class="card"><p class="hint">Set your timeline first (Settings).</p></div>'; return; }
-        const J = D.jrf, T = D.thesis, PP = P(); let h = reportHTML();
-        const has = PP.list.length > 0;
-        h += `<div class="card" data-sec="out:your-five-years"><h3>Your five years</h3>${timelineHtml()}
-            <div class="row mt"><span class="muted">Year ${J.target} target</span><b class="num">${fmtDNum(J.targetN)}</b></div>
-            <div class="row"><span class="muted">JRF ends</span><b class="num">${fmtDNum(J.endN)}</b></div>
-            ${has ? `<div class="row"><span class="muted">Plan as set: reading and drafting end</span><b class="num ${T.fifth.baseWriteN > J.targetN ? 'bad' : 'good'}">${fmtDNum(T.fifth.baseWriteN)}</b></div>
-            <div class="row"><span class="muted">Everything, with editing, ends (allotted days)</span><b class="num ${T.projN > T.baseN ? 'bad' : T.projN < T.baseN ? 'good' : ''}">${fmtDNum(T.projN)}</b></div>
-            ${PP.paced >= 3 ? `<div class="row"><span class="muted">At your real pace (${N(PP.ratio)}×)</span><b class="num ${T.forecastN > T.projN ? 'bad' : ''}">${fmtDNum(T.forecastN)}</b></div>` : ''}` : ''}</div>`;
-        h += learnedCard() + habitCard();
-        if (has) {
-            const net = T.slip;
-            h += `<div class="card" data-sec="out:if-you-continue-like-this"><h3>If you continue like this</h3>
-                <p class="${net > 0.5 || T.toTarget > 0.5 ? 'bad' : 'good'}" style="font-size:1.15rem;font-family:var(--font-serif)">${net > 0.5 ? `Delays have already cost ${dN(net)}. The fifth-year buffer is ${Math.round(T.buffer)} days, down from ${Math.round(T.planned)}.` : net < -0.5 ? `You are ${dN(-net)} ahead of the plan. The fifth-year buffer is ${Math.round(T.buffer)} days, up from ${Math.round(T.planned)}.` : `You are on the plan. The fifth-year buffer is ${Math.round(T.buffer)} days.`}${T.toTarget > 0.5 ? ` Reading and drafting end ${dN(T.toTarget)} after the year-${J.target} target.` : ''}</p>
-                <p class="tight">Tasks follow one another on a single clock, so every day a task runs over moves all later tasks. Each day a task finishes early comes back as time.</p>`;
-            [...D.goals.values()].filter(g => g.chap).sort((a, b) => a.id - b.id).forEach(c => { const a = PP.agg.get(c.id); if (!a || !a.count) return; const w = Math.min(100, Math.abs(a.slip) / 60 * 100); h += `<div class="env"><div class="top"><span>${esc(c.title)}</span><b class="${a.slip > 0.5 ? 'bad' : a.slip < -0.5 ? 'good' : ''}">${a.doneCount === a.count ? 'done' : slipText(a.slip)}</b></div><div class="slipbar"><i style="width:${a.doneCount === a.count ? 100 : w}%;background:${a.slip > 0.5 ? 'var(--warning)' : '#2da872'}"></i></div></div>`; });
-            h += `</div>`;
-            const ph = [['reading', 'Reading', '📖'], ['drafting', 'Drafting', '✍️'], ['editing', 'Editing and proofreading', '🔍']].map(([k, l, ico]) => { const ps = PP.list.filter(p => p.grp === k); if (!ps.length) return ''; const td = ps.reduce((s, p) => s + p.days, 0), dd = ps.filter(p => p.done).reduce((s, p) => s + p.days, 0); return `<div class="env"><div class="top"><span>${ico} ${l}</span><b>${pctTxt(dd / td)}</b></div><div class="slipbar"><i style="width:${dd / td * 100}%;background:linear-gradient(90deg,var(--blue-a),var(--blue-b))"></i></div><div class="meta muted" style="font-size:0.98rem">${ps.filter(p => p.done).length} of ${ps.length} tasks</div></div>`; }).join('');
-            h += `<div class="card"><h3>Thesis progress</h3>${ph}<div class="hint mt">Progress is counted in allotted days, so a long task weighs more than a short one.</div></div>`;
-            const recs = recsList();
-            if (recs.length) h += `<div class="card"><h3>What to do next</h3>${recs.map(x => `<div class="rec ${x.c}">${x.h}</div>`).join('')}</div>`;
-            const late = PP.open.filter(p => p.status === 'late').sort((a, b) => b.lateDays - a.lateDays);
-            if (late.length) h += `<div class="card"><h3>Overdue</h3>${late.map(p => `<div class="want tap" data-act="pc" data-id="${p.id}"><div class="row"><span>${esc(pTitle(p))}</span><b class="bad">${dN(p.lateDays)}</b></div><div class="meta muted" style="font-size:0.98rem">${esc((chapOf(p.id) || {}).title || 'Custom')} · due ${fmtDNum(p.due)}</div></div>`).join('')}</div>`;
+    function habitSheet(key) {
+        const h = Report.habits(allExps(), Date.now(), repKind, repBack).find(x => x.key === key); if (!h) return;
+        const cur = (prefs.habitNames || {})[key] || '';
+        sheet(`<h2>Name this habit</h2><p class="hint">${esc(h.cname)} · ${money(h.perUnit)} ${h.marker ? 'per person' : 'each'}. Your name appears only in this report.</p><label class="field"><span>Name</span><input type="text" id="hb-n" maxlength="30" value="${esc(cur)}" placeholder="${esc(habitName(Object.assign({}, h, { key: '' })))}" autofocus></label><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="hb-go">Save</button></div>`, box => {
+            box.querySelector('#hb-go').onclick = () => { const v = val(box, '#hb-n').trim(); prefs.habitNames = prefs.habitNames || {}; if (v) prefs.habitNames[key] = v; else delete prefs.habitNames[key]; persist(); closeSheet(); render(); toast(v ? 'Name saved' : 'Name cleared'); };
+        });
+    }
+    // what the baskets teach: price moves, what runs out, the month ahead, unnamed spending
+    function basketCards() {
+        if (prefs.learnOn === false) return '';
+        let I; try { I = E.basketInsights(D); } catch (x) { return ''; }
+        let h = '';
+        if (I.prices.length) h += `<div class="card" data-sec="ins:prices-you-pay"><h3>Prices you pay</h3>${I.prices.slice(0, 4).map(p => `<div class="ledger-row"${tl(`${p.name}: you now pay ${money(p.to)} per ${p.per}. Your usual was ${money(p.from)}.`)}><span>${esc(p.name)}, per ${p.per}</span><span class="priv">${money(p.from)} → ${money(p.to)} <b style="color:var(${p.pct > 0 ? '--warning' : '--ok'})">${p.pct > 0 ? '▲' : '▼'} ${Math.abs(Math.round(p.pct))}%</b></span></div>`).join('')}</div>`;
+        const due = I.due.filter(d => d.left <= 14).slice(0, 4);
+        if (due.length) h += `<div class="card" data-sec="ins:running-out-soon"><h3>Running out soon</h3>${due.map(d => `<div class="bk-due"${tl(`${d.name} is bought about every ${plural(d.gap, 'day')}.`)}><div class="ledger-row"><span>${esc(d.name)} <small class="hint">every ~${d.gap} days</small></span><b>${d.left <= 0 ? 'due now' : 'in ' + plural(d.left, 'day')}</b></div><div class="bk-bar"><i style="width:${Math.round(d.frac * 100)}%"></i></div></div>`).join('')}</div>`;
+        const byCat = {}; I.forecast.forEach(f => { byCat[f.cat] = (byCat[f.cat] || 0) + f.p; });
+        const fc = Object.keys(byCat).map(id => D.cats.find(x => x.id === +id)).filter(Boolean);
+        if (fc.length) h += `<div class="card" data-sec="ins:rest-of-month"><h3>Rest of this month</h3>${fc.map(cat => { const exp = byCat[cat.id], left = Math.max(0, (cat.limit || 0) - cat.spent), ok = !cat.limit || exp <= left; return `<div class="ledger-row"${tl(`From the items you buy again, ${cat.name} needs about ${money(exp)} more this month. ${cat.limit ? `${money(left)} is left in the category.` : ''}`)}><span>${esc(cat.icon)} ${esc(cat.name)}: expected</span><span class="priv"><b>${money(Math.round(exp))}</b>${cat.limit ? ` of ${money(left)} left <b style="color:var(${ok ? '--ok' : '--warning'})">${ok ? '✓' : '!'}</b>` : ''}</span></div>`; }).join('')}</div>`;
+        if (I.misc && I.misc.share >= 0.15) h += `<div class="card" data-sec="ins:unnamed"><h3>Unnamed spending</h3><div class="ledger-row"${tl('Items called misc hide what you buy. When you name them, the app can learn prices and predict the month.')}><span>“misc” this month</span><span class="priv"><b>${money(Math.round(I.misc.amt))}</b> · ${Math.round(I.misc.share * 100)}%</span></div><p class="hint">Name these items when you add a basket. Then your reports stay honest.</p></div>`;
+        return h;
+    }
+    function renderIns() {
+        const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], names = ['S', 'M', 'T', 'W', 'T', 'F', 'S'], order = [1, 2, 3, 4, 5, 6, 0];
+        const allx = []; D.months.forEach(m => m.exps.forEach(x => allx.push(x)));
+        const S = E.weekdayStats(allx, Date.now()), mx2 = v => `<span class="priv">₹${(Math.round(v * 100) / 100).toLocaleString('en-IN', { minimumFractionDigits: Number.isInteger(Math.round(v * 100) / 100) ? 0 : 2, maximumFractionDigits: 2 })}</span>`, sh = v => v >= 1000 ? Math.round(v / 100) / 10 + 'k' : Math.round(v);
+        let h;
+        if (!S.ready) h = `<div class="card" data-sec="ins:which-days-cost-most"><h3>Which days cost most</h3><p class="hint">No finished days with spending yet. This card appears after your first full day.</p></div>`;
+        else {
+            const mx = Math.max(1, ...S.days.map(r => r.avg)), fd = ts => new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            const bars = order.map(w => { const r = S.days[w], tot = Math.max(3, r.avg / mx * 62), inner = r.big.length ? Math.max(3, r.avgEx / mx * 62) : 0;
+                return `<div${tl(`${WD[w]}: ${prefs.privacy ? 'average hidden' : 'average ' + money(r.avg)} over ${plural(r.n, WD[w])}. ${r.big.length ? 'One very large entry is included.' : ''}`)}><span class="priv">${sh(r.avg)}</span><b style="height:${tot}px;${r.big.length ? 'opacity:.45;position:relative' : ''}">${inner ? `<i style="position:absolute;left:0;right:0;bottom:0;height:${inner}px;border-radius:inherit;background:var(--blue-b);opacity:1"></i>` : ''}</b>${names[w]}<small style="display:block;font-size:0.98rem;opacity:.6">${r.n}×</small></div>`; }).join('');
+            const notes = S.days.filter(r => r.big.length).map(r => { const b = r.big.map(x => `${mx2(x.amt)} (${esc(x.name)}, ${fd(x.ts)})`).join(' and ');
+                return `<div class="hint mt"><b>${WD[r.w]}:</b> the average is ${mx2(r.avg)} over ${plural(r.n, WD[r.w])}, but one very large entry, ${b}, is most of it. Without it the average is ${mx2(r.avgEx)}. ${r.n < 3 ? `Only ${plural(r.n, WD[r.w])} ${r.n === 1 ? 'is' : 'are'} counted, which ${r.n === 1 ? 'is' : 'are'} too few to show a pattern. Please do not read this as a habit.` : ''}</div>`; }).join('');
+            const thin = S.days.filter(r => r.n < 3).length;
+            h = `<div class="card" data-sec="ins:which-days-cost-most"><h3>Which days cost most</h3><p class="hint">Average spend on each weekday, ${fd(S.first)} to yesterday. ${plural(S.spanDays, 'day')} counted. A day with no spending counts as zero. The number under each letter shows how many of that weekday were counted. Pale bars include a very large entry; the dark part is the average without it.</p><div class="bars">${bars}</div>${notes}${S.enough ? '' : `<div class="hint mt">${S.spanDays < 28 ? 'This is too little data to show a habit.' : 'Some weekdays have fewer than 3 days.'} Each bar only shows what happened on ${thin ? 'those few days' : 'these days'}. A clearer picture needs about 4 weeks.</div>`}</div>`;
         }
-        const ledger = D.tasks.flatMap(t => t.ledger.map(l => ({ t, l })));
-        if (ledger.length || D.leave.size || PP.rebases.length) {
-            h += `<div class="card" data-sec="out:slip-ledger"><h3>Slip ledger</h3><p class="tight">Re-plans, re-baselines and leave days stay on record. The buffer only recovers by finishing work early.</p>
-                ${PP.rebases.map(r => `<div class="ledger-row"><span>Plan re-baselined ${fmtK(E.localKey(r.ts))}</span><span>${dN(r.forgiven)} forgiven</span></div>`).join('')}
-                ${ledger.map(({ t, l }) => `<div class="ledger-row"><span>${esc(t.g.title)} · re-planned ${fmtDNshort(l.dayN)}</span><span>${N(l.backlog)} ${esc(t.unit)} (${dN(l.slipDays)})</span></div>`).join('')}
-                ${D.leaves.map(l => `<div class="ledger-row"><span>Leave ${fmtDNshort(E.dn(l.from))}${l.to !== l.from ? ' to ' + fmtDNshort(E.dn(l.to)) : ''}${l.reason ? ' · ' + esc(l.reason) : ''}</span><span class="muted">${dN(E.dn(l.to) - E.dn(l.from) + 1)}</span></div>`).join('')}</div>`;
-        }
-        if (has) h += `<button class="btn-line" data-act="rebase">Re-baseline the plan</button>`;
-        put($('s-out'), h);
+        const ms = D.months.filter(m => m.spent > 0).slice(-6), mm = Math.max(1, ...ms.map(m => m.spent));
+        h += `<div class="card" data-sec="ins:months"><h3>Months</h3><div class="bars">${ms.map(m => `<div><span class="priv">${Math.round(m.spent / 1000)}k</span><b style="height:${Math.max(3, m.spent / mm * 62)}px"></b>${MONTHS[m.m]}</div>`).join('')}</div></div>`;
+        const fixed = D.cats.filter(c => c.type === 'fixed' && (D.priceHist[c.id] || []).length > 1);
+        h += `<div class="card" data-sec="ins:price-tracker"><h3>Price tracker</h3>${fixed.map(c => `<div class="ledger-row"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="priv">${D.priceHist[c.id].map(x => money(x.price)).join(' → ')}</span></div>`).join('') || '<p class="hint">Change a fixed price in Settings and its history shows here.</p>'}</div>`;
+        const resisted = D.wants.filter(w => w.status === 'dropped').reduce((s, w) => s + w.price, 0);
+        h += `<div class="card" data-sec="ins:resisted"><h3>Resisted</h3><div class="row"><b class="num" style="font-size:1.8rem">${mh(resisted)}</b><span class="hint">in wants you let go</span></div></div>`;
+        h += `<div class="card" data-sec="ins:closed-months"><h3>Closed months</h3>${D.months.filter(m => m.close).slice(-6).reverse().map(m => `<div class="ledger-row"><span>${MONTHS[m.m]} ${m.y}</span><span class="priv">saved ${money(m.close.toSave)} · pool +${money(m.close.toPool)}</span></div>`).join('') || '<p class="hint">None yet.</p>'}</div>`;
+        put($('s-ins'), reportHTML() + learnInsights() + basketCards() + h);
     }
 
-    /* ---------- Settings: look ---------- */
+    const sw = (k, t, d) => `<div class="sw-row"><div><div>${t}</div>${d ? `<div class="set-meta">${d}</div>` : ''}</div><label class="switch"><input type="checkbox" data-pref="${k}" ${prefs[k] ? 'checked' : ''}><i></i></label></div>`;
+    const slider = (id, l, max, v) => `<div class="bg-row"><span>${l}</span><input type="range" id="${id}" min="0" max="${max}" value="${v}"><b class="bg-val" id="${id}-v">${v}</b></div>`;
     const LIGHT_LOOKS = () => [['flagship', GLook.FIXED.flagship.label, GLook.FIXED.flagship.sw], ['paper', 'Paper', '#f4efe0'], ['aurora', 'Aurora', 'linear-gradient(135deg,#7fd6ff,#b9a6ff 60%,#ffd9a8)']].concat(Object.keys(GLook.NATURE).map(k => { const n = GLook.NATURE[k]; return [k, n.label, `linear-gradient(160deg,${n.L[0]},${n.L[1]})`]; }));
     const DARK_LOOKS = () => Object.keys(GLook.FIXED).filter(k => GLook.FIXED[k].dark).map(k => [k, GLook.FIXED[k].label, GLook.FIXED[k].sw]);
     const lookGrid = list => `<div class="look-grid">${list.map(([k, l, c]) => `<button class="lk ${(prefs.look || 'flagship') === k ? 'on' : ''}" data-act="look" data-v="${k}" style="--sw:${c}">${l}</button>`).join('')}</div>`;
@@ -1490,10 +899,10 @@
                 ${pv('mStyle') === 'none' ? '' : `<div class="sw-grid">${GLook.MARGINS.map(([k, l, c]) => `<button class="swatch dotm ${pv('mColor') === k ? 'on' : ''}" title="${l}" data-act="pr-set" data-k="mColor" data-v="${k}" style="--sw:rgb(${c.join(',')})"></button>`).join('')}</div>${prSwitch('mTop', 'Top margin')}${prSlider('mTopIn', 'Top margin depth', 0.6, 2, 0.1, ' in')}${prSwitch('mSide', 'Side margin')}`}</div></details>`;
         } else if (GLook.NATURE[look] || look === 'aurora') h += `<p class="hint">Choose Paper above to customise the page colour, dots, margins and texture.</p>`;
         h += `<details class="acc" data-acc="blur" ${accOpen('blur')}><summary>Blur and glass</summary><div class="acc-body">${slider('bg-blur', 'Background blur', 40, Math.min(40, prefs.bgBlur))}${slider('glass-blur', 'Glass frosting (cards and panels)', 30, Math.min(30, prefs.glassBlur))}<p class="hint">Background blur affects only the page behind everything. Glass frosting affects the cards, sheets and menu bar.</p></div></details>`;
-        h += `<details class="acc" data-acc="bgp" ${accOpen('bgp')}><summary>Wallpaper photo and speed</summary><div class="acc-body"><button class="btn-line btn-accent" data-act="pick-bg">${hasBg ? 'Change' : 'Choose'} wallpaper photo</button>${hasBg ? '<button class="btn-line" data-act="clear-bg">Remove wallpaper</button>' : ''}${sw('lite', 'Lite mode', 'No blur or motion. Faster on older phones.')}</div></details></div>`;
+        h += `<details class="acc" data-acc="bgp" ${accOpen('bgp')}><summary>Wallpaper photo and speed</summary><div class="acc-body"><button class="btn-line btn-accent" data-act="pick-bg">${hasBg ? 'Change' : 'Choose'} wallpaper photo</button>${hasBg ? '<button class="btn-line" data-act="clear-bg">Remove wallpaper</button>' : ''}${sw('lite', 'Lite mode', 'No blur or motion. Faster on older phones.')}${sw('privacy', 'Privacy mode', 'Blur amounts. Hold a number to peek.')}</div></details></div>`;
         return h;
     }
-    // a card whose body folds under its title with a triangle (state remembered); falls back to the plain card
+    // a card whose body folds under its title with a triangle (state remembered)
     function foldCard(html, key, open, note) {
         const m = html.match(/^<div class="card([^"]*)">\s*<h3>([\s\S]*?)<\/h3>([\s\S]*)<\/div>\s*$/); if (!m || !window.GAcc) return html;
         return `<div class="card${m[1]}"><details class="gacc fc" data-gacc="${key}" ${GAcc.open(key, open) ? 'open' : ''}><summary><h3>${m[2]}</h3>${note ? `<span class="gacc-n">${note}</span>` : ''}</summary><div class="gacc-body">${m[3]}</div></details></div>`;
@@ -1530,28 +939,22 @@
         if (!setPage) {
             const sws = [...LIGHT_LOOKS().slice(0, 2), ...DARK_LOOKS().slice(0, 2)];
             h += `<h2 class="si-title big">Settings</h2><div class="si-tiles">
-                <button type="button" class="si-tile2" data-act="set-go" data-p="backup"><span class="si-cap">Backup</span><span class="si-big ${bk.ok ? '' : 'warn'}">${bk.n}</span><span class="si-small">${bk.u || '&nbsp;'}</span><span class="si-foot">${prefs.remindOn ? 'Reminder at 10 pm' : 'Reminder off'}</span></button>
+                <button type="button" class="si-tile2" data-act="set-go" data-p="backup"><span class="si-cap">Backup</span><span class="si-big ${bk.ok ? '' : 'warn'}">${bk.n}</span><span class="si-small">${bk.u || '&nbsp;'}</span><span class="si-foot">${prefs.remindOn ? 'Reminder at 11 pm' : 'Reminder off'}</span></button>
                 <button type="button" class="si-tile2" data-act="set-go" data-p="look"><span class="si-cap">Look</span><span class="si-dots">${sws.map(x => `<i style="background:${x[2]}"></i>`).join('')}</span><span class="si-small">${lk}</span><span class="si-foot">${sty}</span></button></div>
                 <div class="si-group">${sRow('look', 'look', '#4f8fe8', 'Appearance', `${dark ? 'Dark' : 'Light'}${accN ? ' · ' + accN : ''}`)}${sRow('feel', 'snd', '#e8706a', 'Sound and feel', (window.GFeel && GFeel.prefs.get().snd) ? 'Sound on' : 'Sound off')}${sRow('comp', 'comp', '#8e6fe0', 'Companion', window.GCompanion ? ({ header: 'Header', snap: 'Floating', free: 'Floating', off: 'Hidden' }[GCompanion.prefs.get().place] || 'Header') : '')}</div>
-                <div class="si-group">${sRow('home', 'home', '#3fb6a8', 'Home screens', 'Tips, rewards')}${sRow('remind', 'bell', '#e8a23a', 'Reminders', prefs.remindOn ? '9 pm' : 'Off')}${sRow('time', 'cal', '#5b8def', 'Timeline', D.cfg ? 'Due ' + fmtDNum(D.jrf.targetN) : 'Not set')}</div>
+                <div class="si-group">${sRow('cats', 'cal', '#5b8def', 'Categories and rules', D.cats.length + ' in all')}${sRow('home', 'home', '#3fb6a8', 'Home screens', 'Tips, warnings')}</div>
                 <div class="si-group">${sRow('priv', 'lock', '#6b7a90', 'Privacy and security', pin ? 'PIN on' : 'PIN off')}${sRow('backup', 'disk', '#34b36b', 'Backup and data', 'Last: ' + bk.short)}</div>
-                <p class="si-foot-note">Goal Manager ${(($('app-ver') || {}).textContent || '').replace('Version ', '')}</p>`;
+                <p class="si-foot-note">Budget Manager ${(($('app-ver') || {}).textContent || '').replace('Version ', '')}</p>`;
         } else if (setPage === 'look') {
-            const sw2 = [...LIGHT_LOOKS(), ...DARK_LOOKS()];
             h += sHead('Appearance') + `<div class="card si-prev"><div class="si-prevbtns"><button type="button" class="btn-line btn-accent">Primary</button><button type="button" class="btn-line">Glass</button><button type="button" class="btn-line btn-quiet">Outline</button></div><p class="hint">This is how your buttons look now.</p></div>`;
             h += lookCard();
             if (window.GLiquid) h += GLiquid.settingsHTML();
             if (window.GBtnLook) h += GBtnLook.settingsHTML();
-            h += `<div class="card" data-sec="set:look-file"><h3>My look settings</h3><p class="hint">Keep your refined choices safe: themes, accents, glass, rim sliders, fonts, paper, sounds and the Companion. Restore them any time, so you never set them up again. Your goals, entries and PIN are not in this file.</p><div class="grid2"><button type="button" class="btn-line" data-act="look-save">Save my look settings</button><button type="button" class="btn-line" data-act="look-load">Restore my look settings</button></div></div>`;
+            h += `<div class="card" data-sec="set:look-file"><h3>My look settings</h3><p class="hint">Keep your refined choices safe: themes, accents, glass, rim sliders, fonts, paper, sounds and the Companion. Restore them any time, so you never set them up again. Your entries and PIN are not in this file.</p><div class="grid2"><button type="button" class="btn-line" data-act="look-save">Save my look settings</button><button type="button" class="btn-line" data-act="look-load">Restore my look settings</button></div></div>`;
         } else if (setPage === 'feel') { h += sHead('Sound and feel') + (window.GFeel ? GFeel.settingsHTML() : '');
         } else if (setPage === 'comp') { h += sHead('Companion') + (window.GCompanion ? GCompanion.settingsHTML() : '');
-        } else if (setPage === 'home') {
-            h += sHead('Home screens') + `<div class="card"><h3>Experience</h3><div class="wz-chips" style="margin:4px 0 10px"><button type="button" class="wz-chip" data-wrun="setup">Run setup again</button><button type="button" class="wz-chip" data-wrun="tour">Replay the tour</button></div>${sw('introOn', 'Opening screen')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Tips in the top banner', 'Proverbs and tips slide in now and then.')}${sw('smartOn', 'Smart sections', 'Sections you rarely open fold under More. The app learns for two weeks first.')}${sw('animOn', 'Slow task glide')}${sw('lossOn', 'Show the cost of delay', 'Days lost from the buffer on Today.')}${sw('gainOn', 'Show the reward of early work', 'Days of freedom banked on Today.')}${sw('planAsk', 'Ask my hours each day', 'The first time you open the app each day: how many hours will you work?')}${sw('ageOn', 'Show my age on the Life tab', 'Needs your birth date in the timeline.')}${sw('remindOn', 'Evening and backup reminders', 'Banners in the app. A web app cannot ring while closed.')}</div>`;
-        } else if (setPage === 'remind') {
-            h += sHead('Reminders') + `<div class="card"><div class="si-hero"><span class="si-big">${prefs.remindHour > 12 ? prefs.remindHour - 12 : prefs.remindHour}<small> ${prefs.remindHour >= 12 ? 'pm' : 'am'}</small></span><span class="si-small">Evening reminder, if work is still waiting.</span></div>${sw('remindOn', 'Evening and backup reminders', 'Banners in the app. A web app cannot ring while closed. The backup reminder comes after 10 pm.')}</div>`;
-        } else if (setPage === 'time') {
-            h += sHead('Timeline') + `<div class="card"><h3>Timeline</h3>${D.cfg ? `<div class="row"><span class="muted">JRF began</span><b class="num">${fmtK(D.cfg.start)}</b></div><div class="row"><span class="muted">Main work due</span><b class="num">${fmtDNum(D.jrf.targetN)}</b></div>` : ''}<button class="btn-line btn-accent" data-act="cfg">${D.cfg ? 'Edit timeline' : 'Set up timeline'}</button><button class="btn-line" data-act="leave">Declare leave days</button>
-            <div class="sw-row"><div><div>Work order</div><div class="set-meta">Chapter by chapter (reading and drafting), or all reading then all drafting. All editing and proofreading always comes last.</div></div><select class="set-select" data-cfgorder>${[['chapter', 'Chapter by chapter'], ['phase', 'Phase by phase'], ['custom', 'Custom: I choose the next task']].map(([v, l]) => `<option value="${v}" ${((D.cfg && D.cfg.order) || 'chapter') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>`;
+        } else if (setPage === 'cats') { h += sHead('Categories and rules') + `<div class="card"><h3>Categories and rules</h3>${D.cats.slice().sort((a, b) => a.id - b.id).map(c => `<div class="ledger-row tap" data-act="cat-edit" data-id="${c.id}"><span>${esc(c.icon)} ${esc(c.name)}</span><span class="muted priv">${money(c.limit)}</span></div>`).join('')}<button class="btn-line" data-act="cat-add">Add category</button></div>`;
+        } else if (setPage === 'home') { h += sHead('Home screens') + `<div class="card"><h3>Experience</h3><div class="wz-chips" style="margin:4px 0 10px"><button type="button" class="wz-chip" data-wrun="setup">Run setup again</button><button type="button" class="wz-chip" data-wrun="tour">Replay the tour</button></div>${sw('introOn', 'Opening screen', 'Greeting and animation when the app opens.')}${sw('greetOn', 'Greeting by name')}${sw('lineOn', 'Tips in the top banner', 'Proverbs and tips slide in now and then.')}${sw('smartOn', 'Smart sections', 'Sections you rarely open fold under More. The app learns for two weeks first.')}${sw('forecastOn', 'Month forecast')}${sw('animOn', 'Slow category glide')}${sw('warnOn', 'Budget-break warnings')}${sw('dayCloseOn', 'Close-the-day ritual')}${sw('purchOn', 'Big-purchase rules')}${sw('waitOn', '24-hour want list')}${sw('reviewOn', '30-day "still glad?" review')}</div>`;
         } else if (setPage === 'priv') {
             h += sHead('Privacy and security') + `<div class="card"><div class="si-hero"><span class="si-big ${pin ? '' : 'warn'}">${pin ? 'PIN on' : 'PIN off'}</span><span class="si-small">The PIN keeps people out of the app. Backups have their own password.</span></div>${pin ? sw('autoLock', 'Lock when I leave the app') : ''}<button class="btn-line btn-accent" data-act="pin-set">${pin ? 'Change PIN' : 'Set a PIN'}</button>${pin ? '<div class="si-links"><button type="button" class="link-btn" data-act="pin-off">Remove PIN</button></div>' : ''}</div>`;
         } else if (setPage === 'backup') {
@@ -1559,726 +962,398 @@
             h += sHead('Backup and data') + `<div class="card si-bk"><div class="si-ring ${bk.ok ? '' : 'warn'}"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="35" fill="none" stroke-width="5" class="rt"/><circle cx="40" cy="40" r="35" fill="none" stroke-width="5" stroke-linecap="round" class="ra" stroke-dasharray="${bk.ok ? 220 : 60} 220" transform="rotate(-90 40 40)"/>${bk.ok ? '<path d="M28 41l9 9 16-18" fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="rk"/>' : '<path d="M40 27v16M40 52v1" fill="none" stroke-width="5" stroke-linecap="round" class="rk"/>'}</svg></div>
                 <div class="si-hero"><span class="si-big ${bk.ok ? '' : 'warn'}">${bk.n}${bk.u ? (bk.n ? `<small> ${bk.u}</small>` : bk.u) : ''}</span><span class="si-small">${bk.ok ? 'Your data is safe.' : (prefs.lastBackup ? 'A fresh backup is due.' : 'Back up once, to be safe.')} About ${kb} KB, kept on this phone.${(() => { const ai = window.R3 && R3.autoInfo(); return ai ? ' A safety copy from ' + fmtDay(ai.at) + ' is also kept here.' : ''; })()}</span></div>
                 <button class="btn-line btn-accent" data-act="backup" data-m="share">Back up now</button><button class="btn-line" data-act="backup" data-m="download">Save to Downloads</button></div>
-                <div class="card">${sw('remindOn', 'Daily reminder at 10 pm', 'A banner late in the evening, only if there is no backup in 18 hours.')}${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}${sw('learnOn', 'Learn from my entries', 'Gives suggested days, habit insights and a work chain.')}</div>
+                <div class="card">${sw('remindOn', 'Daily reminder at 11 pm', 'A banner late in the evening, only if there is no backup in 18 hours.')}${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}</div>
                 <div class="si-links"><button type="button" class="link-btn" data-act="restore">Restore from a file</button>${window.R3 && R3.autoInfo() ? '<button type="button" class="link-btn" data-act="restore-auto">Restore the safety copy (' + fmtDay(R3.autoInfo().at) + ')</button>' : ''}<button type="button" class="link-btn" data-act="backup" data-m="plain">Share unencrypted copy</button><button type="button" class="link-btn" data-act="deleted">Recently deleted (${deletedList().length})</button></div>
                 <div class="si-erase"><button type="button" class="link-btn danger" data-act="erase">Erase everything…</button><p class="hint">Always asks first. Back up before you erase.</p></div>`;
         }
         put($('s-set'), h);
         const bb = $('bg-blur'), gb = $('glass-blur');
-        if (bb) bb.oninput = () => { prefs.bgBlur = +bb.value; $('bg-blur-v').textContent = bb.value; applyTheme(); persist(); };
+        if (bb) bb.oninput = () => { prefs.bgBlur = +bb.value; $('bg-blur-v').textContent = bb.value; applyBackground(); applyTheme(); persist(); };
         if (gb) gb.oninput = () => { prefs.glassBlur = +gb.value; $('glass-blur-v').textContent = gb.value; document.documentElement.style.setProperty('--glass-blur', gb.value + 'px'); persist(); };
-        const co = document.querySelector('[data-cfgorder]'); if (co) co.onchange = async () => { if (await confirmSheet({ title: 'Change the work order?', sub: 'The chain of tasks is re-ordered. Original deadlines stay fixed, so some tasks may suddenly look late or early.', ok: 'Change' })) { add({ t: 'cfg', c: { order: co.value } }); } render(); };
     }
 
-    /* ================= Version 4: daily paces, splitting, custom order ================= */
-    const trackOf = pid => P().tracks.filter(t => t.scopeIds.indexOf(pid) >= 0).sort((a, b) => a.scopeIds.length - b.scopeIds.length)[0] || null;
-
-    /* ================= Version 5: what the app learns, the companion, and live progress ================= */
-    const MOODS = {
-        glow: ['I am glowing. You worked today.', 'Good work today. Rest well.'],
-        calm: ['Ready when you are.', 'One small step is enough to begin.'],
-        dim: ['I miss your work. A small step keeps the chain.', 'A short session today is better than none.'],
-        rest: ['Rest well. Your chain is safe while you are on leave.']
-    };
-    function orbMessage() {
-        if (!IN) return 'Hello.';
-        if (IN.atRisk) return `Your ${IN.streak}-day chain needs a little work today. One more missed day breaks it.`;
-        if (IN.late && IN.mood === 'dim') return 'A task is late. Finish it to get back on track.';
-        const L = MOODS[IN.mood]; return L[Math.floor(Date.now() / 3600e3) % L.length];
-    }
-    let GC = null, lastScreen = null, lastDone = null, lastStreak = null;
-    const SCREEN_ACT = { plan: 'read', out: 'present', life: 'think', set: 'stand' };
-    function renderOrb() {
-        const host = $('orb'); if (!host || !window.GCompanion) return;
-        if (!GC) GC = window.GCompanion.create(host, { legacyPlace: prefs.orbMode, tip: () => (Math.random() < 0.5 ? orbMessage() : ''), busy: () => $('sheet-bg').classList.contains('show') });
-        if (!IN) return;
-        GC.mood({ glow: 'happy', calm: 'calm', dim: 'concerned', rest: 'sleepy' }[IN.mood] || 'calm');
-        // small, purposeful reactions: a task finished, a new chain milestone, a new screen
-        const doneN = D.pieces.list.filter(p => p.done).length;
-        if (lastDone !== null && doneN > lastDone) { GC.do('celebrate', { force: true }); GC.say('Task finished. Good work.', 3400); fx('fanfare'); }
-        lastDone = doneN;
-        if (lastStreak !== null && IN.streak > lastStreak && (IN.streak === 7 || IN.streak === 30 || IN.streak === 100)) { GC.do('celebrate', { force: true }); GC.say(`${IN.streak} days in a row. Well done.`, 4200); fx('fanfare'); }
-        if (lastStreak !== null && lastStreak > 2 && IN.streak === 0) { try { const k = 'gf_sad', t = new Date().toDateString(); if (localStorage.getItem(k) !== t) { localStorage.setItem(k, t); fx('sad'); } } catch (e) {} }
-        lastStreak = IN.streak;
-        if (screen !== lastScreen) { if (lastScreen && SCREEN_ACT[screen] && !GC.state().action) GC.do(SCREEN_ACT[screen]); lastScreen = screen; }
-    }
-    function companionReturns() {
-        try {
-            const last = +localStorage.getItem('gc_last') || 0; localStorage.setItem('gc_last', String(Date.now()));
-            if (last && Date.now() - last > 6 * 3600e3 && GC && GCompanion.prefs.get().place !== 'off') { GC.wake(); setTimeout(() => GC.say('Welcome back.', 3200), 900); }
-        } catch (e) {}
-    }
-    // numbers that count up when they first appear or change (not on the quiet minute refresh)
-    const shown = {};
-    function countUps() {
-        document.querySelectorAll('[data-count]').forEach(el => {
-            const to = parseFloat(el.dataset.count), k = el.dataset.ck || el.dataset.count, dec = +el.dataset.dec || 0;
-            const fmtv = v => dec ? v.toFixed(dec) : Math.round(v).toLocaleString('en-IN');
-            const from = shown[k] === undefined ? 0 : shown[k]; shown[k] = to;
-            if (document.body.classList.contains('still') || from === to) { el.textContent = fmtv(to); return; }
-            const t0 = performance.now(), ms = 900;
-            const step = now => { const f = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - f, 3); el.textContent = fmtv(from + (to - from) * e); if (f < 1 && el.isConnected) requestAnimationFrame(step); };
-            requestAnimationFrame(step);
-        });
-    }
-    const mring = (frac, centre, sub) => { const f = Math.max(0, Math.min(1, frac)), L = 226.2; return `<div class="ring mring"><svg viewBox="0 0 80 80"><circle class="ring-track" cx="40" cy="40" r="36" fill="none" stroke-width="7"/><circle class="arc" cx="40" cy="40" r="36" fill="none" stroke-width="7" stroke-linecap="round" stroke="url(#mrG)" style="--v:${(f * L).toFixed(1)}"/><defs><linearGradient id="mrG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="var(--blue-a)"/><stop offset="1" stop-color="var(--blue-b)"/></linearGradient></defs></svg><div class="ring-center"><div class="ring-pct">${centre}</div>${sub ? `<div class="ring-cap">${sub}</div>` : ''}</div></div>`; };
-    const WDN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], WDS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-    // the task you are working on, in numbers and pictures
-    function focusBlock(p) {
-        const t = trackOf(p.id);
-        if (!t) {
-            const dayNo = Math.max(1, Math.min(p.days, D.todayN - p.start + 1)), left = Math.max(0, p.due - D.todayN);
-            return `<div class="focus">${mring(dayNo / p.days, `${dayNo}/${p.days}`, 'days')}<div class="focus-t"><div><b>Day ${dayNo}</b> of ${p.days} allotted</div><div class="hint">${p.status === 'late' ? `${dN(p.lateDays)} over its time` : left === 0 ? 'Due today' : `${dN(left)} left`}</div>${IN && IN.learned[p.grp] && IN.learned[p.grp].ratio ? `<div class="hint">You usually take about ${N(p.days * IN.learned[p.grp].ratio)} days for this kind of task.</div>` : ''}</div></div>`;
-        }
-        const today = IN ? qtyT(t, D.todayN) : 0, goal = t.need || t.pace || 0;
-        const bars = []; for (let i = 6; i >= 0; i--) bars.push(IN ? qtyT(t, D.todayN - i) : 0);
-        const mx = Math.max(goal, Math.max.apply(null, bars), 1);
-        return `<div class="focus">${mring(t.pct, `<span data-count="${Math.round(t.pct * 100)}" data-ck="p${t.id}">${Math.round(t.pct * 100)}</span>%`, '')}<div class="focus-t"><div class="focus-big"><b data-count="${Math.round(t.done)}" data-ck="d${t.id}">${N(t.done)}</b> / ${N(t.total)} ${esc(t.unit)}</div><div class="hint">${N(t.remaining)} ${esc(t.unit)} to go</div></div></div>
-            ${goal > 0 ? `<div class="row mt"><span class="muted">Today</span><span><b>${N(today)}</b> / ${N(goal)} ${esc(t.unit)}</span></div><div class="slipbar"><i class="grow" style="width:${Math.min(100, today / goal * 100)}%;background:linear-gradient(90deg,var(--blue-a),var(--blue-b))"></i></div>` : ''}
-            <div class="bars7" aria-label="Last seven days">${bars.map((v, i) => `<div class="b7"><i class="${i === 6 ? 'today' : ''} ${goal > 0 && v >= goal ? 'hit' : ''}" style="height:${Math.max(4, v / mx * 100)}%;--d:${i * 70}ms"></i><span>${WDS[new Date((D.todayN - 6 + i) * 86400000).getUTCDay()]}</span></div>`).join('')}${goal > 0 ? `<div class="b7line" style="bottom:calc(${goal / mx * 100}% * .72 + 16px)"></div>` : ''}</div>`;
-    }
-    function chainCard() {
-        if (!IN || (IN.act === 0 && !IN.restToday)) return '';
-        const dots = IN.days28.slice(-7).map(d => `<i class="${d.on ? 'on' : d.rest ? 'rest' : ''} ${d.n === D.todayN ? 'now' : ''}"></i>`).join('');
-        const msg = IN.atRisk ? `Work a little today to keep your chain. Another missed day would break it.` : IN.workedToday ? 'You worked today. The chain is safe.' : IN.restToday ? 'Leave day. Your chain waits for you.' : 'Work a little today to add a link.';
-        const earned = IN.badges.filter(b => b.on);
-        return `<div class="card chain" data-sec="today:chain"><div class="row"><div><div class="safe-lbl">Work chain</div><div class="chain-n"><span class="flame ${IN.streak >= 3 ? 'lit' : ''}">🔥</span><b data-count="${IN.streak}" data-ck="chain">${IN.streak}</b><span class="hint"> ${IN.streak === 1 ? 'day' : 'days'} · best ${IN.best}</span></div></div><div class="dots7">${dots}</div></div>
-            <div class="hint mt">${msg}</div><div class="hint">One missed day is forgiven. Leave days never break the chain.</div>
-            ${earned.length ? `<div class="badges">${earned.map(b => `<span class="chip good">★ ${esc(b.label)}</span>`).join('')}</div>` : ''}</div>`;
-    }
-    function chainStrip() {
-        const PP = P(); if (!PP.list.length) return '';
-        const seg = p => { const c = p.done ? 'done' : p.status === 'late' ? 'late' : p.lockWhy ? 'lkd' : (P().pickMode ? p.picked : p.start <= D.todayN) ? 'now' : 'later'; return `<i class="${c}" style="flex:${p.days}" title="${esc(pTitle(p))}"></i>`; };
-        return `<div class="card"><h3>The whole chain</h3><div class="cstrip">${PP.list.map(seg).join('')}</div>
-            <div class="legend"><span><i class="done"></i>done</span><span><i class="now"></i>now</span><span><i class="late"></i>late</span><span><i class="later"></i>to come</span><span><i class="lkd"></i>locked</span></div>
-            <div class="hint mt">Each block is one task. A wider block has more allotted days.</div></div>`;
-    }
-    function chapterBars() {
-        const chs = [...D.goals.values()].filter(g => g.chap).sort((a, b) => a.id - b.id); if (!chs.length) return '';
-        return `<div class="card"><h3>Chapters at a glance</h3>${chs.map((c, i) => { const a = P().nodeAgg(c.id); const late = a.slip > 0.5; return `<div class="chrow"><div class="row"><span>${esc(c.title)}</span><span class="muted">${a.doneCount}/${a.count}${late ? ` · <span class="bad">${dN(a.slip)} late</span>` : ''}</span></div><div class="slipbar"><i class="grow" style="--d:${i * 60}ms;width:${a.pct * 100}%;background:${late ? 'linear-gradient(90deg,var(--warning),#f0a35e)' : 'linear-gradient(90deg,var(--blue-a),var(--blue-b))'}"></i></div></div>`; }).join('')}</div>`;
-    }
-    function learnedCard() {
-        if (!IN) return '';
-        const GN = { reading: 'Reading', drafting: 'Drafting', editing: 'Editing and proofreading' };
-        let h = `<div class="card"><h3>What the app has learned</h3>`;
-        if (prefs.learnOn === false) return h + `<p class="hint">Learning is switched off in Settings.</p></div>`;
-        const GI = window.GInsight; const rows = GI.GROUPS.map(g => { const L = IN.learned[g], byH = L.hr !== null && L.hr !== undefined, r = byH ? L.hr : L.ratio; return r === null || r === undefined ? `<div class="row"><span class="muted">${GN[g]}</span><span class="muted">needs ${Math.max(1, GI.MIN_SAMPLES - Math.max(L.n, L.hn || 0))} more finished ${Math.max(1, GI.MIN_SAMPLES - Math.max(L.n, L.hn || 0)) === 1 ? 'task' : 'tasks'}</span></div>` : `<div class="row"><span class="muted">${GN[g]}</span><b class="num ${r > 1.15 ? 'bad' : r < 0.85 ? 'good' : ''}">${N(r)}× your plan${byH ? ' in hours' : ' in days'}</b></div>`; }).join('');
-        h += rows + `<div class="hint mt">The app compares the work hours you log in sittings with the hours you plan for a task (and falls back to days when a task has no timed sittings). Newer tasks count more. It needs ${window.GInsight.MIN_SAMPLES} finished tasks of one kind before it learns.</div>${dayLenLine()}`;
-        IN.suggestions.forEach(s => {
-            h += `<div class="sugg"><div><b>${GN[s.grp]}</b> takes you ${N(s.ratio)} times the ${s.byH ? 'hours' : 'days'} you plan.</div><div class="hint">${plural(s.pieces.length, 'task')} not yet started would change by ${s.change > 0 ? '+' : ''}${s.change} days in total. Your first deadlines stay fixed, so the delay still shows.</div><div class="hint">${s.pieces.slice(0, 3).map(x => `${esc(x.title)} ${x.toH !== null && x.toH !== undefined ? hTxt(x.fromH) + '→' + hTxt(x.toH) : x.from + '→' + x.to}`).join(' · ')}${s.pieces.length > 3 ? ' …' : ''}</div><button class="btn-line btn-accent" data-act="sugg" data-g="${s.grp}">Use these ${s.byH ? 'hours' : 'days'}</button></div>`;
-        });
-        return h + '</div>';
-    }
-    // work by kind: Reading, Drafting, Editing and proofreading, in work hours (the one unit behind every sum)
-    const KIND_N = { reading: 'Reading', drafting: 'Drafting', editing: 'Editing' };
-    function kindOfGoal(id) { let g = D.goals.get(id), n = 0; while (g && n++ < 12) { if (g.grp || g.phase) return g.grp || g.phase; g = g.parent ? D.goals.get(g.parent) : null; } return null; }
-    function hoursByKind(dayN) { const o = { reading: 0, drafting: 0, editing: 0 }; try { GReport.prep(gInputs()).filter(l => l.day === dayN).forEach(l => { const k = kindOfGoal(l.key); if (k && k in o) o[k] += l.h; }); } catch (e) {} return o; }
-    const kindsLine = o => Object.keys(o).filter(k => o[k] > 0.05).map(k => `${KIND_N[k]} ${hrsTxt(o[k])}`).join(' · ');
-    // how long your real working day is: hours logged on days you worked, set against the 3 hours that make one work day
-    function dayLenLine() {
-        try {
-            const by = new Map(), n0 = D.todayN; GReport.prep(gInputs()).filter(l => l.day > n0 - 28 && l.day <= n0).forEach(l => by.set(l.day, (by.get(l.day) || 0) + l.h));
-            if (by.size < 7) return '';
-            const avg = [...by.values()].reduce((s, x) => s + x, 0) / by.size;
-            return `<div class="hint mt">On the ${by.size} days you worked in the last 4 weeks you averaged ${hrsTxt(avg)} a day. One work day is still counted as ${WD_H} hours. ${Math.abs(avg - WD_H) >= 0.5 ? 'That is a clear gap, so the app will offer to change it once you agree.' : 'That is close, so nothing needs changing.'}</div>`;
-        } catch (e) { return ''; }
-    }
-    // when in the day you work, and how fast you go, from the time of every entry
-    function dayPartLine() {
-        const B = [['morning', 5, 12, 0], ['afternoon', 12, 17, 0], ['evening', 17, 22, 0], ['night', 22, 29, 0]];
-        const logs = D.logs.filter(l => l.qty > 0 && !l.sit); if (logs.length < 6) return '';
-        logs.forEach(l => { let h = new Date(l.ts).getHours(); if (h < 5) h += 24; const b = B.find(x => h >= x[1] && h < x[2]); if (b) b[3] += l.qty; });
-        const tot = B.reduce((a, b) => a + b[3], 0); if (!tot) return '';
-        const top = B.slice().sort((a, b) => b[3] - a[3])[0], perSit = tot / logs.length;
-        return `<div class="hint mt">Most of your work happens in the <b>${top[0]}</b> (${Math.round(top[3] / tot * 100)}%). An average entry is ${N(perSit)} ${esc((trackOf(logs[0].goal) || {}).unit || 'pages')}.</div>`;
-    }
-    function habitCard() {
-        if (!IN || prefs.learnOn === false) return '';
-        if (IN.act < 5) return `<div class="card"><h3>Your work habits</h3><p class="hint">After about two weeks of entries, this card shows your strongest and weakest days.</p></div>`;
-        const order = [1, 2, 3, 4, 5, 6, 0];
-        const cells = IN.days28.map(d => `<i class="${d.on ? 'on' : d.rest ? 'rest' : ''}" title="${fmtDNum(d.n)}"></i>`).join('');
-        return `<div class="card"><h3>Your work habits</h3><div class="bars7 wk">${order.map((w, i) => `<div class="b7"><i class="${IN.strong === w ? 'hit' : ''} ${IN.weak === w ? 'low' : ''}" style="height:${Math.max(4, IN.rate[w] * 100)}%;--d:${i * 70}ms"></i><span>${WDS[w]}</span></div>`).join('')}</div>
-            ${IN.enough && IN.strong !== null ? `<div class="hint mt">You work most on <b>${WDN[IN.strong]}s</b> and least on <b>${WDN[IN.weak]}s</b>. Put your hardest task on a ${WDN[IN.strong]}, and keep ${WDN[IN.weak]} for light tasks.</div>` : '<div class="hint mt">Your days look even so far. More entries will show a pattern.</div>'}
-            <div class="heat mt">${cells}</div><div class="hint">Last 28 days. Filled squares are days you worked.</div>${dayPartLine()}</div>`;
-    }
-
-    /* ===== Recently deleted: entries removed in the last 30 days can be put back ===== */
-    function deletedList() {
-        const lim = Date.now() - 30 * 864e5;
-        return events.filter(v => v.t === 'void' && v.del && v.ts >= lim && !events.some(r => r.t === 'restored' && r.target === v.id))
-            .map(v => ({ v, e: events.find(x => x.id === v.target) })).filter(x => x.e).reverse();
-    }
-    function deletedSheet() {
-        const L = deletedList();
-        sheet(`<h2>Recently deleted</h2><p>Entries you deleted in the last 30 days. Restore puts one back exactly where it was.</p>${L.length ? `<div style="max-height:52vh;overflow:auto">${L.map(x => `<div class="ledger-row"><div style="min-width:0"><div>${esc((x.e.t==='pos'?'Note':logInfo(x.e.goal).title)+(x.e.qty!=null?', '+N(x.e.qty)+' '+logInfo(x.e.goal).unit:''))}</div><div class="meta">${esc(fmtDNum ? new Date(x.e.ts).toDateString() : '')}</div></div><button type="button" class="mini-btn" data-rest="${x.v.id}">Restore</button></div>`).join('')}</div>` : '<div class="empty"><b>Nothing deleted</b><p>Deleted entries will wait here for 30 days.</p></div>'}<div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button></div>`, box => {
-            box.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => {
-                const v = events.find(x => x.id === +b.dataset.rest), e0 = v && events.find(x => x.id === v.target); if (!e0) return;
-                { const c = Object.assign({}, e0); delete c.id; delete c.ts; add(c, e0.ts); }; add({ t: 'restored', target: v.id }); render(); deletedSheet(); toast('Restored');
-            });
-        });
-    }
-    function dataCard() {
-        let kb = 0; try { kb = Math.round((localStorage.getItem(K_EV) || '').length / 1024); } catch (e) {}
-        return `<div class="card"><h3>Your data</h3><p class="hint">Every entry is saved on this phone only: ${events.length} entries, about ${kb} KB. The app learns from them here. Nothing is sent anywhere. Use Backup to keep a safe copy.</p><button type="button" class="btn-line" data-act="deleted">Recently deleted (${deletedList().length})</button>${sw('learnOn', 'Learn from my entries', 'Gives suggested days, habit insights and a work chain.')}</div>`;
-    }
-    /* ---------- hour slots: the day's logged hours tick the sub-tasks (or the hours) of the task, in order ---------- */
-    const slotMemo = new Map();
-    const qtyT = (t, n) => t.unit === 'hours' ? hoursOn(t, n) : IN.qtyOn(t.id, n) + (t.kidIds || []).reduce((s, k) => s + IN.qtyOn(k, n), 0);
-    function hoursOn(t, n) {
-        let L = []; try { L = GReport.prep(gInputs()); } catch (e) { return 0; }
-        const inside = k => { let x = D.goals.get(k), c = 0; while (x && c++ < 30) { if (x.id === t.id) return true; x = x.parent ? D.goals.get(x.parent) : null; } return false; };
-        return L.filter(l => l.day === n && inside(l.key)).reduce((s, l) => s + l.h, 0);
-    }
-    function slotsOf(t) {
-        if (!t || !(t.pace > 0)) return null;
-        const kids = (t.kidIds || []).map(i => P().tracks.find(x => x.id === i)).filter(Boolean).sort((x, y) => x.id - y.id);
-        let sl;
-        if (kids.length && kids.every(k => k.unit === 'hours')) sl = kids.map(k => ({ size: k.pace > 0 ? k.pace : 1, label: D.goals.get(k.id).title }));
-        else if (t.unit === 'hours') { sl = []; let left = t.pace, i = 1; while (left > 1e-9 && sl.length < 12) { const s = Math.min(1, left); sl.push({ size: s, label: 'Hour ' + i++ }); left -= s; } }
-        else return null;
-        let h = hoursOn(t, E.dn(todayKey())); const total = h;
-        sl.forEach(s => { const f = Math.max(0, Math.min(1, h / s.size)); s.f = f; h -= s.size; });
-        const full = sl.filter(s => s.f >= 0.999).length, key = t.id + '|' + todayKey(), prev = slotMemo.get(key);
-        slotMemo.set(key, full); if (prev !== undefined && full > prev) setTimeout(() => fx(full === sl.length ? 'goalmet' : 'glad'), 250);
-        return { sl, full, total };
-    }
-    function slotsHtml(t) {
-        const S = slotsOf(t); if (!S) return '';
-        const done = S.sl.reduce((a, s) => a + s.f * s.size, 0), want = S.sl.reduce((a, s) => a + s.size, 0);
-        return `<div class="slots" role="img" aria-label="${S.full} of ${S.sl.length} done">${S.sl.map(s => `<span class="slot ${s.f >= 0.999 ? 'full' : s.f > 0.02 ? 'half' : ''}" style="--f:${Math.round(s.f * 100)}%" title="${esc(s.label)}">${s.f >= 0.999 ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' : ''}</span>`).join('')}<span class="hint">${S.full} of ${S.sl.length} done today · ${hrsTxt(Math.min(done, want))} of ${hrsTxt(want)}</span></div>`;
-    }
-    function trackBlock(t, micro) {
-        if (!t) return '';
-        const bits = [];
-        if (t.finished) bits.push(`<div class="pinfo">All ${N(t.total)} ${esc(t.unit)} done.</div>`);
-        else {
-            if (t.pace > 0 && t.projN !== null) bits.push(`<div class="hint">At ${N(t.pace)} ${esc(t.unit)} a day you finish ${fmtDNum(t.projN)}.</div>`);
-            if (t.deadline !== null && t.need !== null) bits.push(t.behind ? `<div class="pwarn" style="margin-top:6px">That is ${dN(t.projN - t.deadline)} after ${fmtDNum(t.deadline)}. To make it you need ${N(t.need)} ${esc(t.unit)} a day${t.pace > 0 ? ' (you plan ' + N(t.pace) + ')' : ''}.</div>` : `<div class="hint">To finish by ${fmtDNum(t.deadline)} you need ${N(t.need)} ${esc(t.unit)} a day.</div>`);
-            if (t.avg7 > 0) bits.push(`<div class="hint">Your last 7 days: ${N(t.avg7)} ${esc(t.unit)} a day.</div>`);
-        }
-        return `<div class="trk" style="margin-top:10px">${slotsHtml(t)}${micro ? '' : `<div class="row"><span><b>${N(t.done)}</b> / ${N(t.total)} ${esc(t.unit)}</span><span class="muted">${pctTxt(t.pct)}</span></div><div class="slipbar"><i style="width:${t.pct * 100}%;background:linear-gradient(90deg,var(--blue-a),var(--blue-b))"></i></div>`}${bits.join('')}${t.finished ? '' : `<button class="btn-line btn-accent" data-act="tlog" data-id="${t.id}" style="margin-top:8px">Log ${esc(t.unit)} read or done today</button>`}</div>`;
-    }
-    /* ---------- backdating: forgot to log? pick another date (never in the future, never before the JRF began) ---------- */
-    const dayOn = (b, day) => b.dataset.k === day || (b.dataset.k === 'other' && ![0, 1, 2].some(k => E.keyOf(D.todayN - k) === day));
-    function daySegHtml(dayKeys) {
-        const min = D.jrf ? E.keyOf(D.jrf.startN) : '';
-        return `<div class="seg" id="l-day">${dayKeys.map((k, i) => `<button data-k="${k}">${['Today', 'Yesterday', '2 days ago'][i]}</button>`).join('')}<button data-k="other">Other date</button></div><div class="lg-date"><input type="date" id="l-date" ${min ? `min="${min}"` : ''} max="${todayKey()}" value=""><div class="hint">Pick the day you really did the work. It is marked "added later" and everything is recalculated.</div></div>`;
-    }
-    function bindDays(box, setDay, upd) {
-        const di = box.querySelector('#l-date'), wrap = box.querySelector('.lg-date'), err = box.querySelector('#l-e'); if (!di) return;
-        const mark = () => { upd(); if (wrap.classList.contains('on')) box.querySelectorAll('#l-day button').forEach(b => b.classList.toggle('on', b.dataset.k === 'other')); };
-        box.querySelectorAll('#l-day button').forEach(b => b.onclick = () => {
-            if (b.dataset.k === 'other') { wrap.classList.add('on'); if (di.value) setDay(di.value); else { try { di.focus(); di.showPicker && di.showPicker(); } catch (e) {} } }
-            else { wrap.classList.remove('on'); setDay(b.dataset.k); if (err) err.textContent = ''; }
-            mark();
-        });
-        di.onchange = () => {
-            const v = di.value; if (!v) return;
-            if (v > todayKey()) { if (err) err.textContent = 'That date is in the future'; di.value = ''; return; }
-            if (di.min && v < di.min) { if (err) err.textContent = 'That is before your JRF began'; di.value = ''; return; }
-            if (err) err.textContent = ''; setDay(v); mark();
-        };
-    }
-    /* ---------- Log history: every entry by day, newest first. Edit an amount, delete a wrong entry (with Undo). Everything is recalculated. ---------- */
-    const logInfo = id => { const tk = P().tracks.find(x => x.id === id), it = D.items.get(id), g = D.goals.get(id); return { title: tk || !it ? (g ? g.title : 'Removed task') : it.title, unit: tk ? tk.unit : it ? it.unit : (g && g.qunit) || 'units' }; };
-    const histState = { filter: 0, days: 14 };
-    const uOf = x => x.e && x.e.sit ? 'hours' : logInfo(x.goal).unit;
-    function histEntries() {
-        const out = [];
-        D.logs.forEach(l => { const day = l.day || E.localKey(l.ts); out.push({ k: 'log', e: l, id: l.id, goal: l.goal, day, n: E.dn ? E.dn(day) : 0, ts: l.ts }); });
-        (D.poses || []).forEach(l => { const day = l.day || E.localKey(l.ts); out.push({ k: 'pos', e: l, id: l.id, goal: l.goal, day, n: E.dn ? E.dn(day) : 0, ts: l.ts }); });
-        return out;
-    }
-    function histSummary() {
-        const all = histEntries().filter(x => x.k === 'log'); if (!all.length) return '';
-        const tk = todayKey(), td = all.filter(x => x.day === tk), by = {};
-        td.forEach(x => { const u = uOf(x); by[u] = (by[u] || 0) + x.e.qty; });
-        return td.length ? 'Today: ' + Object.keys(by).map(u => N(by[u]) + ' ' + u).join(', ') + ' · ' + plural(td.length, 'entry').replace(/entrys/, 'entries') : 'Last entry: ' + fmtK(all.sort((a, b) => b.ts - a.ts)[0].day);
-    }
-    function histCard() { const sm = histSummary(); return sm ? `<div class="card tap" data-sec="today:log-history" data-act="hist" data-tell="Everything you logged, by day. You can fix a wrong entry there."><h3>Log history</h3><div class="row"><span>${esc(sm)}</span><b>›</b></div></div>` : ''; }
-    function historySheet(filterId, keep) {
-        const prevScroll = keep ? $('sheet').scrollTop : 0;
-        let all = histEntries(); if (filterId !== undefined && !keep) { histState.filter = filterId && all.some(x => x.goal === filterId) ? filterId : 0; histState.days = 14; }
-        const goals = [...new Set(all.map(x => x.goal))].map(g => ({ g, title: logInfo(g).title })).sort((a, b) => a.title.localeCompare(b.title));
-        if (histState.filter && !goals.some(x => x.g === histState.filter)) histState.filter = 0;
-        if (histState.filter) all = all.filter(x => x.goal === histState.filter);
-        all.sort((a, b) => (b.n - a.n) || (b.ts - a.ts));
-        const minN = D.todayN - histState.days + 1, shown = all.filter(x => x.n >= minN), older = all.length - shown.length;
-        const days = []; shown.forEach(x => { let d = days[days.length - 1]; if (!d || d.day !== x.day) { d = { day: x.day, list: [] }; days.push(d); } d.list.push(x); });
-        const hd = d => { const by = {}, logs = d.list.filter(x => x.k === 'log'); logs.forEach(x => { const u = uOf(x); by[u] = (by[u] || 0) + x.e.qty; });
-            const nm = keyDate(d.day).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', ''); return `${nm}${logs.length ? ' · ' + Object.keys(by).map(u => N(by[u]) + ' ' + u).join(', ') + ' · ' + (logs.length === 1 ? '1 entry' : logs.length + ' entries') : ''}`; };
-        const tm = ts => new Date(ts).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
-        const row = x => { const inf = logInfo(x.goal);
-            if (x.k === 'pos') return `<div class="hl-row hl-pos" data-hid="${x.id}"><div class="hl-main"><span class="hl-t">${tm(x.ts)}</span> <b>${esc(inf.title)}</b><div class="hint">Note: last ${unitWord(inf.unit, 1)} finished was ${N(x.e.page)}. Not counted as work.</div></div><div class="hl-b">${icoBtn('del', 'data-hact="del"', 'this note')}</div></div>`;
-            return `<div class="hl-row" data-hid="${x.id}"><div class="hl-main"><span class="hl-t">${tm(x.ts)}</span> <b>${esc(inf.title)}</b>${x.e.late ? '<span class="lg-late">added later</span>' : ''}<div class="hl-amt"><b>${N(x.e.qty)}</b> ${esc(uOf(x))}${x.e.sit ? ' · finished' : ''}</div></div><div class="hl-b">${icoBtn('edit', 'data-hact="edit"', 'this entry')}${icoBtn('del', 'data-hact="del"', 'this entry')}</div></div>`; };
-        sheet(`<h2>Log history</h2><p class="hint">Newest first. Fix a wrong amount or delete a wrong entry. Everything is recalculated.</p>
-            ${goals.length > 1 ? `<label class="field"><span>Show</span><select id="hl-f"><option value="0">All tasks</option>${goals.map(x => `<option value="${x.g}" ${x.g === histState.filter ? 'selected' : ''}>${esc(x.title)}</option>`).join('')}</select></label>` : ''}
-            ${days.length ? days.map(d => `<div class="hl-day">${esc(hd(d))}</div>${d.list.map(row).join('')}`).join('') : '<div class="empty"><span class="em-ico">🌱</span><b>Nothing logged in this period</b><p>Entries you log on Today will appear here.</p></div>'}
-            ${older > 0 ? `<button type="button" class="btn-line" id="hl-more">Show older (${older})</button>` : ''}
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button></div>`, box => {
-            box.scrollTop = prevScroll;
-            const f = box.querySelector('#hl-f'); if (f) f.onchange = () => { histState.filter = +f.value; histState.days = 14; historySheet(undefined, true); };
-            const mo = box.querySelector('#hl-more'); if (mo) mo.onclick = () => { histState.days += 14; historySheet(undefined, true); };
-            box.querySelectorAll('.hl-row').forEach(r => {
-                const id = +r.dataset.hid, ent = all.find(x => x.id === id); if (!ent) return;
-                const del = r.querySelector('[data-hact="del"]'), ed = r.querySelector('[data-hact="edit"]'), e0 = ent.e;
-                del.onclick = async () => {
-                    const inf0 = logInfo(ent.goal);
-                    if (!(await confirmSheet({ title: 'Delete this entry?', sub: ent.k === 'pos' ? 'This note will be removed.' : `${N(e0.qty)} ${inf0.unit} will be removed and your totals recalculated. You can undo straight after.`, ok: 'Delete', danger: true }))) { historySheet(undefined, true); return; }
-                    add({ t: 'void', target: id, del: 1 }); render(); historySheet(undefined, true); if (window.GFeel) GFeel.moment('down');
-                    const inf = logInfo(ent.goal);
-                    toast(ent.k === 'pos' ? 'Note deleted.' : `Deleted ${N(e0.qty)} ${inf.unit}. Everything is recalculated.`, () => { const c = Object.assign({}, e0); delete c.id; delete c.ts; add(c, e0.ts); render(); if ($('sheet-bg').classList.contains('show') && $('sheet').querySelector('.hl-day')) historySheet(undefined, true); });
-                };
-                if (ed) ed.onclick = () => {
-                    const amt = r.querySelector('.hl-amt'), inf = logInfo(ent.goal);
-                    amt.innerHTML = `<input type="number" inputmode="decimal" step="any" min="0" class="hl-in" value="${e0.qty}"> ${esc(inf.unit)} <button type="button" class="mini-btn btn-accent" data-hact="ok">Save</button> <button type="button" class="mini-btn" data-hact="cancel">Cancel</button>`;
-                    ed.style.display = 'none'; const inp = amt.querySelector('input'); inp.focus(); inp.select();
-                    amt.querySelector('[data-hact="cancel"]').onclick = () => historySheet(undefined, true);
-                    amt.querySelector('[data-hact="ok"]').onclick = () => {
-                        const v = parseFloat(inp.value); if (!(v > 0)) { toast('Enter an amount above 0'); return; }
-                        if (v === e0.qty) { historySheet(undefined, true); return; }
-                        add({ t: 'void', target: id }); const c = Object.assign({}, e0); delete c.id; delete c.ts; c.qty = v; const ne = add(c, e0.ts); render(); historySheet(undefined, true); if (window.GFeel) GFeel.moment('save');
-                        toast(`Changed ${N(e0.qty)} to ${N(v)} ${inf.unit}. Everything is recalculated.`, () => { add({ t: 'void', target: ne.id }); const o = Object.assign({}, e0); delete o.id; delete o.ts; add(o, e0.ts); render(); if ($('sheet-bg').classList.contains('show') && $('sheet').querySelector('.hl-day')) historySheet(undefined, true); });
-                    };
-                };
-            });
-        });
-    }
-    function trackLogSheet(id) {
-        const t = P().tracks.find(x => x.id === id); if (!t) return;
-        let amt = '', day = todayKey(); const dayKeys = [0, 1, 2].map(k => E.keyOf(D.todayN - k));
-        const isPg = /^(pages|steps|sections)$/.test(t.unit), base = Math.floor(t.done + 1e-9), pgLast = Math.min(t.total, base + 30);
-        sheet(`<h2>${esc(D.goals.get(id).title)}</h2><div class="hint">${esc(pathOf(id))}</div>
-            <div class="amt-disp" id="l-amt"></div>${isPg ? `<div class="pg-wrap"><div class="pg-cap"><span>Tap the last ${unitWord(t.unit, 1)} you finished</span><button class="pg-edit" type="button" id="pg-edit">Last finished: <b>${N(base)}</b> · change</button></div><div class="pg-row" id="pg-row"></div><div class="pg-ind" id="pg-ind"><i></i></div><div class="pg-sw" id="pg-sw"></div></div>` : ''}${daySegHtml(dayKeys)}
-            <div class="grid2 mt" id="l-q"></div>${unitCount(t.unit) ? minRowHtml() : `<div class="min-row">${startRowHtml()}</div>`}<div class="keypad" id="l-pad"></div><div class="error" id="l-e"></div><button type="button" class="pg-edit hl-link" data-act="hist" data-id="${id}">Log history</button>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="l-go">Log</button></div>`, box => {
-            const disp = box.querySelector('#l-amt'), pgRow = box.querySelector('#pg-row');
-            const selOf = () => { const q = parseFloat(amt); return q > 0 && Math.abs(q - Math.round(q)) < 1e-9 ? base + Math.round(q) : 0; };
-            // a strip of short, wide pages: about five show at once, swipe for up to 30 ahead. Built once so the swipe position is kept.
-            const pgInd = box.querySelector('#pg-ind'), pgSw = box.querySelector('#pg-sw');
-            if (pgRow) {
-                let h = ''; for (let n = base + 1; n <= pgLast; n++) h += `<button type="button" class="pg" data-p="${n}" data-i="${n - base - 1}" aria-label="${unitWord(t.unit, 1)} ${n}"><i>${n}</i></button>`;
-                pgRow.innerHTML = h;
-                const ind = () => { const w = pgRow.scrollWidth, c = pgRow.clientWidth; if (!pgInd) return; if (w <= c + 2) { pgInd.style.display = 'none'; if (pgSw) pgSw.textContent = ''; return; } const f = c / w, x = pgRow.scrollLeft / (w - c); pgInd.firstChild.style.width = (f * 100).toFixed(1) + '%'; pgInd.firstChild.style.left = (x * (1 - f) * 100).toFixed(1) + '%'; };
-                pgRow.addEventListener('scroll', ind, { passive: true }); setTimeout(ind, 30); if (pgSw && pgLast - base > 5) pgSw.textContent = 'Swipe sideways for more ' + t.unit + ' (up to ' + N(pgLast) + ')';
-            }
-            const drawPg = () => { if (!pgRow) return; const sel = selOf(); pgRow.querySelectorAll('.pg').forEach(b => b.classList.toggle('on', !!sel && +b.dataset.p <= sel)); };
-            if (pgRow) {
-                pgRow.onclick = e => {
-                    const pb = e.target.closest('[data-p]'); if (!pb) return; const n = +pb.dataset.p, sel = selOf();
-                    amt = sel === n ? '' : String(n - base); upd();
-                    if (sel !== n && window.GFeel) GFeel.moment('turn', (+pb.dataset.i) % 7);
-                };
-                const pe = box.querySelector('#pg-edit'); if (pe) pe.onclick = () => { closeSheet(); setTimeout(() => posSheet(id), 60); };
-            }
-            const upd = () => { disp.textContent = (amt || '0') + ' ' + t.unit; box.querySelectorAll('#l-day button').forEach(b => b.classList.toggle('on', dayOn(b, day))); drawPg(); };
-            const q = []; if (t.pace > 0) q.push([t.pace, `My daily ${N(t.pace)}`]); if (t.need > 0 && t.need !== t.pace) q.push([t.need, `Needed ${N(t.need)}`]); q.push([t.remaining, `All remaining ${N(t.remaining)}`]);
-            box.querySelector('#l-q').innerHTML = q.slice(0, 3).map(([v, l]) => `<button class="mini-btn" data-q="${v}">${l}</button>`).join('');
-            box.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { amt = String(Math.round(+b.dataset.q * 10) / 10); upd(); });
-            buildPad(box.querySelector('#l-pad'), k => {
-                if (k === '⌫') amt = amt.slice(0, -1); else if (k === '.') { if (amt.indexOf('.') < 0) amt = (amt || '0') + '.'; } else if (amt.replace('.', '').length < 6) amt += k;
-                if (amt === '0' || amt === '00') amt = ''; upd();
-            }, true);
-            bindDays(box, v => { day = v; }, upd); upd(); const getMin = minBind(box);
-            box.querySelector('#l-go').onclick = () => {
-                const v = parseFloat(amt); if (!(v > 0)) { box.querySelector('#l-e').textContent = 'Enter an amount'; return; }
-                const mn = getMin(day), stm = getMin.st(), ev = add(Object.assign({ t: 'log', goal: id, qty: v, day, late: day !== todayKey() }, mn > 0 ? { min: mn } : {}, stm !== null && stm !== undefined ? { st: stm } : {})); closeSheet(); render();
-                const n = P().tracks.find(x => x.id === id);
-                { const g = Math.max(n.pace || 0, n.need || 0), dq = IN ? qtyT(n, D.todayN) : 0; fx(n.finished ? 'fanfare' : (g > 0 && dq >= g - 0.05) ? (dq - v >= g - 0.05 ? 'bonus' : 'goalmet') : 'reward'); }
-                toast(`+${N(v)} ${t.unit}. ` + (n.finished ? 'Finished: the tasks are ticked done.' : `${N(n.remaining)} to go${n.need > 0 && n.deadline !== null ? ', ' + N(n.need) + ' a day to make ' + fmtDNshort(n.deadline) : ''}.`), () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
-            };
-        });
-    }
-    /* ---------- "Last page I finished": where you are. It is a note, never work done today ---------- */
-    function savePos(id, v) {
-        const t = P().tracks.find(x => x.id === id); if (!t) return; const w = unitWord(t.unit, 1);
-        const ev = add({ t: 'pos', goal: id, page: v, day: todayKey() }); render();
-        toast(`Noted. Last ${w} finished: ${N(v)}. This is not counted as work today.`, () => { add({ t: 'void', target: ev.id }); render(); });
-    }
-    function posSheet(id) {
-        const t = P().tracks.find(x => x.id === id); if (!t) return; const w = unitWord(t.unit, 1);
-        sheet(`<h2>Last ${w} I finished</h2><p>${esc(D.goals.get(id).title)}. The app counts ${N(t.done)} of ${N(t.total)} ${esc(t.unit)} so far. Tell it the last ${w} you really finished. Your ${t.unit} for today stay as logged.</p>
-            <label class="field"><span>Last ${w} finished</span><input type="number" inputmode="numeric" id="ps-n" value="${Math.floor(t.done + 1e-9)}" min="0" max="${t.total}"></label><div class="error" id="ps-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="ps-go">Save</button></div>`, box => {
-            box.querySelector('#ps-go').onclick = () => { const v = parseFloat(val(box, '#ps-n')); if (!(v >= 0) || v > t.total) { box.querySelector('#ps-e').textContent = `Enter a number from 0 to ${N(t.total)}`; return; } closeSheet(); savePos(id, Math.round(v)); };
-        });
-    }
-    // the character asks only when the app is unsure: no entry for 3 or more days on a task that is under way. At most once a day for each task.
-    function maybeAskPosition() {
-        try {
-            if (!GC || !GC.ask || screen !== 'today' || !D || !D.cfg || $('sheet-bg').classList.contains('show') || $('lock').classList.contains('show') || (GC.asking && GC.asking())) return;
-            const PP = P(), asked = prefs.posAsk || {};
-            const t = PP.tracks.find(x => !x.finished && /^(pages|steps|sections)$/.test(x.unit) && PP.active.some(p => { const o = trackOf(p.id); return o && o.id === x.id; }) && x.lastLogN !== null && D.todayN - Math.max(x.lastLogN, x.posN === null ? -1e9 : x.posN) >= 3 && asked[x.id] !== todayKey());
-            if (!t) return; prefs.posAsk = Object.assign({}, asked, { [t.id]: todayKey() }); persist();
-            const w = unitWord(t.unit, 1);
-            GC.ask(`What is the last ${w} you finished in ${D.goals.get(t.id).title}?`, { value: Math.floor(t.done + 1e-9), max: t.total, onSave: v => savePos(t.id, Math.round(v)) });
-        } catch (e) {}
-    }
-
-    /* ---------- speed: how much you do in one hour, learned from your logs (see speed.js) ---------- */
-    const spd = () => D.__sp || (D.__sp = window.Speed ? Speed.build(D.events, D.goals, Date.now()) : new Map());
-    const minRowHtml = () => `<div class="min-row"><div class="set-title">How long did it take? <span class="muted">Optional</span></div><div class="min-chips" id="l-min">${[[30, '30 min'], [60, '1 hour'], [90, '1½ hours'], [120, '2 hours']].map(([v, l]) => `<button type="button" class="mini-btn" data-m="${v}" aria-pressed="false">${l}</button>`).join('')}<button type="button" class="mini-btn" data-m="other" aria-pressed="false">Other</button></div><label class="field" id="l-min-o" hidden><span>Minutes</span><input type="number" inputmode="numeric" id="l-min-v" placeholder="45"></label>${startRowHtml()}</div>`;
-    /* "When did you start?": a digital clock (12 hour, am/pm). Today's sitting length is then exact: now minus the start. */
-    const startRowHtml = () => `<div class="st-row"><button type="button" class="mini-btn" id="st-open" aria-expanded="false">Set start time</button><div class="st-box" id="st-box" hidden><div class="st-clock" aria-live="polite"><span id="st-read">4:10</span><small id="st-ap">pm</small></div><div class="st-pick"><select class="set-select" id="st-h" aria-label="Hour">${[12,1,2,3,4,5,6,7,8,9,10,11].map(h => `<option value="${h}">${h}</option>`).join('')}</select><b>:</b><select class="set-select" id="st-m" aria-label="Minutes">${Array.from({ length: 12 }, (_, i) => `<option value="${i * 5}">${String(i * 5).padStart(2, '0')}</option>`).join('')}</select><div class="seg" id="st-seg"><button type="button" data-ap="am">am</button><button type="button" data-ap="pm">pm</button></div></div><div class="hint" id="st-note"></div><button type="button" class="link-btn" id="st-clear">Clear start time</button></div></div>`;
-    function startBind(box, pre) {
-        const open = box.querySelector('#st-open'), bx = box.querySelector('#st-box'); if (!open) return { get: () => null };
-        const H = box.querySelector('#st-h'), M = box.querySelector('#st-m'), seg = box.querySelector('#st-seg'), note = box.querySelector('#st-note');
-        let on = false, ap = 'pm';
-        const mins = () => ((+H.value % 12) + (ap === 'pm' ? 12 : 0)) * 60 + (+M.value);
-        const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
-        const paint = () => {
-            box.querySelector('#st-read').textContent = H.value + ':' + String(M.value).padStart(2, '0'); box.querySelector('#st-ap').textContent = ap;
-            seg.querySelectorAll('button').forEach(b => { const q = b.dataset.ap === ap; b.classList.toggle('on', q); b.setAttribute('aria-pressed', q ? 'true' : 'false'); });
-            const d = nowMin() - mins(); note.textContent = d > 0 && d <= 600 ? 'That is ' + (d >= 60 ? Math.floor(d / 60) + ' h ' + (d % 60 ? d % 60 + ' min' : '') : d + ' min') + ' so far.' : 'The start must be earlier than now. For another day, choose the minutes above.';
-            open.textContent = on ? 'Started at ' + H.value + ':' + String(M.value).padStart(2, '0') + ' ' + ap : 'Set start time';
-        };
-        open.onclick = () => {
-            if (!on) { on = true; const d = pre >= 0 ? new Date(new Date().setHours(Math.floor(pre / 60), pre % 60, 0, 0)) : new Date(Date.now() - 30 * 6e4); let h = d.getHours(); ap = h >= 12 ? 'pm' : 'am'; H.value = String(h % 12 || 12); M.value = String(Math.floor(d.getMinutes() / 5) * 5); }
-            bx.hidden = !bx.hidden; open.setAttribute('aria-expanded', bx.hidden ? 'false' : 'true'); paint();
-        };
-        H.onchange = M.onchange = paint;
-        seg.onclick = e => { const b = e.target.closest('[data-ap]'); if (!b) return; ap = b.dataset.ap; paint(); };
-        box.querySelector('#st-clear').onclick = () => { on = false; bx.hidden = true; open.setAttribute('aria-expanded', 'false'); paint(); };
-        return { get: () => (on ? mins() : null), now: nowMin, open: () => { if (!on) open.onclick(); }, hide: v => { const r = box.querySelector('.st-row'); if (r) r.hidden = !!v; } };
-    }
-    function minBind(box) {
-        let m = 0; const row = box.querySelector('#l-min'), o = box.querySelector('#l-min-o'), inp = box.querySelector('#l-min-v'); if (!row) { const st0 = startBind(box, minBind.pre), z = day => { const s0 = st0.get(); if (s0 !== null && (!day || day === todayKey())) { const d = st0.now() - s0; if (d > 0 && d <= 600) return d; } return 0; }; z.st = () => st0.get(); return z; }
-        row.onclick = ev => {
-            const b = ev.target.closest('[data-m]'); if (!b) return; const same = b.classList.contains('on');
-            row.querySelectorAll('[data-m]').forEach(x => { x.classList.remove('on'); x.setAttribute('aria-pressed', 'false'); });
-            if (same) { m = 0; o.hidden = true; return; }
-            b.classList.add('on'); b.setAttribute('aria-pressed', 'true');
-            if (b.dataset.m === 'other') { o.hidden = false; m = 0; if (inp) { inp.focus(); } } else { o.hidden = true; m = +b.dataset.m; }
-        };
-        if (inp) inp.oninput = () => { m = Math.max(0, Math.min(600, Math.round(parseFloat(inp.value) || 0))); };
-        const st = startBind(box, minBind.pre);
-        const fn = day => { const s0 = st.get(); if (s0 !== null && (!day || day === todayKey())) { const d = st.now() - s0; if (d > 0 && d <= 600) return d; } return m; };
-        fn.st = () => st.get(); fn.sb = st;
-        return fn;
-    }
-    const unitCount = u => (u === 'hours' || u === 'sessions') ? null : u;
-    function speedCard(id, kind) {
-        const S = spd().get(id), g = D.goals.get(id); if (!g || !window.Speed) return '';
-        const t = P().tracks.find(x => x.id === id), nt = D.byId.get(id), unit = unitCount(t ? t.unit : g.unit); if (!unit) return '';
-        if (!S || (!S.eff && !S.A)) return `<div class="spd"><div class="set-title">Your speed</div><p class="hint">Add how much you do in one hour below, and time a few sittings when you log. The app then learns your real speed and keeps it up to date.</p></div>`;
-        const eff = S.eff, rem = t ? t.remaining : (nt ? nt.remaining : 0);
-        const badge = S.status === 'confident' ? '<span class="spd-badge ok">confident</span>' : S.status === 'learning' ? '<span class="spd-badge wait">still learning</span>' : S.status === 'pinned' ? '<span class="spd-badge">set by you</span>' : '<span class="spd-badge">your setting</span>';
-        const wk = S.weeks, have = wk.map((v, i) => [v, i]).filter(x => x[0] !== null);
-        let spark = '';
-        if (have.length >= 3) { const mx = Math.max(...have.map(x => x[0])), mn = Math.min(...have.map(x => x[0])), rg = Math.max(mx - mn, mx * 0.2, 0.1); spark = `<svg class="spd-sp" viewBox="0 0 300 48" preserveAspectRatio="none" role="img" aria-label="Your speed each week"><polyline points="${have.map(([v, i]) => `${(6 + i * 48).toFixed(0)},${(40 - (v - mn) / rg * 32).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--blue-b, #4a6fe3)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`; }
-        let trend = ''; if (have.length >= 2) { const a = have[0][0], b = have[have.length - 1][0], d = r1(b - a); if (Math.abs(d) >= 0.2) trend = `<span class="rf neutral"><i aria-hidden="true">${d > 0 ? '▲' : '▼'}</i> ${N(Math.abs(d))} ${unit} an hour since ${have.length > 3 ? 'a few weeks ago' : 'the first weeks'}</span>`; else trend = '<span class="rf neutral">– steady</span>'; }
-        const clue = (ok, txt) => `<span class="spd-clue ${ok ? 'y' : 'n'}">${txt}</span>`;
-        const clues = clue(S.nTimed >= 3, S.nTimed ? plural(S.nTimed, 'timed sitting') : 'no timed sittings yet') + (S.nUntimed >= 3 ? clue(S.usualAgrees, S.usualAgrees ? 'your usual sittings agree' : 'your usual sittings differ') : clue(false, 'too few untimed sittings')) + (S.nearSetting === null ? '' : clue(S.nearSetting, S.nearSetting ? 'close to your setting' : 'differs from your setting'));
-        let body = '';
-        if (S.status === 'confident') body = `<p class="hint">The clues agree, so the app uses this speed for your estimates.</p>`;
-        else if (S.status === 'learning') body = `<p class="hint">Nothing has changed yet. ${S.ask && S.suggest ? `Your recent timed sittings look like about <b>${N(S.suggest)} ${unit} an hour</b>.` : 'A few more timed sittings will settle it.'}</p>${S.ask && S.suggest ? `<div class="grid2"><button type="button" class="btn-line" data-act="sp-keep" data-id="${id}" data-k="${kind}">Keep ${eff ? N(eff) : 'mine'}</button><button type="button" class="btn-line btn-accent" data-act="sp-use" data-id="${id}" data-v="${S.suggest}" data-k="${kind}">Use ${N(S.suggest)}</button></div>` : ''}`;
-        else if (S.status === 'pinned') body = `<p class="hint">You set this speed yourself, so the app will not change it.</p><button type="button" class="btn-line" data-act="sp-auto" data-id="${id}" data-k="${kind}">Let the app adapt it</button>`;
-        else body = `<p class="hint">This is your own setting. Time a few sittings when you log, and the app learns your real speed.</p>`;
-        const hist = (S.adapted ? `Adapted about ${plural(S.adapted.daysAgo, 'day')} ago: ${N(S.adapted.from)} → ${N(S.adapted.to)} · <button type="button" class="link-btn" data-act="sp-undo" data-id="${id}" data-v="${S.adapted.from}" data-k="${kind}">Undo</button><br>` : '') + (S.base && S.eff && Math.abs(S.base - S.eff) > 0.04 ? `Your first setting: ${N(S.base)} ${unit} an hour` : '');
-        let proj = '';
-        if (eff && rem > 0.05) { const hrs = rem / eff, wk2 = S.avgWeek > 0 ? rem / S.avgWeek : null; proj = `<div class="spd-proj"><b>About ${N(Math.round(hrs))} ${Math.round(hrs) === 1 ? 'hour' : 'hours'} to go</b> at your speed.${wk2 ? ` At your recent amount of about ${N(Math.round(S.avgWeek))} ${unit} a week, that is ${wk2 < 1.5 ? 'about a week' : `about ${Math.max(1, Math.floor(wk2 * 0.85))} to ${Math.ceil(wk2 * 1.15)} weeks`}.` : ' A weekly estimate appears after two weeks of logs.'}</div>`; }
-        return `<div class="spd"><div class="set-title">Your speed</div><div class="spd-big"><b>${eff ? N(eff) : '–'}</b> <span>${unit} an hour</span> ${badge}</div>${spark}<div class="hint">${trend}</div><div class="spd-clues">${clues}</div>${body}${hist ? `<div class="spd-hist">${hist}</div>` : ''}${proj}</div>`;
-    }
-    const r1 = v => Math.round(v * 10) / 10;
-    function trackSheet(id) {
-        const g = D.goals.get(id); if (!g) return;
-        const t = P().tracks.find(x => x.id === id), unitDef = t ? t.unit : (g.grp === 'reading' ? 'pages' : 'steps');
-        const logs = D.logs.filter(l => l.goal === id).sort((a, b) => b.ts - a.ts).slice(0, 5);
-        const scope = [...D.pieces.list].filter(p => { let x = p.g; while (x) { if (x.id === id) return true; x = x.parent ? D.goals.get(x.parent) : null; } return false; }).filter(p => !p.done);
-        const spdSetting = (() => { const s = spd().get(id); return s && s.eff ? s.eff : (g.uph || ''); })();
-        sheet(`<h2>Daily pace</h2>${t ? speedCard(id, 'track') : ''}<p><b>${esc(g.title)}</b>. Log ${g.grp === 'reading' ? 'the pages you read' : 'the amount you finish'} each day. When the total is reached, ${scope.length > 1 ? 'all ' + scope.length + ' tasks inside are' : 'the task is'} ticked done on that day.</p>
-            <div class="grid2"><label class="field"><span>Total</span><input type="number" inputmode="decimal" id="k-n" value="${t ? t.total : ''}" placeholder="246"></label><label class="field"><span>Counted in</span><select id="k-u">${['pages', 'steps', 'sections', 'words', 'hours'].map(u => `<option ${u === unitDef ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>
-            <div class="grid2">${t && t.paceFrom === 'kids' ? `<div class="field"><span>My pace each day</span><b class="num">${N(t.pace)} ${esc(t.unit)}</b><div class="hint">Added up from its sub-tasks. Change a sub-task's pace to change this.</div><input type="hidden" id="k-p" value="${t.paceOwn > 0 ? t.paceOwn : t.pace}"></div>` : `<label class="field"><span>My pace each day</span><input type="number" inputmode="decimal" id="k-p" value="${t && t.pace ? t.pace : ''}" placeholder="15"></label>`}${t ? '<div></div>' : '<label class="field"><span>Already done</span><input type="number" inputmode="decimal" id="k-d" value="0"></label>'}</div>
-            ${scope.length ? '<label class="field check"><input type="checkbox" id="k-a" checked><span>Set the tasks\' allotted days from this pace (the first gets the days, the others one day each, because they finish together)</span></label>' : ''}
-            ${unitCount(unitDef) ? `<label class="field"><span>In one hour I usually do about</span><input type="number" inputmode="decimal" id="k-ph" value="${spdSetting}" placeholder="5"></label><div class="hint">Optional. It lets the app turn your work into hours and learn your speed.</div>` : ''}
-            <div id="k-pv"></div><div class="error" id="k-e"></div>
-            ${logs.length ? `<div class="set-title" style="margin-top:10px">Recent</div>${logs.map(l => `<div class="ledger-row"><span>${fmtK(l.day || E.localKey(l.ts))}${l.late ? '<span class="lg-late">added later</span>' : ''}</span><span><b>${N(l.qty)}</b> <button class="mini-btn" data-act="void" data-id="${l.id}">Undo</button></span></div>`).join('')}` : ''}
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="k-go">Save</button>${t ? '<button class="btn-extra" id="k-off">Remove pace</button>' : ''}</div>`, box => {
-            const pv = () => { const n = numv(box, '#k-n'), p = numv(box, '#k-p'), d = t ? t.done : (numv(box, '#k-d') || 0); const el = box.querySelector('#k-pv'); el.innerHTML = n > 0 && p > 0 ? `<div class="pinfo">${N(Math.max(0, n - d))} left at ${N(p)} a day takes ${dN(Math.ceil(Math.max(0, n - d) / p))}.</div>` : ''; };
-            box.querySelectorAll('input').forEach(i => i.oninput = pv); pv();
-            box.querySelector('#k-go').onclick = () => {
-                const n = numv(box, '#k-n'), p = numv(box, '#k-p'), u = val(box, '#k-u'), e = box.querySelector('#k-e');
-                if (!(n > 0)) { e.textContent = 'Enter the total'; return; } if (!(p > 0)) { e.textContent = 'Enter your pace per day'; return; }
-                const ph = numv(box, '#k-ph'), f = { qty: n, qunit: u, qpace: p };
-                if (ph > 0 && Math.abs(ph - (+spdSetting || 0)) > 0.04) { f.uph = ph; }
-                add({ t: 'goal', op: 'edit', gid: id, f }); if (f.uph) add({ t: 'speed', goal: id, op: 'use', rate: ph });
-                const d0 = t ? 0 : (numv(box, '#k-d') || 0); if (d0 > 0) add({ t: 'log', goal: id, qty: Math.min(d0, n), day: todayKey() });
-                const done = (t ? t.done : 0) + Math.min(d0, n), a = box.querySelector('#k-a');
-                if (a && a.checked && scope.length) { const days = Math.max(1, Math.ceil(Math.max(0, n - done) / p)); scope.forEach((q, i) => add({ t: 'goal', op: 'edit', gid: q.id, f: { pdays: i === 0 ? days : 1 } })); }
-                closeSheet(); render(); toast('Daily pace saved');
-            };
-            const off = box.querySelector('#k-off'); if (off) off.onclick = async () => { if (await confirmSheet({ title: 'Remove this daily pace?', sub: 'The pages you logged stay on record but no longer finish the tasks.', ok: 'Remove', danger: true })) { add({ t: 'goal', op: 'edit', gid: id, f: { qty: 0 } }); closeSheet(); render(); } };
-        });
-    }
-    function splitSheet(id) {
-        const p = P().byId.get(id); if (!p || p.done) return;
-        sheet(`<h2>Split into sub-sections</h2><p><b>${esc(pTitle(p))}</b> becomes several smaller tasks, each ticked done on its own day. The ${dN(p.days)} are shared out; change any of them afterwards.</p>
-            <div class="grid2"><label class="field"><span>How many sub-sections</span><input type="number" inputmode="numeric" id="x-n" value="3" min="2" max="12"></label><label class="field"><span>Days for each</span><input type="number" inputmode="numeric" id="x-d" value="${Math.max(1, Math.ceil(p.days / 3))}"></label></div>
-            <div class="error" id="x-e"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="x-go">Split</button></div>`, box => {
-            const nn = box.querySelector('#x-n'); nn.oninput = () => { const n = Math.round(+nn.value); if (n >= 2) box.querySelector('#x-d').value = Math.max(1, Math.ceil(p.days / n)); };
-            box.querySelector('#x-go').onclick = () => {
-                const n = Math.round(numv(box, '#x-n')), d = Math.round(numv(box, '#x-d')); if (!(n >= 2 && n <= 12)) { box.querySelector('#x-e').textContent = 'Choose 2 to 12 sub-sections'; return; } if (!(d >= 1)) { box.querySelector('#x-e').textContent = 'Allot at least one day'; return; }
-                add({ t: 'goal', op: 'edit', gid: id, f: { kind: 'project' } });
-                commit(id, Array.from({ length: n }, (_, i) => pc(`Sub-section ${i + 1} of ${n}`, d)));
-                if ((D.pieces.picks || []).includes(id)) { const first = [...D.goals.values()].filter(g => g.parent === id).sort((x, y) => x.id - y.id)[0]; if (first) add({ t: 'next', goal: first.id }); }
-                prefs.open = (prefs.open || []).concat([id]); persist(); closeSheet(); render(); toast(`Split into ${n}. Tick each when you finish it.`);
-            };
-        });
-    }
-    function pickSheet() {
-        const chs = [...D.goals.values()].filter(g => g.chap).sort((a, b) => a.id - b.id);
-        const open = P().open;
-        const rows = chs.map(c => { const ps = open.filter(p => p.chapter === c.id); return ps.length ? `<div class="set-title" style="margin-top:10px">${esc(c.title)}</div>${ps.slice(0, 120).map(p => `<div class="ledger-row ${p.locked ? 'is-locked' : ''}" data-act="${P().pickMode ? 'begin' : 'next'}" data-id="${p.id}" style="cursor:pointer"><span>${esc(pTitle(p))}<span class="muted"> · ${esc(pathOf(p.parent).split(' › ').slice(1, 2).join(''))} · ${hTxt(p.hrs)}</span></span><span class="muted">${p.locked ? '🔒 Locked' : 'Pick'}</span></div>`).join('')}` : ''; }).join('');
-        const loose = open.filter(p => p.chapter === null).map(p => `<div class="ledger-row" data-act="${P().pickMode ? 'begin' : 'next'}" data-id="${p.id}" style="cursor:pointer"><span>${esc(pTitle(p))}</span><span class="muted">Pick</span></div>`).join('');
-        sheet(`<h2>What will you do next?</h2><p>${P().pickMode ? 'Pick any task that is not done. Its clock starts today, and the app will ask how you want to break it down.' : 'Pick any task that is not done. It moves to the front of the chain and its clock starts the day after your current task finishes.'} Editing stays locked, and dimmed, until all reading and drafting is done.</p><div style="max-height:52vh;overflow:auto">${rows}${loose ? '<div class="set-title" style="margin-top:10px">Custom tasks</div>' + loose : ''}${!rows && !loose ? '<p class="hint">Nothing left to pick.</p>' : ''}</div><div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button></div>`);
-    }
-
-    let IN = null, quiet = false;
-    function refresh() {
-        D = E.derive(events, Date.now());
-        try { IN = window.GInsight.analyse(events, D, E); if (prefs.learnOn === false) { IN.suggestions = []; } } catch (e) { IN = null; }
-        return D;
-    }
     function render() {
         if (window.GFresh) GFresh.touch();
-        if (!render.gs && window.GSections) { render.gs = 1; GSections.init({ app: 'goal', enabled: () => prefs.smartOn !== false }); }
-        lockPass(); applyTheme(); renderBanner();
-        $('brand-sub').textContent = (prefs.greetOn ? greeting() + ' · ' : '') + fmtK(todayKey());
+        if (!render.gs && window.GSections) { render.gs = 1; GSections.init({ app: 'budget', enabled: () => prefs.smartOn !== false }); }
+        if (!$('lock').classList.contains('show') || !pinOn()) { /* render underneath too */ }
+        refresh(); applyTheme(); renderBanner();
+        $('brand-sub').textContent = (prefs.greetOn ? greeting() + ' · ' : '') + `${MONTHS[D.cur.m]} ${D.cur.y}`;
         document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.s === screen));
         document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 's-' + screen));
-        document.body.classList.toggle('still', quiet || prefs.animOn === false || reduced());
-        ({ today: renderToday, plan: renderPlan, out: renderOutlook, life: renderLife, set: renderSet })[screen]();
-        renderOrb(); countUps();
+        ({ today: renderToday, month: renderMonth, mind: renderMind, ins: renderIns, set: renderSet })[screen]();
+        renderCompanion();
     }
 
     /* ---------- Sheets ---------- */
-    const WD = [[1, 'M'], [2, 'T'], [3, 'W'], [4, 'T'], [5, 'F'], [6, 'S'], [0, 'S']];
-    function fifthSheet() {
-        const c = D.cfg || {}, F5 = D.thesis.fifth;
-        sheet(`<h2>Plan my fifth year</h2><p>The fifth year holds editing, proofreading and finalising. Whatever is left is yours.</p>
-            <div class="row"><span class="muted">Fifth year</span><b class="num">${dN(F5.days)}</b></div>
-            <div class="row"><span class="muted">Editing and proofreading (from your plan)</span><b class="num">${dN(F5.edit)}</b></div>
-            <label class="field"><span>Days kept for finalising and submission</span><input type="number" inputmode="numeric" id="f-d" min="0" max="365" value="${F5.fin}"></label>
-            <label class="field"><span>My fifth year is for…</span><input type="text" id="f-p" maxlength="120" value="${esc(c.purpose || '')}" placeholder="rest, family, finishing well, starting a life"></label>
-            <div class="hint" id="f-pv"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="f-go">Save</button></div>`, box => {
-            const pv = () => { const f = Math.max(0, Math.round(numv(box, '#f-d') || 0)), fr = F5.days - F5.edit - f; box.querySelector('#f-pv').textContent = fr >= 0 ? `${dN(fr)} stay free.` : `Over-full by ${dN(-fr)}.`; };
-            box.querySelector('#f-d').oninput = pv; pv();
-            box.querySelector('#f-go').onclick = () => {
-                add({ t: 'cfg', c: { finDays: Math.max(0, Math.round(numv(box, '#f-d') || 0)), purpose: val(box, '#f-p').trim() } });
-                closeSheet(); render(); toast('Fifth year saved');
+    function planSheet() {
+        const c = D.cur, pl = c.plan, prev = D.months.filter(m => m.plan && m.k < c.k).pop();
+        const pool0 = pl ? pl.pool : (prev ? prev.plan.pool : 31000);
+        const bank0 = D.accounts.hasBal ? Math.round(D.accounts.bank) : '', cash0 = D.accounts.hasBal ? Math.round(D.accounts.cash) : '';
+        const save0 = pl ? pl.save : 5000, allow0 = pl ? pl.allow : (D.pool.init ? D.pool.allow : 3000), min0 = D.pool.min || 500;
+        sheet(`<h2>${MONTHS[c.m]} ${c.y} plan</h2><p>Your budget plus savings cannot be more than the money you hold. Savings are set aside first.</p>
+            <div class="grid2"><label class="field"><span>Bank balance</span><input type="number" inputmode="decimal" id="p-bank" value="${bank0}" autofocus></label><label class="field"><span>Cash in hand</span><input type="number" inputmode="decimal" id="p-cash" value="${cash0}"></label></div>
+            <label class="field"><span>Monthly budget (spending pool)</span><input type="number" inputmode="decimal" id="p-pool" value="${pool0}"></label>
+            <div class="grid2"><label class="field"><span>Save first</span><input type="number" inputmode="decimal" id="p-save" value="${save0}"></label><label class="field"><span>Big-purchase pool / month</span><input type="number" inputmode="decimal" id="p-allow" value="${allow0}"></label></div>
+            <label class="field"><span>Big purchase starts at</span><input type="number" inputmode="decimal" id="p-min" value="${min0}"></label>
+            <div class="error" id="p-err"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="p-go">Save plan</button></div>`, box => {
+            box.querySelector('#p-go').onclick = () => {
+                const bank = numv(box, '#p-bank'), cash = numv(box, '#p-cash') || 0, pool = numv(box, '#p-pool'), sv = numv(box, '#p-save') || 0, allow = numv(box, '#p-allow'), mn = numv(box, '#p-min');
+                const err = t => { box.querySelector('#p-err').textContent = t; };
+                if (!isFinite(bank)) return err('Enter your bank balance');
+                if (!(pool > 0)) return err('Enter this month\'s budget');
+                if (!(allow >= 0) || !(mn > 0)) return err('Check the purchase pool numbers');
+                const money_ = bank + cash + c.spent;
+                if (pool + sv > money_ + 0.5) return err(`Budget + savings (${money(pool + sv)}) is more than the money you hold (${money(money_)}). Lower one.`);
+                const e = add({ t: 'plan', y: c.y, m: c.m, pool, bank, cash, save: sv, allow, minAmt: mn });
+                if (prefs.pendingSeed && !D.pool.init) { /* seed after the plan so carried balances survive migration */ }
+                if (prefs.pendingSeed) { const s = Object.assign({}, prefs.pendingSeed); add(s, e.ts + 1); prefs.pendingSeed = null; persist(); }
+                closeSheet(); render(); fx('save'); toast('Plan saved');
             };
         });
     }
-    function cfgSheet() {
-        const c = D.cfg || {};
-        const sel = (id, from, to, v) => `<select id="${id}">${Array.from({ length: to - from + 1 }, (_, i) => from + i).map(n => `<option ${n === v ? 'selected' : ''}>${n}</option>`).join('')}</select>`;
-        sheet(`<h2>Your timeline</h2><p>The JRF dates set the frame. Everything else is measured against it.</p>
-            <label class="field"><span>JRF start date</span><input type="date" id="c-s" value="${c.start || ''}" autofocus></label>
-            <div class="grid2"><label class="field"><span>JRF length (years)</span>${sel('c-y', 3, 6, c.years || 5)}</label><label class="field"><span>Finish the main work in (years)</span>${sel('c-t', 1, 5, c.target || 4)}</label></div>
-            <label class="field"><span>Date of birth (optional, only for the age line)</span><input type="date" id="c-b" value="${c.birth || ''}"></label>
-            <label class="field"><span>My fifth year is for…</span><input type="text" id="c-p" maxlength="120" value="${esc(c.purpose || '')}" placeholder="rest, family, finishing well, starting a life"></label>
-            <div class="error" id="c-e"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="c-go">Save</button></div>`, box => {
+    function closeMonthSheet() {
+        const pc = D.pendingClose; if (!pc) return;
+        sheet(`<h2>${MONTHS[pc.m]} left ${money(pc.left)}</h2><p>Split it: savings, the big-purchase pool, or both. Anything left over is simply released.</p>
+            <div class="grid2"><label class="field"><span>To savings</span><input type="number" inputmode="decimal" id="c-s" value="${Math.round(pc.left)}"></label><label class="field"><span>To purchase pool</span><input type="number" inputmode="decimal" id="c-p" value="0"></label></div>
+            <div class="grid2"><button class="mini-btn" data-pre="s">All savings</button><button class="mini-btn" data-pre="h">Half and half</button><button class="mini-btn" data-pre="p">All pool</button><button class="mini-btn" data-pre="n">Release</button></div>
+            <div class="error" id="c-err"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Later</button><button class="btn-primary" id="c-go">Confirm</button></div>`, box => {
+            const S = box.querySelector('#c-s'), Pp = box.querySelector('#c-p'), L = Math.round(pc.left);
+            box.querySelectorAll('[data-pre]').forEach(b => b.onclick = () => { const k = b.dataset.pre; S.value = k === 's' ? L : k === 'h' ? Math.round(L / 2) : 0; Pp.value = k === 'p' ? L : k === 'h' ? L - Math.round(L / 2) : 0; });
             box.querySelector('#c-go').onclick = () => {
-                const start = val(box, '#c-s'), years = +val(box, '#c-y'), target = +val(box, '#c-t');
-                if (!start) { box.querySelector('#c-e').textContent = 'Choose the JRF start date'; return; }
-                if (target >= years) { box.querySelector('#c-e').textContent = 'The main work must finish before the JRF ends'; return; }
-                add({ t: 'cfg', c: { start, years, target, birth: val(box, '#c-b'), purpose: val(box, '#c-p').trim(), startMode: (D.cfg && D.cfg.startMode) || 'pick' } });
-                closeSheet(); render(); toast('Timeline saved');
+                const s = Math.max(0, parseFloat(S.value) || 0), p = Math.max(0, parseFloat(Pp.value) || 0);
+                if (s + p > pc.left + 0.5) { box.querySelector('#c-err').textContent = 'That is more than what was left'; return; }
+                add({ t: 'close', y: pc.y, m: pc.m, toSave: s, toPool: p }); closeSheet(); render(); if (pc.left >= 0) { fx('fanfare'); if (GC) GC.do('celebrate', { force: true }); toast(s > 0 ? `Month closed within budget. ${money(s)} went to savings.` : 'Month closed within budget. Well done.'); } else { fx('save'); toast('Month closed'); }
             };
         });
     }
-    function taskSheet(id, parentPref) {
-        const t = id ? D.goals.get(id) : null;
-        const g = t || { title: '', unit: 'pages', total: '', perDay: '', days: E.WORK_DEFAULT.slice(), start: todayKey(), parent: parentPref || '' };
-        const days = new Set(g.days);
-        const spdSetting = id ? (() => { const s = spd().get(id); return s && s.eff ? s.eff : (g.uph || ''); })() : '';
-        sheet(`<h2>${id ? 'Edit' : 'New'} task</h2>${id ? speedCard(id, 'task') : ''}
-            <label class="field"><span>What will you do?</span><input type="text" id="t-t" value="${esc(g.title)}" placeholder="Read Gurnah, Afterlives" autofocus></label>
-            <div class="grid2"><label class="field"><span>Chapter / project</span><select id="t-p"><option value="">None</option>${D.projects.filter(p => !p.isPhase).map(p => `<option value="${p.id}" ${p.id === g.parent ? 'selected' : ''}>${esc(pathOf(p.id))}</option>`).join('')}</select></label>
-            <label class="field"><span>Counted in</span><select id="t-u">${['pages', 'words', 'hours', 'sessions', 'items'].map(u => `<option ${u === g.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></label></div>
-            <div class="grid2"><label class="field"><span>Total to do</span><input type="number" inputmode="decimal" id="t-n" value="${g.total}"></label><label class="field"><span>Each working day</span><input type="number" inputmode="decimal" id="t-d" value="${g.perDay}"></label></div>
-            <div class="grid2"><label class="field"><span>or hours a day</span><input type="number" inputmode="decimal" id="t-h" placeholder="3"></label><label class="field"><span>In one hour I do about</span><input type="number" inputmode="decimal" id="t-ph" value="${spdSetting}" placeholder="5"></label></div>
-            <div class="safe-lbl" style="margin-bottom:6px">Working days</div><div class="days-chips" id="t-days">${WD.map(([n, l]) => `<button type="button" data-d="${n}" class="${days.has(n) ? 'on' : ''}">${l}</button>`).join('')}</div>
-            ${id ? `<div class="pinfo">Started ${fmtK(g.start)}. Deadline fixed at ${fmtK(g.deadline0)}. It cannot be moved after the first day.</div>` : `<div class="grid2"><label class="field"><span>Start</span><input type="date" id="t-s" value="${g.start}"></label><label class="field"><span>Must finish by (optional)</span><input type="date" id="t-dl"></label></div>`}
-            <div id="t-pv"></div><div class="error" id="t-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="t-go">Save</button></div>`, box => {
-            const spec = () => ({ total: numv(box, '#t-n'), perDay: numv(box, '#t-d'), days: [...days], start: id ? g.start : (val(box, '#t-s') || todayKey()) });
+    function checkSheet() {
+        sheet(`<h2>Reality check</h2><p>Enter what your bank app and wallet really show. The app adjusts and remembers the difference.</p>
+            <div class="grid2"><label class="field"><span>Bank</span><input type="number" inputmode="decimal" id="k-b" value="${Math.round(D.accounts.bank)}" autofocus></label><label class="field"><span>Cash</span><input type="number" inputmode="decimal" id="k-c" value="${Math.round(D.accounts.cash)}"></label></div>
+            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="k-go">Update</button></div>`, box => {
+            box.querySelector('#k-go').onclick = () => {
+                const b = numv(box, '#k-b'), c = numv(box, '#k-c');
+                add({ t: 'check', bank: isFinite(b) ? b : null, cash: isFinite(c) ? c : null }); closeSheet(); render(); fx('save'); toast('Balances updated');
+            };
+        });
+    }
+    function xferSheet(dir) {
+        const l = dir === 'b2c' ? ['Withdraw cash', 'Bank → Cash'] : ['Deposit cash', 'Cash → Bank'];
+        sheet(`<h2>${l[0]}</h2><p>${l[1]}</p><label class="field"><span>Amount</span><input type="number" inputmode="decimal" id="x-a" autofocus></label><div class="error" id="x-e"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="x-go">Move</button></div>`, box => {
+            box.querySelector('#x-go').onclick = () => { const a = numv(box, '#x-a'); if (!(a > 0)) { box.querySelector('#x-e').textContent = 'Enter an amount'; return; } add({ t: 'xfer', dir, amt: a }); closeSheet(); render(); fx('save'); toast('Moved'); };
+        });
+    }
+    function savSheet(dir) {
+        const out = dir === 'out';
+        sheet(`<h2>${out ? 'Withdraw from savings' : 'Add to savings'}</h2><p>Savings are a promise on paper; the money stays in your bank. Now saved: ${money(D.savings)}.</p><label class="field"><span>Amount</span><input type="number" inputmode="decimal" id="s-a" autofocus></label>${out ? '<label class="field"><span>Why?</span><input type="text" id="s-n"></label>' : ''}<div class="error" id="s-e"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="s-go">Save</button></div>`, box => {
+            box.querySelector('#s-go').onclick = () => {
+                const a = numv(box, '#s-a'); if (!(a > 0)) { box.querySelector('#s-e').textContent = 'Enter an amount'; return; }
+                if (out && a > D.savings) { box.querySelector('#s-e').textContent = 'More than you have saved'; return; }
+                add({ t: 'sav', amt: out ? -a : a, note: out ? val(box, '#s-n') : '' }); closeSheet(); render(); fx(out ? 'down' : 'up'); toast(out ? 'Taken out of savings.' : `${money(a)} moved to savings. Well done.`);
+            };
+        });
+    }
+    function dayCloseSheet() {
+        const T = D.today;
+        sheet(`<h2>Close today</h2><p>You spent ${mh(T.spent)} today and have ${mh(D.P - D.cur.spent)} left this month. Is everything recorded, cash included?</p><div class="modal-actions"><button class="btn-secondary" data-act="close">Not yet</button><button class="btn-primary" id="dc">All recorded</button></div>`, box => {
+            box.querySelector('#dc').onclick = () => { const av = dayAvg(), under = av !== null && av >= 1 && T.spent <= av; add({ t: 'dayclose', day: T.key }); closeSheet(); render(); fx(under ? 'glad' : 'save'); toast(under ? 'Day closed under your average. Nicely done.' : 'Day closed'); if (GC && under) GC.do('celebrate', { force: true }); };
+        });
+    }
+
+    // layers above the sheet follow the visible screen, so the keyboard or a panned page can never push them out of view
+    function fitLayer(el) {
+        const vv = window.visualViewport; if (!vv) return;
+        const f = () => { el.style.left = vv.offsetLeft + 'px'; el.style.top = vv.offsetTop + 'px'; el.style.width = vv.width + 'px'; el.style.height = vv.height + 'px'; el.style.right = 'auto'; el.style.bottom = 'auto'; };
+        f(); vv.addEventListener('resize', f); vv.addEventListener('scroll', f);
+        new MutationObserver(() => { if (!el.isConnected) { vv.removeEventListener('resize', f); vv.removeEventListener('scroll', f); } }).observe(document.body, { childList: true });
+    }
+    /* expense entry */
+    let backdated = null;
+    function entrySheet(catId, preset) {
+        const c = D.catsById[catId]; if (!c) return;
+        if (GC) GC.pose('calc');
+        let waitShown = false;
+        let amt = preset ? String(preset) : '', acct = c.lastAcct || 'bank', need = 'want';
+        sheet(`<h2>${esc(c.icon)} ${esc(c.name)}</h2><div class="eamt" id="e-row"><span class="eamt-n priv" id="e-amt"></span><i class="eamt-line"></i><div class="eamt-r" id="e-rest"><b id="e-left"></b><small>left this month</small></div></div>
+            <div class="qchips" id="e-q"></div><div class="bk-strip" id="e-lines" hidden></div><div class="e-msg" id="e-pv" aria-live="polite"></div>
+            <div class="seg" id="e-acct"><button data-a="bank">Bank (UPI)</button><button data-a="cash">Cash</button></div>
+            <div class="ls-chips e-pills"><button type="button" class="ls-chip" id="e-pdt">When: Today ▾</button><button type="button" class="ls-chip" id="e-pls">Lasts: One-off ▾</button></div>
+            <div id="e-dt" class="e-panel" hidden></div><div id="e-ls" class="e-panel" hidden></div>
+            <div class="keypad k4" id="e-pad"></div><label class="field"><span>Note (optional)</span><input type="text" id="e-note" maxlength="60" autocomplete="off"></label>
+            <div class="ls-chips" id="e-ns"></div><div id="e-pur"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="e-go">Add</button></div>`, box => {
+            const disp = box.querySelector('#e-amt'), pv = box.querySelector('#e-pv'), rowEl = box.querySelector('#e-row'), restEl = box.querySelector('#e-rest'), purBox = box.querySelector('#e-pur'), go = box.querySelector('#e-go');
+            let purReady = false, lasts = 0, lsTouched = false, lsOther = false, when = 0, dtOpen = false;
+            let lsAll = false, dtAll = false;
+            // basket: items bought together. One question at a time: item, quantity, price.
+            const bk = { wz: false, lines: [], step: 1, cur: null, typed: '', unitsAll: false, noteAuto: true };
+            const inBk = () => bk.lines.length > 0 || bk.wz;
+            const bkSum = () => bk.lines.reduce((t, l) => t + l.p, 0), bkLive = () => bk.wz && bk.step === 3 ? (parseFloat(bk.typed) || 0) : 0;
+            const A = () => inBk() ? bkSum() + bkLive() : (parseFloat(amt) || 0);
+            const slug = t => String(t).toLowerCase().replace(/\s+/g, '-');
+            const lineNote = l => slug(l.n) + (l.qn > 0 && l.qu ? '-' + (Math.round(l.qn * 1000) / 1000) + l.qu : '') + '-' + (Math.round(l.p * 100) / 100);
+            const dueHere = (() => { try { return prefs.learnOn === false ? [] : E.basketInsights(D).due.filter(d => d.cat === c.id && d.left <= 7); } catch (x) { return []; } })();
+            // paid earlier? "When" lets you record it on the day it really happened (noon of that day); the entry then sits in that day's month
+            const dtBox = box.querySelector('#e-dt');
+            const noon = (y, m, d) => new Date(y, m, d, 12).getTime();
+            const todayD = new Date(D.now), yest = new Date(todayD.getFullYear(), todayD.getMonth(), todayD.getDate() - 1);
+            const keyIso = ts => { const d = new Date(ts); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+            const firstTs = (D.events || []).reduce((m, x) => x.t === 'exp' || x.t === 'plan' ? Math.min(m, x.ts) : m, D.now);
+            const drawDt = () => {
+                const yTs = noon(yest.getFullYear(), yest.getMonth(), yest.getDate()), last = backdated && D.now - backdated.at < 20 * 60000 ? backdated.ts : 0;
+                const chip = (v, t, on) => `<button type="button" class="ls-chip ${on ? 'on' : ''}" data-w="${v}">${t}</button>`;
+                const odd = when && when !== yTs && when !== last, more = dtAll || dtOpen || odd;
+                dtBox.innerHTML = `<div class="ls-chips">${chip(0, 'Today', !when && !dtOpen)}${chip(yTs, 'Yesterday', when === yTs && !dtOpen)}${more ? `${last && last !== yTs ? chip(last, fmtDay(last), when === last && !dtOpen) : ''}${chip('x', 'Another day', dtOpen || odd)}` : chip('more', 'More…', false)}</div>
+                    ${dtOpen || (when && when !== yTs && when !== last) ? `<label class="field"><input type="date" id="e-dti" value="${when ? keyIso(when) : ''}" max="${keyIso(D.now)}" min="${keyIso(firstTs)}"></label>` : ''}
+                    ${when ? `<div class="hint">It will be saved on ${fmtDay(when)}, in that month.${new Date(when).getMonth() !== todayD.getMonth() || new Date(when).getFullYear() !== todayD.getFullYear() ? ' That month has ended, so its total will change.' : ''}</div>` : ''}`;
+                dtBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { if (b.dataset.w === 'more') { dtAll = true; drawDt(); return; } if (b.dataset.w === 'x') { dtOpen = true; } else { dtOpen = false; when = +b.dataset.w; dtBox.hidden = true; } drawDt(); upd(); });
+                const i = dtBox.querySelector('#e-dti'); if (i) i.onchange = () => { if (!i.value) return; const [y, m, d] = i.value.split('-').map(Number); const t = noon(y, m - 1, d); when = t >= noon(todayD.getFullYear(), todayD.getMonth(), todayD.getDate()) ? 0 : t; dtOpen = false; dtBox.hidden = true; drawDt(); upd(); };
+            };
+            const lsBox = box.querySelector('#e-ls');
+            const lsOpts = [[0, 'One-off'], [30, '1 month'], [60, '2 months'], [90, '3 months']];
+            const lcache = new Map(), learned = note => { const k = note.trim().toLowerCase(); if (!lcache.has(k)) lcache.set(k, [prefs.learnOn === false ? null : E.learnLasts(D, c.id, note), E.coverOf(D, c.id, note, D.now)]); return lcache.get(k); };
+            const drawLs = () => {
+                const note = val(box, '#e-note'), [L, cv] = learned(note);
+                const opts = lsOpts.slice(); if (L && !opts.some(o => o[0] === L.d)) opts.splice(1, 0, [L.d, plural(L.d, 'day')]);
+                const topD = [0]; if (L) topD.push(L.d); [30, 90, 60].forEach(d => { if (topD.length < 3 && topD.indexOf(d) < 0) topD.push(d); });
+                if (lasts >= 2 && topD.indexOf(lasts) < 0 && !lsOther) topD[topD.length - 1] = lasts;
+                const shown = lsAll || lsOther ? opts : topD.map(d => opts.find(o => o[0] === d) || [d, plural(d, 'day')]);
+                lsBox.innerHTML = `<div class="ls-chips">${shown.map(o => `<button type="button" class="ls-chip ${!lsOther && lasts === o[0] ? 'on' : ''}" data-d="${o[0]}">${o[1]}${L && L.d === o[0] ? ' ✦' : ''}</button>`).join('')}${lsAll || lsOther ? `<button type="button" class="ls-chip ${lsOther ? 'on' : ''}" data-d="x">Other</button>` : '<button type="button" class="ls-chip" data-d="more">More…</button>'}</div>
+                    ${lsOther ? `<label class="field"><span>Number of days</span><input type="number" inputmode="numeric" id="e-lsd" min="2" value="${lasts || ''}"></label>` : ''}
+                    ${L ? `<div class="hint">✦ ${L.how === 'last' ? `You said ${esc(note.trim())} lasts ${plural(L.d, 'day')} last time.` : `Your ${esc(note.trim())} is usually bought every ${plural(L.d, 'day')}.`}</div>` : (note.trim() ? '' : '<div class="hint">Write what it is in the note (for example Perfume). The app then learns how long it lasts.</div>')}
+                    ${cv ? `<div class="pinfo">Your ${esc(note.trim())} bought on ${fmtDay(cv.l.ts)} still lasts until ${fmtDay(cv.end)} (${plural(cv.left, 'day')}).</div>` : ''}`;
+                lsBox.querySelectorAll('.ls-chip').forEach(b => b.onclick = () => { if (b.dataset.d === 'more') { lsAll = true; drawLs(); return; } lsTouched = true; if (b.dataset.d === 'x') { lsOther = true; } else { lsOther = false; lasts = +b.dataset.d; lsBox.hidden = true; } drawLs(); upd(); });
+                const o = lsBox.querySelector('#e-lsd'); if (o) o.oninput = () => { lsTouched = true; lasts = Math.max(0, Math.round(parseFloat(o.value) || 0)); upd(); };
+            };
+            const learnPick = () => { if (lsTouched) return; const L = learned(val(box, '#e-note'))[0]; lasts = L ? L.d : 0; };
+            const buildPur = a => {
+                const cnt = E.counted(D, c, a);
+                if (!prefs.purchOn || !cnt) { purBox.innerHTML = ''; purReady = false; return cnt; }
+                if (purBox.dataset.cnt !== String(cnt)) {
+                    const as = E.assess(D, c, cnt), last = as.last;
+                    const keepR = val(box, '#e-reason');
+                    purBox.dataset.cnt = String(cnt);
+                    purBox.innerHTML = `<div class="pinfo">Big purchase: ${money(cnt)} counts. Pool has ${money(as.poolBal)}.${last ? ` Last ${esc(c.name)} purchase: ${money(last.total)} on ${fmtDay(last.ts)}.` : ''}</div>
+                        ${as.blocked ? `<div class="pwarn">${as.poolShort ? `Not enough in the pool. It reaches ${money(as.opens.bal)} on ${fmtDay(as.opens.ts)}.` : ''} ${as.cdNow > 0 ? `${esc(c.name)} is waiting ${plural(as.cdNow, 'more day')}.` : ''}</div>` : (as.cdAfter > 0 ? `<div class="pinfo">After this, ${esc(c.name)} waits ${plural(as.cdAfter, 'day')} (until ${fmtDay(D.now + as.cdAfter * DAY)}).</div>` : '')}
+                        <div class="seg" id="e-need" style="margin-bottom:8px"><button data-n="need">Need</button><button data-n="want" class="on">Want</button></div>
+                        <label class="field"><span>Why this purchase? (required)</span><textarea id="e-reason" placeholder="A real reason, in your own words"></textarea></label>
+                        ${as.blocked ? '<label class="field check"><input type="checkbox" id="e-emg"><span>This is an emergency</span></label>' : ''}`;
+                    purBox.querySelectorAll('#e-need button').forEach(b => b.onclick = () => { need = b.dataset.n; purBox.querySelectorAll('#e-need button').forEach(x => x.classList.toggle('on', x === b)); });
+                    purBox.querySelectorAll('textarea,input').forEach(x => x.oninput = upd);
+                    if (keepR && purBox.querySelector('#e-reason')) purBox.querySelector('#e-reason').value = keepR;
+                }
+                purReady = true; return cnt;
+            };
             const upd = () => {
-                const hh = numv(box, '#t-h'), ph = numv(box, '#t-ph');
-                if (hh > 0 && ph > 0 && document.activeElement && ['t-h', 't-ph'].indexOf(document.activeElement.id) >= 0) box.querySelector('#t-d').value = Math.round(hh * ph * 10) / 10;
-                const s = spec(), dl = id ? g.deadline0 : val(box, '#t-dl'), pv = box.querySelector('#t-pv');
-                let html = '';
-                if (s.total > 0 && !(s.perDay > 0) && dl) { const need = Math.ceil(E.perDayFor(s, dl, D.leave, todayKey()) * 10) / 10; html = `<div class="pinfo">To finish by ${fmtK(dl)} you need ${N(need)} a day.</div>`; }
-                else if (s.total > 0 && s.perDay > 0) {
-                    const p = E.planPreview(s, D.leave, todayKey());
-                    if (p && p.finish) { html = `<div class="pinfo">At ${N(s.perDay)} a day on your working days you finish on ${fmtK(p.finish)}.</div>`; if (dl && E.dn(p.finish) > E.dn(dl)) { const need = Math.ceil(E.perDayFor(s, dl, D.leave, todayKey()) * 10) / 10; html += `<div class="pwarn">That is ${dN(E.dn(p.finish) - E.dn(dl))} after your deadline. You would need ${N(need)} a day.</div>`; } }
+                const a = A();
+                disp.textContent = inBk() ? '₹' + (Math.round(a * 100) / 100) : amt ? '₹' + amt : '₹0';
+                const showRest = a > 0 && !!D.P && !when; rowEl.classList.toggle('on', showRest);
+                box.querySelector('#e-pdt').textContent = 'When: ' + (when ? fmtDay(when) : 'Today') + ' ▾'; box.querySelector('#e-pdt').classList.toggle('on', !!when);
+                box.querySelector('#e-pls').textContent = 'Lasts: ' + (lasts >= 2 ? (lsOpts.find(o => o[0] === lasts) || [0, plural(lasts, 'day')])[1] : 'One-off') + ' ▾'; box.querySelector('#e-pls').classList.toggle('on', lasts >= 2);
+                box.querySelectorAll('#e-acct button').forEach(b => b.classList.toggle('on', b.dataset.a === acct));
+                let ok = a > 0, label = 'Add';
+                const slot = (t, lv) => { pv.className = 'e-msg ' + (t ? 'on ' : '') + (lv || ''); if (t) pv.textContent = t; };
+                let bkMsg = ''; if (bk.wz) { if (bk.step === 3 && bk.cur && bkLive() > 0) { const pn = E.priceNote(D, c.id, bk.cur.n, bk.cur.qn, bk.cur.qu, bkLive()); if (pn) bkMsg = `${bk.cur.n} costs ${pn.pct > 0 ? 'more' : 'less'} than usual: ${Math.abs(Math.round(pn.pct))}% ${pn.pct > 0 ? 'above' : 'below'} your usual ₹${fmt2(Math.round(pn.usual))} per ${pn.per}.`; } else if (bk.step === 1 && dueHere.length) { const d = dueHere[0]; bkMsg = `${d.name} is usually bought every ${plural(d.gap, 'day')}: ${d.left <= 0 ? 'due now' : 'due in ' + plural(d.left, 'day')}.`; } }
+                { const wm = document.getElementById('wz-msg'); if (wm) { wm.textContent = bkMsg; wm.className = 'e-msg ' + (bkMsg ? 'on' : ''); } }
+                const cvr = learned(val(box, '#e-note'))[1], cvTxt = cvr ? `Your ${val(box, '#e-note').trim()} still lasts until ${fmtDay(cvr.end)} (${plural(cvr.left, 'day')}).` : '';
+                if (a > 0 && D.P && when) slot(`Saved on ${fmtDay(when)}. It counts in that month, and your balance drops now.`, 'ok');
+                else if (a > 0 && D.P) {
+                    const dd = new Date(D.now), dleft = new Date(dd.getFullYear(), dd.getMonth() + 1, 0).getDate() - dd.getDate() + 1, eff = lasts >= 2 ? a * Math.min(lasts, dleft) / lasts : a;
+                    const p = E.preview(D, c.id, eff), lv = p.level;
+                    const msgs = []; if (bkMsg) msgs.push(bkMsg);
+                    box.querySelector('#e-left').textContent = (p.leftAfter < 0 ? '−' : '') + money(Math.abs(p.leftAfter)); restEl.className = 'eamt-r ' + (p.leftAfter < 0 ? 'bad' : lv === 'risk' || lv === 'tight' ? 'warn' : 'ok');
+                    if (lasts >= 2) msgs.push(`Lasts ${plural(lasts, 'day')}: this month counts ${money(eff)}, the rest is spread ahead.`);
+                    if (cvTxt) msgs.push(cvTxt);
+                    if (p.overLimit > 0) msgs.push(`${esc(c.name)} passes its limit by ${money(p.overLimit)}.`);
+                    if (lv === 'broken') msgs.push('This breaks your monthly budget: it is more than what is left.'); else if (lv === 'risk') msgs.push('Risky: you would be well ahead of the calendar.'); else if (lv === 'tight') msgs.push('A little ahead of the calendar.');
+                    slot(msgs.join(' '), prefs.warnOn ? lv : 'ok');
+                    if (lv === 'broken') label = 'Add anyway';
+                } else slot(a > 0 ? bkMsg : (bkMsg || cvTxt), 'ok');
+                if (rowEl.classList.contains('on')) requestAnimationFrame(() => { disp.style.transform = `translateX(${-(restEl.getBoundingClientRect().width + 40) / 2}px)`; }); else disp.style.transform = '';
+                const cnt = a > 0 ? buildPur(a) : (purBox.innerHTML = '', purBox.dataset.cnt = '', 0);
+                if (cnt && prefs.purchOn) {
+                    const as = E.assess(D, c, cnt), emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked, rs = (val(box, '#e-reason') || '').trim();
+                    if (as.blocked && !emg && need === 'want') { ok = false; if (!waitShown) { waitShown = true; fx('stop'); if (GC) { GC.pose('none'); GC.do('wait', { force: true }); } } }
+                    if (rs.length < 5) ok = false;
+                    
+                    if (as.blocked && !emg && need === 'want') label = 'Blocked';
                 }
-                pv.innerHTML = html;
+                go.disabled = !ok; go.style.opacity = ok ? '' : '0.45'; go.textContent = label;
             };
-            box.querySelectorAll('input,select').forEach(x => x.oninput = upd);
-            box.querySelectorAll('#t-days button').forEach(b => b.onclick = () => { const n = +b.dataset.d; if (days.has(n)) days.delete(n); else days.add(n); b.classList.toggle('on', days.has(n)); upd(); });
-            upd();
-            box.querySelector('#t-go').onclick = () => {
-                const err = m => { box.querySelector('#t-e').textContent = m; };
-                const title = val(box, '#t-t').trim(); if (!title) return err('Give the task a name');
-                const s = spec(); if (!(s.total > 0)) return err('Enter the total amount');
-                if (!days.size) return err('Choose at least one working day');
-                const dl = id ? g.deadline0 : val(box, '#t-dl');
-                let perDay = s.perDay;
-                if (!(perDay > 0)) { if (!dl) return err('Enter the daily amount, or a finish-by date'); perDay = Math.ceil(E.perDayFor(s, dl, D.leave, todayKey()) * 10) / 10; }
-                const f = { title, parent: +val(box, '#t-p') || null, unit: val(box, '#t-u'), total: s.total, perDay, days: [...days] };
-                const ph = numv(box, '#t-ph'); if (ph > 0 && Math.abs(ph - (+spdSetting || 0)) > 0.04) f.uph = ph;
-                if (id) { add({ t: 'goal', op: 'edit', gid: id, f }); if (f.uph) add({ t: 'speed', goal: id, op: 'use', rate: f.uph }); }
-                else {
-                    const p = E.planPreview({ total: s.total, perDay, days: s.days, start: s.start }, D.leave, todayKey());
-                    add({ t: 'goal', op: 'add', g: Object.assign({ id: D.nextGoalId, kind: 'task', start: s.start, deadline0: dl || (p && p.finish) }, f) });
-                }
-                closeSheet(); render(); toast('Task saved');
+            const padEl = box.querySelector('#e-pad');
+            const padHTML = '<button type="button" data-k="1">1</button>'.replace('1', '1');
+            const padKeys = id => ['1','2','3','4','5','6','7','8','9','.','0'].map(k => `<button type="button" data-k="${k}">${k}</button>`).join('') + `<span></span><button type="button" class="kb" data-k="⌫" aria-label="Delete">⌫</button><button type="button" class="kn btn-accent" data-k="next" id="${id}">+ item</button>`;
+            padEl.innerHTML = padKeys('e-kn');
+            const typeInto = (t, k, maxLen) => { if (k === '.') return t.indexOf('.') < 0 ? (t || '0') + '.' : t; if (t.replace('.', '').length >= maxLen || /\.\d\d$/.test(t)) return t; t += k; return t === '0' || t === '00' ? '' : t; };
+            const bar = box.querySelector('#e-lines');
+            const drawLines = () => { const has = bk.lines.length > 0; bar.hidden = !has; box.querySelector('#e-q').hidden = has;
+                bar.innerHTML = bk.lines.map((l, i) => `<div class="bk-card"><b>${esc(l.n)}</b><span>${l.ql ? esc(l.ql) + ' · ' : ''}₹${fmt2(l.p)}</span><i data-rm="${i}" role="button" aria-label="Remove ${esc(l.n)}">×</i></div>`).join('');
+                bar.querySelectorAll('[data-rm]').forEach(x => x.onclick = () => { bk.lines.splice(+x.dataset.rm, 1); setNote(); drawLines(); drawNs(); upd(); }); };
+            padEl.onclick = ev => { const b = ev.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k;
+                if (k === 'next') return openWizard();
+                if (k === '⌫') { if (bk.lines.length) { bk.lines.pop(); setNote(); drawLines(); drawNs(); } else { amt = amt.slice(0, -1); if (amt === '0' || amt === '00') amt = ''; } return upd(); }
+                if (bk.lines.length) { toast('The total comes from your items. Tap + item to change them.'); return; }
+                amt = typeInto(amt, k, 7); upd(); };
+            { const bs = box.querySelector('#e-pad [data-k="⌫"]'); let t = 0; if (bs) { bs.addEventListener('pointerdown', () => { t = setTimeout(() => { if (bk.lines.length) { bk.lines = []; setNote(); drawLines(); drawNs(); } else amt = ''; t = -1; upd(); }, 550); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => bs.addEventListener(ev, () => clearTimeout(t))); bs.addEventListener('click', ev => { if (t === -1) { ev.stopImmediatePropagation(); t = 0; } }, true); } }
+            const noteIn0 = box.querySelector('#e-note');
+            const setNote = () => { if (bk.noteAuto) { noteIn0.value = bk.lines.map(lineNote).join(', '); noteIn0.maxLength = 200; } };
+            const closeMore = () => { document.querySelectorAll('.wz-bg.more').forEach(x => x.remove()); document.querySelectorAll('.wz-more').forEach(x => x.remove()); if (wz) { wz.classList.remove('top'); wz.querySelector('.wz').classList.remove('showing-more'); } };
+            let wz = null, kn = null, strip = null, stepsEl = null, area = null, snap = null;
+            // "More…" and "new item": drawn INSIDE the wizard, in the same frame, so nothing can slide off the screen or hide behind the keyboard
+            const openMore = o => {
+                closeMore(); const m = document.createElement('div'); m.className = 'wz-more';
+                m.innerHTML = `<h2>${esc(o.title)}</h2>${o.search && wz ? `<input type="text" id="bm-q" placeholder="${esc(o.ph || 'Search')}" autocomplete="off" maxlength="40" enterkeyhint="done">` : ''}<div class="bm-list" id="bm-l"></div><div class="modal-actions"><button class="btn-secondary" id="bm-x">Back</button></div>`;
+                if (wz) { const box0 = wz.querySelector('.wz'); box0.classList.add('showing-more'); box0.appendChild(m); wz.classList.add('top'); }
+                else { const wrap = document.createElement('div'); wrap.className = 'wz-bg more'; const mm = document.createElement('div'); mm.className = 'modal bk-more'; mm.appendChild(m); wrap.appendChild(mm); document.body.appendChild(wrap); fitLayer(wrap); }
+                const q = m.querySelector('#bm-q'), list = m.querySelector('#bm-l'); let shown = [];
+                const draw = () => { const t = q ? q.value.trim().toLowerCase() : ''; shown = o.rows.filter(r => !t || r.t.toLowerCase().includes(t));
+                    const exact = o.rows.some(r => r.t.toLowerCase() === t);
+                    list.innerHTML = shown.map((r, i) => `<button type="button" class="bm-row" data-i="${i}"><span>${esc(r.t)}</span><small>${esc(r.s || '')}</small></button>`).join('') + (o.onNew && q && t && !exact ? `<button type="button" class="bm-row bm-new" data-n="1"><span>+ Add “${esc(q.value.trim())}”</span></button>` : '');
+                    list.querySelectorAll('.bm-row').forEach(b => b.onclick = () => { if (b.dataset.n) { const v = q.value.trim(); closeMore(); o.onNew(v); return; } const r = shown[+b.dataset.i]; closeMore(); o.onPick(r.v); }); };
+                if (q) { q.oninput = draw; q.onkeydown = ev => { if (ev.key === 'Enter' && q.value.trim() && o.onNew) { const v = q.value.trim(); closeMore(); o.onNew(v); } }; }
+                m.querySelector('#bm-x').onclick = closeMore; draw();
+                if (o.focus && q) setTimeout(() => q.focus({ preventScroll: true }), 80);
             };
-        });
-    }
-
-    function traceList(t) {
-        const items = [];
-        const unit = t.unit, p = D.goals.get(t.g.parent), proj = p ? D.projects.find(x => x.id === p.id) : null, T = D.thesis;
-        if (t.status === 'done') items.push(`Finished ${t.finishedN ? fmtDNum(t.finishedN) : ''}: ${slipText(t.slip)} against its deadline.`);
-        else {
-            const open = Math.max(t.behindQty, t.left);
-            if (t.behindQty > 0.05) items.push(`${N(t.behindQty)} ${unit} unfinished from earlier days. That is ${dN(Math.max(1, t.behindDays))} of work at ${N(t.perDay)} a day, and it is added to today.`);
-            else if (t.left > 0.05) items.push(`${N(t.left)} ${unit} left today. Anything unfinished tonight is added to tomorrow.`);
-            else items.push(t.aheadQty > 0 ? `You are ${N(t.aheadQty)} ${unit} ahead: ${dN(Math.max(0.1, t.aheadDays))} banked.` : 'Today is covered.');
-            items.push(t.never ? 'At the current pace this task never finishes.' : `At your ${t.rateActual ? 'recent' : 'committed'} pace of ${N(t.rate)} a day it finishes ${fmtDNum(t.projN)}, against a deadline of ${fmtDNum(t.deadlineN)}: ${slipText(t.slip)}.`);
-            if (proj) {
-                const sets = proj.kids.every(k => k.slip <= t.slip + 1e-9);
-                items.push(`${proj.title}: ${slipText(proj.slip)}. ${proj.kids.length > 1 ? (sets && Math.abs(t.slip) > 0.5 ? 'This is the slowest task, so it sets the chapter.' : 'Another task sets the chapter\'s timing.') : ''}`);
-                if (proj.thesis && T) items.push(`Thesis: ${T.slip > 0.5 ? `finishes ${dN(T.slip)} after the year-${D.jrf.target} target (${fmtDNum(T.projN)}).` : T.slip < -0.5 ? `finishes ${dN(-T.slip)} early.` : 'on target.'}`);
-                if (proj.thesis && T) items.push(`Fifth-year buffer: ${Math.round(T.buffer)} days of ${Math.round(T.planned)}.`);
-                else items.push('This project is outside the thesis plan, so it does not touch the buffer.');
+            const pushLine = () => { const p = parseFloat(bk.typed) || 0; if (!bk.cur || !(p > 0)) return false; bk.lines.push({ n: bk.cur.n, qn: bk.cur.qn || 0, qu: bk.cur.qu || '', ql: bk.cur.ql || '', p }); bk.cur = null; bk.typed = ''; bk.step = 1; bk.unitsAll = false; return true; };
+            const pickItem = name => { const n = E.titleCase(name); if (!n) return; bk.cur = { n, qn: 0, qu: '', ql: '' }; bk.step = n.toLowerCase() === 'misc' ? 3 : 2; bk.typed = ''; bk.unitsAll = false; drawBk(); upd(); };
+            const toQty = (qn, qu) => { bk.cur.qn = qn; bk.cur.qu = qu; bk.cur.ql = E.qLabel(qn, qu); bk.step = 3; bk.typed = ''; drawBk(); upd(); };
+            function openWizard() {
+                if (bk.wz) return;
+                snap = bk.lines.slice();
+                const a0 = parseFloat(amt) || 0; if (!bk.lines.length) { bk.noteAuto = !noteIn0.value.trim(); if (a0 > 0) { bk.lines.push({ n: 'Misc', qn: 0, qu: '', ql: '', p: a0 }); amt = ''; } }
+                bk.wz = true; bk.step = 1; bk.cur = null; bk.typed = '';
+                wz = document.createElement('div'); wz.className = 'wz-bg';
+                wz.innerHTML = `<div class="modal wz"><div class="wz-top"><b>${esc(c.icon)} ${esc(c.name)}</b><span id="wz-tot" class="priv"></span></div><div class="bk-strip" id="bk-strip"></div><div class="bk-steps" id="bk-steps"></div><div class="bk-area" id="bk-area"></div><div class="e-msg" id="wz-msg" aria-live="polite"></div><div class="keypad k4 wzpad" id="wz-pad">${padKeys('wz-kn')}</div><div class="modal-actions"><button class="btn-secondary" id="wz-x">Cancel</button><button class="btn-primary" id="wz-done">Done</button></div></div>`;
+                document.body.appendChild(wz); fitLayer(wz);
+                strip = wz.querySelector('#bk-strip'); stepsEl = wz.querySelector('#bk-steps'); area = wz.querySelector('#bk-area'); kn = wz.querySelector('#wz-kn');
+                wz.querySelector('#wz-pad').onclick = ev => { const b = ev.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k; if (k === 'next') return nextKey(); if (k === '⌫') return backKey(); if (bk.step === 1) return; bk.typed = typeInto(bk.typed, k, 6); drawBk(); upd(); };
+                wz.querySelector('#wz-x').onclick = () => closeWizard(false); wz.querySelector('#wz-done').onclick = () => closeWizard(true);
+                drawBk(); upd();
             }
-        }
-        return `<ul class="trace">${items.map(x => `<li>${x}</li>`).join('')}</ul>`;
-    }
-    function taskDetail(id) {
-        const t = D.byId.get(id); if (!t) return;
-        const ids = t.derived ? new Set(t.items.map(i => i.id)) : new Set([id]);
-        const logs = D.logs.filter(l => ids.has(l.goal)).sort((a, b) => b.ts - a.ts).slice(0, 6);
-        const nexts = t.derived ? t.items.filter(i => i.remaining > 1e-9).slice(0, 3) : [];
-        sheet(`<h2>${unitIcon(t.unit)} ${esc(t.g.title)}</h2><div class="row"><span class="muted">${esc(projTitle(t))}</span>${statusChip(t)}</div>
-            <div class="row mt"><span class="muted">Done</span><b class="num">${N(t.done)} / ${N(t.total)} ${esc(t.unit)}</b></div>
-            <div class="row"><span class="muted">Deadline (fixed)</span><b class="num">${fmtDNum(t.deadlineN)}</b></div>
-            ${nexts.length ? `<div class="set-title" style="margin-top:14px">Next up</div>${nexts.map(i => `<div class="ledger-row"><span>${esc(itemLabel(i))}</span><span>${N(i.remaining)} ${esc(i.unit)} <button class="mini-btn" data-act="log-item" data-id="${i.id}">Log</button></span></div>`).join('')}` : ''}
-            <div class="set-title" style="margin-top:14px">What this means</div>${traceList(t)}
-            <div class="grid2 mt"><button class="btn-line btn-accent" data-act="log" data-id="${id}">Log progress</button>${t.behindQty > 0.05 ? `<button class="btn-line" data-act="replan" data-id="${id}">Re-plan backlog</button>` : `<button class="btn-line" data-act="task-edit" data-id="${id}">Edit</button>`}</div>
-            ${t.behindQty > 0.05 ? `<button class="btn-line" data-act="task-edit" data-id="${id}">Edit</button>` : ''}
-            ${logs.length ? `<div class="set-title" style="margin-top:14px">Recent</div>${logs.map(l => `<div class="ledger-row"><span>${fmtK(l.day || E.localKey(l.ts))}${l.late ? '<span class="lg-late">added later</span>' : ''}</span><span><b>${N(l.qty)}</b> ${esc(t.unit)} <button class="mini-btn" data-act="void" data-id="${l.id}">Undo</button></span></div>`).join('')}` : ''}
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button>${icoBtn('del', 'data-act="task-del" data-id="${id}"', 'task')}</div>`);
-    }
-    /* logging against items (a daily plan spills into the next item) */
-    const itemLabel = i => { const p = D.goals.get(i.parent); return (p && p.title !== i.title ? p.title + ' · ' : '') + i.title; };
-    function logSheet(taskId, itemId) {
-        const t = taskId ? D.byId.get(taskId) : null; if (taskId && !t) return;
-        const derived = !!(t && t.derived);
-        let selId = derived ? ((t.next || t.items[0] || {}).id) : itemId;
-        const unit = t ? t.unit : (D.items.get(itemId) || {}).unit;
-        const title = t ? t.g.title : (D.items.get(itemId) || {}).title;
-        let amt = '', day = todayKey();
-        const dayKeys = [0, 1, 2].map(k => E.keyOf(D.todayN - k));
-        sheet(`<h2>${unitIcon(unit)} ${esc(title)}</h2>
-            ${derived ? `<label class="field"><span>Start with</span><select id="l-it">${t.items.filter(i => i.remaining > 0).map(i => `<option value="${i.id}" ${i.id === selId ? 'selected' : ''}>${esc(itemLabel(i))} (${N(i.remaining)} left)</option>`).join('')}</select></label>` : ''}
-            <div class="amt-disp" id="l-amt"></div>
-            ${daySegHtml(dayKeys)}
-            <div class="grid2 mt" id="l-q"></div>${unitCount(unit) ? minRowHtml() : `<div class="min-row">${startRowHtml()}</div>`}
-            <div class="keypad" id="l-pad"></div><div class="error" id="l-e"></div><button type="button" class="pg-edit hl-link" data-act="hist" data-id="${taskId || itemId || 0}">Log history</button>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="l-go">Log</button></div>`, box => {
-            const disp = box.querySelector('#l-amt');
-            const sel = () => D.items.get(+(box.querySelector('#l-it') ? val(box, '#l-it') : selId)) || null;
-            const chips = () => {
-                const it = sel(), q = [];
-                if (t && t.left > 0.05) q.push([t.left, `All of today: ${N(t.left)}`]);
-                if (it && it.remaining > 0) q.push([it.remaining, `Finish this item: ${N(it.remaining)}`]);
-                if (t && !derived) q.push([t.perDay, `One day's share: ${N(t.perDay)}`]);
-                box.querySelector('#l-q').innerHTML = q.slice(0, 2).map(([v, l]) => `<button class="mini-btn" data-q="${v}">${l}</button>`).join('');
-                box.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { amt = String(Math.round(+b.dataset.q * 10) / 10); upd(); });
+            function closeWizard(keep) {
+                closeMore(); if (!bk.wz) return;
+                if (keep) pushLine(); else { bk.lines = snap || []; }
+                bk.wz = false; bk.cur = null; bk.typed = ''; bk.step = 1; setNote(); if (!bk.lines.length && bk.noteAuto) noteIn0.value = '';
+                if (wz) wz.remove(); wz = null; drawLines(); drawNs(); upd();
+            }
+            function nextKey() {
+                if (bk.step === 1) return;
+                if (bk.step === 2) {
+                    const t = parseFloat(bk.typed) || 0;
+                    if (!t) { bk.step = 3; bk.typed = ''; drawBk(); upd(); return; }
+                    const us = E.unitSuggest(D, c.id, bk.cur.n); if (!us.length) { toast('Tap a unit: g, kg, ml, l, pc'); return; }
+                    toQty(t, us[0]); return;
+                }
+                if (pushLine()) { drawBk(); upd(); }
+            }
+            function backKey() {
+                if (bk.typed) { bk.typed = bk.typed.slice(0, -1); drawBk(); upd(); return; }
+                if (bk.step === 3) { bk.step = bk.cur && bk.cur.n.toLowerCase() === 'misc' ? 1 : 2; if (bk.step === 1) bk.cur = null; else { bk.cur.qn = 0; bk.cur.qu = ''; bk.cur.ql = ''; } }
+                else if (bk.step === 2) { bk.step = 1; bk.cur = null; }
+                else if (bk.lines.length) bk.lines.pop();
+                else { closeWizard(false); return; }
+                drawBk(); upd();
+            }
+            function drawBk() {
+                if (!bk.wz || !wz) return;
+                wz.querySelector('#wz-tot').textContent = '₹' + fmt2(Math.round((bkSum() + bkLive()) * 100) / 100);
+                const card = (l, i, live) => `<div class="bk-card ${live ? 'live' : ''}"><b>${esc(l.n)}</b><span>${l.ql ? esc(l.ql) + ' · ' : ''}${l.p ? '₹' + fmt2(l.p) : '…'}</span>${live ? '' : `<i data-rm="${i}" role="button" aria-label="Remove ${esc(l.n)}">×</i>`}</div>`;
+                strip.innerHTML = bk.lines.map((l, i) => card(l, i)).join('') + (bk.cur ? card(Object.assign({ p: bkLive() }, bk.cur), 0, true) : '') || '<span class="bk-empty">Your items appear here</span>';
+                strip.querySelectorAll('[data-rm]').forEach(x => x.onclick = () => { bk.lines.splice(+x.dataset.rm, 1); drawBk(); upd(); });
+                stepsEl.innerHTML = ['Item', 'Quantity', 'Price'].map((t, i) => `<button type="button" class="${i + 1 === bk.step ? 'on' : i + 1 < bk.step ? 'done' : ''}" data-s="${i + 1}" ${i + 1 > bk.step ? 'disabled' : ''}>${i + 1} ${t}</button>`).join('');
+                stepsEl.querySelectorAll('button').forEach(b => b.onclick = () => { const s = +b.dataset.s; if (s >= bk.step) return; if (s === 1) bk.cur = null; bk.step = s; bk.typed = ''; drawBk(); upd(); });
+                const chip = (cls, attrs, t, sm) => `<button type="button" class="ls-chip ${cls}" ${attrs}>${t}${sm ? `<small>${sm}</small>` : ''}</button>`;
+                const bind = (sel, fn) => area.querySelectorAll(sel).forEach(b => b.onclick = () => fn(b));
+                if (bk.step === 1) {
+                    const all = E.itemSuggest(D, c.id, 99), top = all.slice(0, 3), has = all.some(x => x.name.toLowerCase() === 'misc');
+                    area.innerHTML = `<div class="bk-q">What did you buy?</div><div class="ls-chips">${top.map((x, i) => chip('', `data-i="${i}"`, esc(x.name))).join('')}${has || top.length >= 3 ? '' : chip('', 'data-m="1"', 'Misc')}${all.length > 3 ? chip('', 'data-more="1"', 'More…') : chip('new', 'data-new="1"', '+ new item')}</div>`;
+                    bind('[data-i]', b => pickItem(top[+b.dataset.i].name)); bind('[data-m]', () => pickItem('Misc'));
+                    bind('[data-more]', () => openMore({ title: 'Items', search: true, ph: 'Search or type a new item', rows: all.map(x => ({ t: x.name, s: x.n + '×', v: x.name })).concat(has ? [] : [{ t: 'Misc', s: 'unnamed', v: 'Misc' }]), onPick: pickItem, onNew: pickItem }));
+                    bind('[data-new]', () => openMore({ title: 'New item', search: true, ph: 'Type the item name', rows: [], onPick: pickItem, onNew: pickItem, focus: true }));
+                } else if (bk.step === 2) {
+                    const qs = E.qtySuggest(D, c.id, bk.cur.n, 3), us = E.unitSuggest(D, c.id, bk.cur.n), base = bk.unitsAll ? ['g', 'kg', 'ml', 'l', 'pc', 'dozen'] : us.length ? us.slice(0, 2) : ['kg', 'g', 'pc'];
+                    area.innerHTML = `<div class="bk-q">How much ${esc(bk.cur.n.toLowerCase())}? <b>${esc(bk.typed)}</b></div><div class="ls-chips">${qs.map((x, i) => chip('', `data-q="${i}"`, esc(x.label))).join('') || '<span class="bk-empty">New item: type a number, then tap its unit</span>'}</div><div class="ls-chips">${base.map(u => chip(bk.typed ? '' : 'dim', `data-u="${u}"`, u)).join('')}${bk.unitsAll ? '' : chip('', 'data-um="1"', 'More…')}</div>`;
+                    bind('[data-q]', b => { const x = qs[+b.dataset.q]; toQty(x.qn, x.qu); });
+                    bind('[data-u]', b => { const t = parseFloat(bk.typed) || 0; if (!t) { toast('Type the number first'); return; } toQty(t, b.dataset.u); });
+                    bind('[data-um]', () => { bk.unitsAll = true; drawBk(); });
+                } else {
+                    const ps = E.priceSuggest(D, c.id, bk.cur.n, bk.cur.ql, 99), top = ps.slice(0, 3);
+                    area.innerHTML = `<div class="bk-q">${esc(bk.cur.n)}${bk.cur.ql ? ', ' + esc(bk.cur.ql) : ''}. What did it cost? <b>${bk.typed ? '₹' + esc(bk.typed) : ''}</b></div><div class="ls-chips">${top.map((x, i) => chip(String(x.p) === bk.typed ? 'on' : '', `data-p="${i}"`, '₹' + fmt2(x.p), x.usual ? 'usual' : '')).join('') || '<span class="bk-empty">New to the app: type the price</span>'}${ps.length > 3 ? chip('', 'data-more="1"', 'More…') : ''}</div>`;
+                    bind('[data-p]', b => { bk.typed = String(top[+b.dataset.p].p); drawBk(); upd(); });
+                    bind('[data-more]', () => openMore({ title: 'Earlier prices', rows: ps.map(x => ({ t: '₹' + fmt2(x.p), s: x.n + '×' + (x.usual ? ' · usual' : ''), v: x.p })), onPick: v => { bk.typed = String(v); drawBk(); upd(); } }));
+                }
+                kn.textContent = bk.step === 3 ? 'Add line' : bk.step === 2 ? (bk.typed ? 'Next' : 'Skip') : '+ item'; kn.classList.toggle('dim', bk.step === 1);
+            }
+            const toggleP = (which) => { const p = which === 'dt' ? dtBox : lsBox, o = which === 'dt' ? lsBox : dtBox; o.hidden = true; p.hidden = !p.hidden; };
+            box.querySelector('#e-pdt').onclick = () => toggleP('dt'); box.querySelector('#e-pls').onclick = () => toggleP('ls');
+            box.querySelectorAll('#e-acct button').forEach(b => b.onclick = () => { acct = b.dataset.a; upd(); });
+            const qa = quickAmounts(c.id), qbox = box.querySelector('#e-q');
+            qbox.innerHTML = qa.length ? qa.map(v => `<button type="button" class="qa-btn" data-v="${v}">₹${fmt2(v)}</button>`).join('') : '';
+            qbox.querySelectorAll('button').forEach(b => b.onclick = () => { amt = String(b.dataset.v); upd(); });
+            // earlier notes in this category, with the amount you usually paid: one tap fills the note (and the amount, if empty)
+            const bank = (() => { const m = new Map(); D.months.forEach(r => r.exps.forEach(e => { if (e.share || e.cat !== c.id || !e.note || e.kind === 'adjust' || e.kind === 'import') return; const k = e.note.trim().toLowerCase(); const o = m.get(k) || { note: e.note.trim(), n: 0, ts: 0, amts: {} }; o.n++; if (e.ts > o.ts) { o.ts = e.ts; o.note = e.note.trim(); } const a2 = Math.round(e.amt * 100) / 100; o.amts[a2] = (o.amts[a2] || 0) + 1; m.set(k, o); })); return [...m.values()].map(o => ({ note: o.note, n: o.n, ts: o.ts, usual: +Object.keys(o.amts).sort((x, y) => o.amts[y] - o.amts[x] || y - x)[0] })).sort((a, b) => b.n - a.n || b.ts - a.ts); })();
+            const nsBox = box.querySelector('#e-ns');
+            const drawNs = () => { const q = val(box, '#e-note').trim().toLowerCase(); const hit = !q || bk.lines.length || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q)).slice(0, 3), allHit = !q || bk.lines.length || prefs.learnOn === false ? [] : bank.filter(o => o.note.toLowerCase() !== q && o.note.toLowerCase().includes(q));
+                nsBox.innerHTML = hit.map((o, i) => `<button type="button" class="ls-chip" data-i="${i}">${esc(o.note)} · ₹${fmt2(o.usual)}</button>`).join('') + (allHit.length > 3 ? '<button type="button" class="ls-chip" data-more="1">More…</button>' : '');
+                const mb = nsBox.querySelector('[data-more]'); if (mb) mb.onclick = () => openMore({ title: 'Earlier notes', search: false, rows: allHit.map(o => ({ t: o.note, s: '₹' + fmt2(o.usual), v: o })), onPick: o => { noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); } });
+                nsBox.querySelectorAll('button[data-i]').forEach(b => b.onclick = () => { const o = hit[+b.dataset.i]; noteIn.value = o.note; if (!amt) amt = String(o.usual); learnPick(); drawLs(); drawNs(); upd(); }); };
+            const noteIn = box.querySelector('#e-note'); let nt = 0; noteIn.addEventListener('input', () => { if (bk.lines.length) bk.noteAuto = !noteIn.value.trim(); clearTimeout(nt); nt = setTimeout(() => { learnPick(); drawLs(); drawNs(); upd(); }, 160); });
+            learnPick(); drawLs(); drawDt(); upd();
+            go.onclick = () => {
+                const a = bk.lines.length ? Math.round(bkSum() * 100) / 100 : parseFloat(amt); if (!(a > 0) || go.disabled) return;
+                const e = { t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: a, acct, note: val(box, '#e-note'), kind: 'add' };
+                if (bk.lines.length) e.items = bk.lines.map(l => ({ n: l.n, qn: l.qn || 0, qu: l.qu || '', p: l.p }));
+                if (lasts >= 2) e.lasts = { d: lasts };
+                const cnt = prefs.purchOn ? E.counted(D, c, a) : 0;
+                if (cnt) { const emg = box.querySelector('#e-emg') && box.querySelector('#e-emg').checked; e.pur = { c: cnt, need, reason: (val(box, '#e-reason') || '').trim(), emg: !!emg }; }
+                const ev = add(e, when || undefined); if (when) backdated = { ts: when, at: Date.now() }; closeSheet(); render(); const brk = !!(D.P && D.P - D.cur.spent < 0); fx(brk || (e.pur && e.pur.emg) ? 'stop' : 'save');   // a spend is confirmed softly, never cheered
+                if (GC) GC.do(brk ? 'warn' : 'yes', { force: true });
+                                toast(`${money(a)} added to ${c.name}${when ? ' on ' + fmtDay(when) : ''}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
+                if (D.P && D.P - D.cur.spent < 0 && prefs.warnOn) setTimeout(() => toast(`Over the monthly budget by ${money(D.cur.spent - D.P)}.`), 6200);
             };
-            const upd = () => { disp.textContent = (amt || '0') + ' ' + unit; box.querySelectorAll('#l-day button').forEach(b => b.classList.toggle('on', dayOn(b, day))); };
-            buildPad(box.querySelector('#l-pad'), k => {
-                if (k === '⌫') amt = amt.slice(0, -1);
-                else if (k === '.') { if (amt.indexOf('.') < 0) amt = (amt || '0') + '.'; }
-                else if (amt.replace('.', '').length < 6) amt += k;
-                if (amt === '0' || amt === '00') amt = '';
-                upd();
-            }, true);
-            bindDays(box, v => { day = v; }, upd);
-            const itSel = box.querySelector('#l-it'); if (itSel) itSel.onchange = () => { selId = +itSel.value; chips(); };
-            chips(); upd(); const getMin = minBind(box);
-            box.querySelector('#l-go').onclick = () => {
-                const q = parseFloat(amt); if (!(q > 0)) { box.querySelector('#l-e').textContent = 'Enter an amount'; return; }
-                const made = [], mn = getMin(day), mnOf = take => (mn > 0 ? { min: Math.max(1, Math.round(mn * take / q * 10) / 10) } : {});
-                if (derived) {
-                    let list = t.items.filter(i => i.remaining > 1e-9), at = list.findIndex(i => i.id === (sel() || {}).id); if (at < 0) at = 0;
-                    list = list.slice(at); let left = q;
-                    list.forEach((i, k) => { if (left <= 1e-9) return; const take = k === list.length - 1 ? left : Math.min(i.remaining, left); made.push(add(Object.assign({ t: 'log', goal: i.id, qty: take, day, late: day !== todayKey() }, mnOf(take)))); left -= take; });
-                    if (!made.length) made.push(add(Object.assign({ t: 'log', goal: t.items[t.items.length - 1].id, qty: q, day, late: day !== todayKey() }, mnOf(q))));
-                } else made.push(add(Object.assign({ t: 'log', goal: taskId || itemId, qty: q, day, late: day !== todayKey() }, mnOf(q))));
-                closeSheet(); render();
-                { const nn = taskId ? D.byId.get(taskId) : null; fx(nn && nn.finished ? 'fanfare' : nn && nn.left < 0.05 ? 'glad' : 'up'); }
-                let m = `+${N(q)} ${unit}. `;
-                if (taskId) { const n = D.byId.get(taskId); if (n.finished) m += 'Finished. Well earned.'; else if (n.status === 'ahead') m += `${dN(Math.max(0.1, n.aheadDays))} ahead: banked.`; else if (n.status === 'behind') m += `Still ${N(n.behindQty)} behind.`; else if (n.left < 0.05) m += 'Done for today.'; else m += `${N(n.left)} to go today.`; }
-                else { const it = D.items.get(itemId); m += it && it.remaining < 0.05 ? 'Item finished.' : `${N(it ? it.remaining : 0)} left in this item.`; }
-                toast(m, () => { made.forEach(e => add({ t: 'void', target: e.id })); render(); fx('down'); });
+        }, { onClose: () => document.querySelectorAll('.wz-bg').forEach(x => x.remove()) });
+    }
+    function quickAdd(catId) {
+        const c = D.catsById[catId]; if (!c) return;
+        if (!D.P) { planSheet(); return; }
+        const p = E.preview(D, c.id, c.price);
+        if (E.counted(D, c, c.price) > 0 || p.level === 'broken' || p.level === 'risk') { entrySheet(catId, c.price); return; }
+        const ev = add({ t: 'exp', cat: c.id, name: c.name, icon: c.icon, amt: c.price, acct: c.lastAcct || 'bank', note: '', kind: 'add' });
+        render(); fx('save'); if (GC) GC.do('yes', { force: true });
+        toast(`${money(c.price)} · ${c.name}`, () => { add({ t: 'void', target: ev.id }); render(); fx('down'); });
+    }
+
+    function wantSheet() {
+        sheet(`<h2>Add a want</h2><label class="field"><span>What is it?</span><input type="text" id="w-n" autofocus></label><label class="field"><span>Price</span><input type="number" inputmode="decimal" id="w-p"></label><label class="field"><span>Category</span><select id="w-c">${D.cats.map(c => `<option value="${c.id}">${esc(c.icon)} ${esc(c.name)}</option>`).join('')}</select></label><div class="error" id="w-e"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="w-go">Add</button></div>`, box => {
+            box.querySelector('#w-go').onclick = () => {
+                const n = val(box, '#w-n').trim(), p = numv(box, '#w-p');
+                if (!n || !(p > 0)) { box.querySelector('#w-e').textContent = 'Give it a name and a price'; return; }
+                add({ t: 'want', op: 'add', wid: 'w' + Date.now(), name: n, price: p, cat: +val(box, '#w-c') }); closeSheet(); render();
             };
         });
     }
 
-    function leaveSheet() {
-        const up = D.leaves.filter(l => l.to >= todayKey()).sort((a, b) => a.from < b.from ? -1 : 1);
-        sheet(`<h2>Declare leave</h2><p>Sickness, travel, exams. Targets pause on these days. Declare today or ahead of time, never afterwards. Each leave day pushes your plan later, and the shift is counted against the buffer.</p>
-            <div class="grid2"><label class="field"><span>From</span><input type="date" id="v-f" value="${todayKey()}" min="${todayKey()}"></label><label class="field"><span>To</span><input type="date" id="v-t" value="${todayKey()}" min="${todayKey()}"></label></div>
-            <label class="field"><span>Reason</span><input type="text" id="v-r" maxlength="60"></label><div class="error" id="v-e"></div>
-            ${up.length ? `<div class="set-title">Upcoming</div>${up.map(l => `<div class="ledger-row"><span>${fmtK(l.from)}${l.to !== l.from ? ' to ' + fmtK(l.to) : ''} ${l.reason ? '· ' + esc(l.reason) : ''}</span><button class="mini-btn" data-act="void" data-id="${l.id}">Remove</button></div>`).join('')}` : ''}
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Close</button><button class="btn-primary" id="v-go">Declare</button></div>`, box => {
-            box.querySelector('#v-go').onclick = () => {
-                const f = val(box, '#v-f'), t = val(box, '#v-t'), e = box.querySelector('#v-e');
-                if (!f || !t) { e.textContent = 'Choose both dates'; return; }
-                if (f < todayKey()) { e.textContent = 'Leave cannot be declared for days already gone'; return; }
-                if (t < f) { e.textContent = 'The end date comes before the start'; return; }
-                add({ t: 'leave', from: f, to: t, reason: val(box, '#v-r').trim() }); closeSheet(); render(); toast('Leave declared');
-            };
-        });
-    }
-    function replanSheet(id) {
-        const t = D.byId.get(id); if (!t) return;
-        sheet(`<h2>Re-plan the backlog</h2><p>You have ${N(t.behindQty)} ${esc(t.unit)} unfinished. Spread it over the next working days instead of today alone. The deadline does not move, and this stays in the slip ledger forever.</p>
-            <label class="field"><span>Spread over</span><select id="r-n">${[3, 5, 7, 10, 14].map(n => `<option ${n === 7 ? 'selected' : ''}>${n}</option>`).join('')}</select></label><div class="pinfo" id="r-pv"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="r-go">Re-plan</button></div>`, box => {
-            const upd = () => { const n = +val(box, '#r-n'); box.querySelector('#r-pv').textContent = `About ${N(t.perDay + t.behindQty / n)} ${t.unit} a day for ${n} working days, then back to ${N(t.perDay)}.`; };
-            box.querySelector('#r-n').onchange = upd; upd();
-            box.querySelector('#r-go').onclick = () => { add({ t: 'replan', goal: id, day: todayKey(), spread: +val(box, '#r-n') }); closeSheet(); render(); toast('Backlog spread. The slip is on record.'); };
-        });
-    }
-    function lifeSheet(id) {
-        const l = id ? D.life.find(x => x.id === id) : { title: '', cat: 'Family & children', due: '', notes: '' };
-        sheet(`<h2>${id ? 'Edit' : 'New'} life goal</h2><label class="field"><span>Goal</span><input type="text" id="g-t" value="${esc(l.title)}" placeholder="Build a family" autofocus></label>
-            <div class="grid2"><label class="field"><span>Area</span><select id="g-c">${CATS.map(c => `<option ${c === l.cat ? 'selected' : ''}>${c}</option>`).join('')}</select></label><label class="field"><span>Aim for (optional)</span><input type="date" id="g-d" value="${l.due || ''}"></label></div>
-            <label class="field"><span>Why it matters</span><textarea id="g-n">${esc(l.notes)}</textarea></label><div class="error" id="g-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="g-go">Save</button>${id ? icoBtn('del', 'id="g-del"', 'goal') : ''}</div>`, box => {
-            box.querySelector('#g-go').onclick = () => {
-                const title = val(box, '#g-t').trim(); if (!title) { box.querySelector('#g-e').textContent = 'Give it a name'; return; }
-                const f = { title, cat: val(box, '#g-c'), due: val(box, '#g-d') || null, notes: val(box, '#g-n').trim() };
-                if (id) add({ t: 'goal', op: 'edit', gid: id, f }); else add({ t: 'goal', op: 'add', g: Object.assign({ id: D.nextGoalId, kind: 'life' }, f) });
+    /* category editor */
+    function catSheet(id) {
+        const c = id ? D.catsById[id] : { name: '', icon: '🧾', limit: 0, type: 'variable', price: 0, lump: false, defAcct: 'bank', pur: E.defaultPur('') };
+        const opts = E.ICONS.slice(); if (!opts.some(i => i[0] === c.icon)) opts.unshift([c.icon, 'Current']);
+        sheet(`<h2>${id ? 'Edit' : 'New'} category</h2>
+            <label class="field"><span>Name</span><input type="text" id="c-n" value="${esc(c.name)}"></label>
+            <div class="grid2"><label class="field"><span>Icon</span><select id="c-i">${opts.map(i => `<option value="${i[0]}" ${i[0] === c.icon ? 'selected' : ''}>${i[0]} ${i[1]}</option>`).join('')}</select></label><label class="field"><span>Monthly limit</span><input type="number" inputmode="decimal" id="c-l" value="${c.limit}"></label></div>
+            <div class="grid2"><label class="field"><span>Kind</span><select id="c-t"><option value="variable" ${c.type === 'variable' ? 'selected' : ''}>Variable amount</option><option value="fixed" ${c.type === 'fixed' ? 'selected' : ''}>Fixed price (one tap)</option></select></label><label class="field"><span>Fixed price</span><input type="number" inputmode="decimal" id="c-p" value="${c.price || ''}"></label></div>
+            <div class="grid2"><label class="field"><span>Usually paid from</span><select id="c-a"><option value="bank" ${c.defAcct === 'bank' ? 'selected' : ''}>Bank (UPI)</option><option value="cash" ${c.defAcct === 'cash' ? 'selected' : ''}>Cash</option></select></label><label class="field check" style="margin-top:22px"><input type="checkbox" id="c-u" ${c.lump ? 'checked' : ''}><span>Paid once a month (rent-like)</span></label></div>
+            <div class="set-title" style="margin-top:6px">Big-purchase rule</div>
+            <label class="field"><span>Counts as a big purchase</span><select id="c-m"><option value="never" ${c.pur.mode === 'never' ? 'selected' : ''}>Never</option><option value="always" ${c.pur.mode === 'always' ? 'selected' : ''}>Always (if above the minimum)</option><option value="above" ${c.pur.mode === 'above' ? 'selected' : ''}>Only the part above a threshold</option></select></label>
+            <div class="grid2"><label class="field"><span>Threshold</span><input type="number" inputmode="decimal" id="c-th" value="${c.pur.thr}"></label><label class="field"><span>Per</span><select id="c-pr"><option value="day" ${c.pur.per === 'day' ? 'selected' : ''}>Day</option><option value="month" ${c.pur.per === 'month' ? 'selected' : ''}>Month</option></select></label></div>
+            <label class="field"><span>Waiting allowance (per month, grows daily)</span><input type="number" inputmode="decimal" id="c-al" value="${c.pur.allow}"></label>
+            <div class="error" id="c-e"></div><div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="c-go">Save</button>${id ? icoBtn('del', 'id="c-del"', 'category') : ''}</div>`, box => {
+            box.querySelector('#c-go').onclick = () => {
+                const name = val(box, '#c-n').trim(); if (!name) { box.querySelector('#c-e').textContent = 'Give it a name'; return; }
+                const f = { name, icon: val(box, '#c-i'), limit: numv(box, '#c-l') || 0, type: val(box, '#c-t'), price: numv(box, '#c-p') || 0, defAcct: val(box, '#c-a'), lump: box.querySelector('#c-u').checked,
+                    pur: { mode: val(box, '#c-m'), thr: numv(box, '#c-th') || 0, per: val(box, '#c-pr'), allow: numv(box, '#c-al') || 0 } };
+                if (id) add({ t: 'cat', op: 'edit', cid: id, f }); else add({ t: 'cat', op: 'add', c: Object.assign({ id: D.nextCatId }, f) });
                 closeSheet(); render();
             };
-            const del = box.querySelector('#g-del');
-            if (del) del.onclick = async () => { if (await confirmSheet({ title: 'Delete "' + l.title + '"?', sub: 'Its steps are removed too.', ok: 'Delete', danger: true })) { delU(id); } };
-        });
-    }
-    function msSheet(parent) {
-        sheet(`<h2>Add a step</h2><p>One concrete action you can take, with a date. It does not depend on the thesis.</p><label class="field"><span>Step</span><input type="text" id="m-t" placeholder="Speak to my family about meeting someone" autofocus></label><label class="field"><span>By when</span><input type="date" id="m-d"></label><div class="error" id="m-e"></div>
-            <div class="modal-actions"><button class="btn-secondary" data-act="close">Cancel</button><button class="btn-primary" id="m-go">Add</button></div>`, box => {
-            box.querySelector('#m-go').onclick = () => {
-                const title = val(box, '#m-t').trim(); if (!title) { box.querySelector('#m-e').textContent = 'Describe the step'; return; }
-                add({ t: 'goal', op: 'add', g: { id: D.nextGoalId, kind: 'ms', parent, title, due: val(box, '#m-d') || null } }); closeSheet(); render();
-            };
+            const del = box.querySelector('#c-del');
+            if (del) del.onclick = async () => { if (await confirmSheet({ title: 'Delete ' + c.name + '?', sub: 'Past entries stay in your history. The category disappears from the lists.', ok: 'Delete', danger: true })) { add({ t: 'cat', op: 'del', cid: id }); render(); } };
         });
     }
     function pinSheet() {
@@ -2294,111 +1369,93 @@
     }
 
     /* ---------- Actions ---------- */
+    function nextTodayCat(id) { return id; }
     document.addEventListener('click', async ev => {
-        if (!ev.target || !ev.target.closest) return;
-        const tl = ev.target.closest('[data-tell]'); if (tl && !ev.target.closest('[data-act]')) { if (GC && GC.tell) GC.tell(tl.dataset.tell, tl.dataset.tone); else toast(tl.dataset.tell); return; }
         const nav = ev.target.closest('.nav-item');
         if (nav) { if (nav.dataset.s === 'set' && screen === 'set') setPage = ''; screen = nav.dataset.s; render(); window.scrollTo(0, 0); return; }
+        const lm = ev.target.closest('.led-meta'); if (lm && !ev.target.closest('[data-act]')) { const open = lm.classList.toggle('open'); if (lm.dataset.full) lm.innerHTML = open ? lm.dataset.full : lm.dataset.short; return; }
+        const tg = ev.target.closest('[data-tell]'); if (tg && (!ev.target.closest('[data-act]') || ev.target.closest('[data-tell-first]'))) { ev.stopPropagation(); if (GC && GC.tell) GC.tell(tg.dataset.tell, tg.dataset.tone); else toast(tg.dataset.tell); return; }
         const el = ev.target.closest('[data-act]'); if (!el) { if (ev.target === $('sheet-bg')) { const dirty = [].some.call($('sheet').querySelectorAll('input:not([type=checkbox]):not([type=range]),textarea'), i => i.value !== i.defaultValue && !i.classList.contains('hl-in')); if (dirty && !$('sheet').querySelector('[data-r]')) { toast('Your changes are not saved yet. Use Cancel to leave.'); return; } closeSheet(); } return; }
-        const act = el.dataset.act, id = +el.dataset.id;
+        const act = el.dataset.act, id = el.dataset.id;
+        if (el.matches('button.add-btn')) ev.stopPropagation();
         switch (act) {
             case 'close': closeSheet(); break;
-            case 'set-go': setPage = el.dataset.p; render(); window.scrollTo(0, 0); break;
-            case 'set-back': setPage = ''; render(); window.scrollTo(0, 0); break;
-            case 'cfg': cfgSheet(); break;
-            case 'fifth': fifthSheet(); break;
-            case 'tlog': trackLogSheet(id); break;
-            case 'hist': closeSheet(); setTimeout(() => historySheet(id || 0), 60); break;
-            case 'tset': trackSheet(id); break;
-            case 'split': splitSheet(id); break;
-            case 'pick': closeSheet(); setTimeout(pickSheet, 60); break;
-            case 'begin': closeSheet(); setTimeout(() => beginPiece(id), 60); break;
-            case 'newdaily': newDailySheet(); break;
-            case 'next': { const q = P().byId.get(id); if (D.cfg && D.cfg.order !== 'custom') add({ t: 'cfg', c: { order: 'custom' } }); add({ t: 'next', goal: id }); closeSheet(); render(); toast('Next: ' + (q ? pTitle(q) : 'chosen task')); break; }
-            case 'chap-add': D.cfg ? chapAddSheet() : cfgSheet(); break;
-            case 'chap': chapterSheet(id); break;
-            case 'grp': case 'nodeS': nodeSheet2(id); break;
-            case 'pc': pieceSheet(id); break;
-            case 'swedit': { const q = D.goals.get(id); if (q && q.kind === 'piece') pieceSheet(id); else nodeSheet2(id); break; }
-            case 'swdel': { const q = D.goals.get(id); if (!q) break; const isP = q.kind === 'piece'; (async () => { if (await confirmSheet({ title: isP ? 'Delete this task?' : 'Delete "' + q.title + '"?', sub: isP ? 'It leaves the plan. Later tasks move up.' : 'Everything inside it is removed.', ok: 'Delete', danger: true })) { delU(id); } })(); break; }
-            case 'tick': ev.stopPropagation(); tick(id); break;
-            case 'sp-use': add({ t: 'speed', goal: +id, op: 'use', rate: +el.dataset.v }); closeSheet(); render(); setTimeout(() => (el.dataset.k === 'task' ? taskSheet : trackSheet)(+id), 60); break;
-            case 'gr-kind': grKind = el.dataset.v === 'month' ? 'month' : 'week'; grBack = 0; grTouched = false; grSel = 0; renderOutlook(); break;
-            case 'gr-back': grBack = +el.dataset.v ? 1 : 0; grTouched = true; grSel = 0; renderOutlook(); break;
-            case 'gr-task': grSel = grSel === +id ? 0 : +id; renderOutlook(); break;
-            case 'sp-keep': add({ t: 'speed', goal: +id, op: 'keep' }); closeSheet(); render(); setTimeout(() => (el.dataset.k === 'task' ? taskSheet : trackSheet)(+id), 60); break;
-            case 'sp-undo': add({ t: 'speed', goal: +id, op: 'pin', rate: +el.dataset.v }); closeSheet(); render(); toast('Back to ' + N(+el.dataset.v) + ' an hour. The app will not change it until you let it.'); setTimeout(() => (el.dataset.k === 'task' ? taskSheet : trackSheet)(+id), 60); break;
-            case 'sp-auto': add({ t: 'speed', goal: +id, op: 'auto' }); closeSheet(); render(); setTimeout(() => (el.dataset.k === 'task' ? taskSheet : trackSheet)(+id), 60); break;
-            case 'piece-add': pieceAddSheet(id); break;
-            case 'move': closeSheet(); setTimeout(() => moveSheet(id), 60); break;
-            case 'sec-add2': sectionAddSheet(id); break;
-            case 'bulk-grp': { const a = P().agg.get(id); closeSheet(); if (a) bulkSheet(a.pieces.map(p => p.id), (D.goals.get(id) || {}).title || ''); break; }
-            case 'themes-add': themesSheet(id); break;
-            case 'outline': D.cfg ? outlineSheet() : cfgSheet(); break;
-            case 'custom-add': D.cfg ? customSheet() : cfgSheet(); break;
-            case 'defaults': defaultsSheet(); break;
-            case 'rebase': rebaseSheet(); break;
-            case 'toggle': { ev.stopPropagation(); const o = prefs.open || []; prefs.open = o.indexOf(id) >= 0 ? o.filter(x => x !== id) : o.concat([id]); persist(); renderPlan(); break; }
-            case 'accent': prefs.accent = el.dataset.v === 'gold' ? 'gold' : 'sapphire'; persist(); render(); break;
-            case 'tsize': prefs.tsize = el.dataset.v; persist(); applyTheme(); render(); break;
-            case 'voice': prefs.titleFont = el.dataset.v; persist(); applyTheme(); render(); break;
-            case 'look': setLook(el.dataset.v); GLook.remember(prefs); persist(); render(); break;
-            case 'pr-set': prefs.p = Object.assign({}, prefs.p, { [el.dataset.k]: el.dataset.v }); persist(); render(); break;
-            case 'task-add': D.cfg ? taskSheet(0, +el.dataset.parent || 0) : cfgSheet(); break;
-            case 'task': taskDetail(id); break;
-            case 'task-edit': { const tt = D.goals.get(id); taskSheet(id); break; }
-            case 'task-del': if (await confirmSheet({ title: 'Delete this task?', sub: 'Its progress is removed from the plan and the buffer.', ok: 'Delete', danger: true })) { delU(id); } break;
-            case 'log': logSheet(id); break;
-            case 'replan': replanSheet(id); break;
-            case 'leave': leaveSheet(); break;
-            case 'void': add({ t: 'void', target: id }); closeSheet(); render(); toast('Undone'); break;
+            case 'goto': screen = el.dataset.s; render(); window.scrollTo(0, 0); break;
+            case 'plan': planSheet(); break;
+            case 'close-month': closeMonthSheet(); break;
+            case 'check': checkSheet(); break;
+            case 'xfer': xferSheet(el.dataset.dir); break;
+            case 'sav': savSheet(el.dataset.dir || 'in'); break;
+            case 'dayclose': dayCloseSheet(); break;
+            case 'more': { moreOpen = !moreOpen; const m = $('cat-more'); if (m) { m.classList.toggle('open', moreOpen); el.setAttribute('aria-expanded', moreOpen); } break; }
             case 'line': lineBump++; renderToday(); break;
-            case 'orb': toast(orbMessage()); break;
-            case 'sugg': {
-                const s = (IN && IN.suggestions || []).find(x => x.grp === el.dataset.g); if (!s) break;
-                const made = s.pieces.map(x => add({ t: 'goal', op: 'edit', gid: x.id, f: x.toH !== null && x.toH !== undefined ? { pdays: x.to, phrs: x.toH } : { pdays: x.to } })); render();
-                toast(plural(made.length, 'task') + ' updated', () => { made.forEach(e => add({ t: 'void', target: e.id })); render(); fx('down'); }); break;
+            case 'entry': if (!D.P) planSheet(); else entrySheet(+id); break;
+            case 'quick': quickAdd(+id); break;
+            case 'rep-kind': repKind = el.dataset.v === 'month' ? 'month' : 'week'; repBack = 0; repTouched = false; repSel = 0; renderIns(); break;
+            case 'rep-back': repBack = +el.dataset.v ? 1 : 0; repTouched = true; repSel = 0; renderIns(); break;
+            case 'rep-cat': { const v = +el.dataset.id; repSel = repSel === v ? 0 : v; renderIns(); break; }
+            case 'hab-name': habitSheet(el.dataset.k); break;
+            case 'led-more': ledShow += 10; renderMonth(); break;
+            case 'led-edit': ledEdit = +id; renderMonth(); { const i = $('led-amt'); if (i) { i.focus(); i.select(); } } break;
+            case 'led-cancel': ledEdit = 0; renderMonth(); break;
+            case 'led-save': {
+                const e0 = ledFind(+id); if (!e0) { ledEdit = 0; renderMonth(); break; }
+                const v = parseFloat(($('led-amt') || {}).value); if (!(Math.abs(v) > 0) || (e0.kind !== 'adjust' && v < 0)) { toast('Enter an amount above 0'); break; }
+                const acct = ($('led-acct') || {}).value === 'cash' ? 'cash' : 'bank', note = (($('led-note') || {}).value || '').trim();
+                ledEdit = 0;
+                if (v === e0.amt && acct === e0.acct && note === (e0.note || '')) { renderMonth(); break; }
+                const over = { amt: v, acct, note }; if (e0.pur && e0.amt) over.pur = Object.assign({}, e0.pur, { c: Math.round(e0.pur.c * v / e0.amt * 100) / 100 });
+                add({ t: 'void', target: e0.id }); const ne = add(ledCopy(e0, over), e0.ts); render(); fx('save');
+                toast(`Changed ${money(e0.amt)} to ${money(v)}.`, () => { add({ t: 'void', target: ne.id }); add(ledCopy(e0), e0.ts); render(); });
+                break;
             }
             case 'deleted': deletedSheet(); break;
-            case 'goto': screen = el.dataset.s; render(); window.scrollTo(0, 0); break;
-            case 'to-today': screen = 'today'; render(); break;
-            case 'life-add': lifeSheet(0); break;
-            case 'life-edit': lifeSheet(id); break;
-            case 'ms-add': msSheet(id); break;
+            case 'led-del': {
+                const e0 = ledFind(+id); if (!e0) break;
+                confirmSheet({ title: 'Delete this entry?', sub: `${e0.name}, ${money(e0.amt)} will be removed and your totals recalculated. You can undo straight after.`, ok: 'Delete', danger: true }).then(yes => {
+                    if (!yes) return;
+                    add({ t: 'void', target: e0.id, del: 1 }); render(); fx('down');
+                    toast(`Deleted ${e0.name}, ${money(e0.amt)}.`, () => { add(ledCopy(e0), e0.ts); render(); });
+                });
+                break;
+            }
+            case 'void': add({ t: 'void', target: +id }); render(); fx('down'); toast('Entry undone'); break;
             case 'toast-undo': { const f = $('toast')._undo; $('toast').classList.remove('show'); if (f) f(); break; }
-            case 'plan-set': { const hh = +el.dataset.h; prefs.planToday = { k: todayKey(), h: hh }; prefs.planLog = (prefs.planLog || []).filter(x => x.k !== todayKey()).concat([{ k: todayKey(), h: hh }]).slice(-90); persist(); render(); break; }
-            case 'plan-skip': prefs.planToday = { k: todayKey(), h: null, skip: 1 }; persist(); render(); break;
-            case 'plan-change': prefs.planToday = null; persist(); render(); break;
             case 'b-later': prefs.remindSnooze = Date.now() + 3600e3; persist(); renderBanner(); break;
             case 'b-now': backupSheet('share'); break;
+            case 'want-add': wantSheet(); break;
+            case 'want-drop': add({ t: 'want', op: 'drop', wid: id }); render(); fx('glad'); toast('Dropped. That is money kept.'); break;
+            case 'want-buy': { const w = D.wants.find(x => x.wid === id); if (w) { add({ t: 'want', op: 'buy', wid: id }); screen = 'today'; render(); entrySheet(w.cat, w.price); } break; }
+            case 'rev': add({ t: 'rev', pid: +id, v: el.dataset.v }); render(); break;
             case 'pick-bg': $('file-bg').click(); break;
+            case 'accent': prefs.accent = el.dataset.v === 'gold' ? 'gold' : 'sapphire'; persist(); render(); break;
+            case 'tsize': prefs.tsize = el.dataset.v; persist(); themeSig = ''; applyTheme(); render(); break;
+            case 'voice': prefs.titleFont = el.dataset.v; persist(); themeSig = ''; applyTheme(); render(); break;
+            case 'look': setLook(el.dataset.v); GLook.remember(prefs); persist(); render(); break;
+            case 'pr-set': prefs.p = Object.assign({}, prefs.p, { [el.dataset.k]: el.dataset.v }); persist(); render(); break;
             case 'clear-bg': try { localStorage.removeItem(K_BG); } catch (e) {} render(); toast('Default sky restored'); break;
+            case 'cat-edit': catSheet(+id); break;
+            case 'set-go': setPage = el.dataset.p; render(); window.scrollTo(0, 0); break;
+            case 'set-back': setPage = ''; render(); window.scrollTo(0, 0); break;
+            case 'cat-add': catSheet(0); break;
             case 'pin-set': pinSheet(); break;
             case 'pin-off': if (await confirmSheet({ title: 'Remove PIN?', ok: 'Remove' })) { try { localStorage.removeItem(K_PIN); } catch (e) {} render(); } break;
             case 'backup': backupSheet(el.dataset.m); break;
             case 'restore': $('file-restore').click(); break;
             case 'restore-auto': { const a = window.R3 && R3.autoGet(); if (a) applyRestore({ events: a.events, exportedAt: a.at }); else toast('No safety copy yet'); break; }
             case 'look-save': {
-                const skip = ['pass', 'rememberPass', 'lastBackup', 'remindSnooze', 'open', 'acc', 'defDays', 'posAsk', 'pickAsked', 'lastLight', 'lastDark', 'planToday', 'planLog'], pr = {};
+                const skip = ['pass', 'rememberPass', 'lastBackup', 'remindSnooze', 'open', 'lastLight', 'lastDark', 'habitNames'], pr = {};
                 Object.keys(prefs).forEach(k => { if (skip.indexOf(k) < 0) pr[k] = prefs[k]; });
                 const rd = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
-                downloadText(JSON.stringify({ app: 'goal-manager', kind: 'look-settings', v: 1, at: Date.now(), prefs: pr, companion: rd('gc_prefs'), feel: rd('gf_prefs2') }, null, 1), 'goal-look-settings-' + todayKey() + '.json');
+                downloadText(JSON.stringify({ app: 'budget-manager', kind: 'look-settings', v: 1, at: Date.now(), prefs: pr, companion: rd('gc_prefs'), feel: rd('gf_prefs2') }, null, 1), 'budget-look-settings-' + new Date().toISOString().slice(0, 10) + '.json');
                 toast('Look settings saved'); break; }
             case 'look-load': $('file-look').click(); break;
-            case 'erase': if (await confirmSheet({ title: 'Erase everything?', sub: 'All goals, logs and settings on this phone are deleted. Back up first if unsure.', ok: 'Erase', danger: true })) {
-                [K_EV, K_PREF, K_PIN].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
-                prefs = PREF_DEFAULT(); setEvents([]); screen = 'today'; render(); toast('Erased'); } break;
+            case 'erase': if (await confirmSheet({ title: 'Erase everything?', sub: 'All entries and settings on this phone are deleted. Back up first if unsure.', ok: 'Erase', danger: true })) {
+                ['bm2_events', 'bm2_prefs', 'bm2_pin', 'budgetApp_state', 'budgetApp_history', 'budgetApp_purch', 'budgetApp_meta'].forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+                prefs = PREF_DEFAULT(); firstRun(); screen = 'today'; render(); toast('Erased'); } break;
         }
     });
     document.addEventListener('change', ev => {
-        if (!ev.target || !ev.target.closest) return;
-        const ms = ev.target.closest('[data-ms]');
-        if (ms) {
-            const gid = +ms.dataset.ms;
-            if (ms.checked) add({ t: 'done', goal: gid, day: todayKey() });
-            else { const e = events.slice().reverse().find(x => x.t === 'done' && x.goal === gid && !D.events.find(v => v.t === 'void' && v.target === x.id)); if (e) add({ t: 'void', target: e.id }); }
-            render(); return;
-        }
         const el = ev.target.closest('[data-pref]'); if (!el) return;
         const k = el.dataset.pref;
         prefs[k] = el.type === 'checkbox' ? el.checked : el.value; persist();
@@ -2428,8 +1485,8 @@
         const r = new FileReader(); r.onload = async () => {
             let o = null; try { o = JSON.parse(String(r.result)); } catch (x) {}
             if (!o || o.kind !== 'look-settings' || !o.prefs) { toast('That is not a look settings file'); return; }
-            if (!(await confirmSheet({ title: 'Restore look settings?', sub: 'Your themes, glass, fonts, sounds and Companion choices are replaced by the ones in this file. Goals and entries stay as they are.', ok: 'Restore' }))) return;
-            const skip = ['pass', 'rememberPass', 'lastBackup', 'remindSnooze', 'open', 'acc', 'defDays', 'posAsk', 'pickAsked', 'lastLight', 'lastDark', 'planToday', 'planLog'];
+            if (!(await confirmSheet({ title: 'Restore look settings?', sub: 'Your themes, glass, fonts, sounds and Companion choices are replaced by the ones in this file. Entries stay as they are.', ok: 'Restore' }))) return;
+            const skip = ['pass', 'rememberPass', 'lastBackup', 'remindSnooze', 'open', 'lastLight', 'lastDark', 'habitNames'];
             Object.keys(o.prefs).forEach(k => { if (skip.indexOf(k) < 0) prefs[k] = o.prefs[k]; });
             try { if (o.companion) localStorage.setItem('gc_prefs', JSON.stringify(o.companion)); if (o.feel) localStorage.setItem('gf_prefs2', JSON.stringify(o.feel)); } catch (x) {}
             persist(); toast('Look settings restored'); setTimeout(() => location.reload(), 700);
@@ -2439,45 +1496,43 @@
     /* ---------- Opening moments ---------- */
     function showSplash() {
         const s = $('splash'); if (!prefs.introOn || reduced()) return;
-        $('s-hi').textContent = prefs.greetOn ? greeting() : "Rustam's Goal Manager";
+        $('s-hi').textContent = prefs.greetOn ? greeting() : "Rustam's Budget Manager";
+        $('s-sub').innerHTML = D.P ? `${esc(money(D.P - D.cur.spent))} left from the pool<br>${esc(money(avgPerDay()))} a day` : 'Let\'s set up your month';
         { const v = $('app-ver'), sv = $('s-ver'); if (v && sv) sv.textContent = v.textContent; }
-        $('s-sub').textContent = !D.cfg ? "Let's set up your timeline" : (D.thesis && D.tasks.length ? `${Math.round(D.thesis.buffer)} days of buffer` : "Let's plan your work");
         s.classList.add('show');
         const close = () => { clearTimeout(showSplash._t); s.classList.remove('show'); };
-        s.onclick = close; showSplash._t = setTimeout(close, 2900);
+        s.onclick = close; showSplash._t = setTimeout(close, 3000);
     }
     let hiddenAt = 0;
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) { hiddenAt = Date.now(); return; }
-        if (pinOn() && prefs.autoLock && hiddenAt && Date.now() - hiddenAt > 60000) showLock();
+        if (pinOn() && prefs.autoLock && hiddenAt && Date.now() - hiddenAt > 60000) showLock().then(showSplash);
         if (hiddenAt && Date.now() - hiddenAt > 5 * 60000) render();
         hiddenAt = 0;
     });
     // Refresh only when you look at the app: when it comes back to the front, or at the next full hour while it is in view. No timer ticks.
-    GFresh.init({ busy: () => document.hidden || $('sheet-bg').classList.contains('show') || $('lock').classList.contains('show'), render: () => { quiet = true; try { render(); } finally { quiet = false; document.body.classList.toggle('still', prefs.animOn === false || reduced()); } } });
+    GFresh.init({ busy: () => document.hidden || $('sheet-bg').classList.contains('show') || $('lock').classList.contains('show'), render: render });
 
     async function init() {
         initStore();
-        refresh();
-        if (D && D.cfg && D.cfg.startMode !== 'pick' && !prefs.pickAsked) { prefs.pickAsked = true; add({ t: 'cfg', c: { startMode: 'pick' } }); refresh(); }
-        applyTheme();
-        if (pinOn() && hasCrypto()) showLock();
+        refresh(); applyTheme();
+        const locked = pinOn() && hasCrypto() ? showLock() : Promise.resolve();
         if (window.GBtnLook) GBtnLook.config({ prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, render: () => { if (D) render(); } });
         if (window.GLiquid) GLiquid.config({ prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, render: () => { if (D) render(); } });
-        if (window.GWizard) GWizard.config({ app: 'goal', brand: "Rustam's Goal Manager", prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, apply: () => { applyTheme(); followNow(); }, render: () => { if (D) render(); }, hasData: () => events.length > 0,
-          tour: [["Tap to learn", "Tap any graphic or number. The Companion explains it in simple words."], ["Log pages fast", "Tap + on a task, tap the last page you finished, then tap Log. The app always asks for the last page."], ["Fix a mistake", "Open Log history. Tap the pen to change an entry or the bin to delete it. You can always Undo."], ["The top banner", "It shows your last entry, and now and then a tip. Tap your last entry to see the history."], ["More", "Sections you rarely open fold under More. They come back when you open them."], ["Keep a copy", "Settings, then Backup, saves a copy of your data. You can run setup again or replay this tour in Settings."]],
+        if (window.GWizard) GWizard.config({ app: 'budget', brand: "Rustam's Budget Manager", prefs: () => prefs, set: (k, v) => { prefs[k] = v; persist(); }, apply: () => { applyTheme(); followNow(); }, render: () => { if (D) render(); }, hasData: () => events.some(e => e.t !== 'cat'),
+          tour: [["Tap to learn", "Tap any graphic or number. The Companion explains it in simple words."], ["Add spending", "Tap + on a category, type the amount, then tap Add. Your usual amounts appear as quick buttons."], ["Fix a mistake", "Open Month, then Ledger. Tap the pen to change an entry or the bin to delete it. You can always Undo."], ["The top banner", "It shows your last entry, and now and then a tip. Tap a tip to see the next one."], ["More", "Categories and sections you rarely use fold under More. They come back when you open them."], ["Keep a copy", "Settings, then Backup, saves a copy of your data. You can run setup again or replay this tour in Settings."]],
           later: [
             { id: 'pin', after: 2, text: "Do you want a PIN to keep this app private?", opts: [["set", "Set a PIN"], ["no", "No thanks"]], apply: v => { if (v === 'set') pinSheet(); }, when: () => !pinOn() },
-            { id: 'strict', after: 8, text: "Show the cost of delay and the gain of finishing early?", opts: [["both", "Show both"], ["gain", "Only the gains"], ["none", "Hide both"]], apply: v => { prefs.lossOn = v === 'both'; prefs.gainOn = v !== 'none'; persist(); }, when: () => events.filter(e => e.t === 'log').length >= 5 },
+            { id: 'dayclose', after: 4, text: "Remind me each evening to close the day?", opts: [["1", "Yes"], ["0", "No"]], apply: v => { prefs.dayCloseOn = v === '1'; persist(); } },
+            { id: 'wait', after: 5, text: "Wait 24 hours before buying things on your want list?", opts: [["1", "Yes, wait a day"], ["0", "No"]], apply: v => { prefs.waitOn = v === '1'; persist(); } },
             { id: 'lite', after: 6, text: "This phone may be slow. Use Lite mode? It removes blur and motion. You can switch it back any time.", opts: [["1", "Use Lite"], ["0", "Keep the glass"]], apply: v => { prefs.lite = v === '1'; persist(); applyTheme(); }, when: () => !prefs.lite && window.GResume && GResume.weakPhone() }
           ] });
-        const y0 = GResume.init({ key: 'gl_resume', screens: ['today','ins','life','mind','month','out','plan'], get: () => screen, set: s => { screen = s; } }); render(); GResume.restoreScroll(y0); companionReturns(); showSplash(); setTimeout(maybeAskPosition, 5200);
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(maybeAskPosition, 1800); });
-        if (window.R3) R3.init({ name: 'gl', evKey: K_EV, app: 'rustams-goals', v: 1 });
+        const y0 = GResume.init({ key: 'bm2_resume', screens: ['today','ins','life','mind','month','out','plan'], get: () => screen, set: s => { screen = s; } }); render(); GResume.restoreScroll(y0); companionReturns();
+        if (window.R3) R3.init({ name: 'bm2', evKey: K_EV, app: 'rustams-budget', v: 2 });
         if (window.GFeel) GFeel.saveButton({ save: () => { persist(); try { return !events.length || localStorage.getItem(K_EV) !== null; } catch (e) { return false; } }, backup: () => backupSheet('share') });
+        locked.then(() => { showSplash(); setTimeout(() => { if (GC && !GC.state().action) GC.do('hello', { force: true }); }, 3600); });
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     }
-    if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-    window.__gl = { get D() { return D; }, get IN() { return IN; }, E, add, render, get events() { return events; }, setScreen: s => { screen = s; render(); } };
+    window.__bm = { quickAmounts, learnInsights, setPin, showSplash, get D() { return D; }, E, add, render, get events() { return events; }, setScreen: s => { screen = s; render(); } };
     init();
 })();

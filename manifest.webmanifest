@@ -1,7 +1,7 @@
 {
-  "name": "Rustam's Goal Manager v5.2",
-  "short_name": "Goals v5.2",
-  "description": "Rustam's private, offline goal manager: commitments, consequences and buffer.",
+  "name": "Rustam's Budget Manager",
+  "short_name": "Rustam's Budget",
+  "description": "Rustam's private, offline monthly budget manager. Your data stays on this phone.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
