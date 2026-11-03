@@ -924,7 +924,7 @@
     const sRow = (page, ico, col, label, val) => `<button type="button" class="si-row" data-act="set-go" data-p="${page}">${sIco(ico, col)}<span class="si-l">${label}</span><span class="si-v">${val}</span><svg class="si-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${SI.chev}</svg></button>`;
     const sHead = t => `<button type="button" class="si-back" data-act="set-back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${SI.back}</svg>Settings</button><h2 class="si-title">${t}</h2>`;
     function setBackupFacts() {
-        const lb = prefs.lastBackup; if (!lb) return { n: '—', u: 'Not backed up yet', ok: false, short: 'Not yet' };
+        const lb = prefs.lastBackup; if (!lb) return { n: '', u: 'Not backed up yet', ok: false, short: 'Not yet' };
         const days = Math.floor(Math.round((new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()) - new Date(new Date(lb).getFullYear(), new Date(lb).getMonth(), new Date(lb).getDate())) / 864e5));
         const when = days <= 0 ? ['Today', ''] : days === 1 ? ['Yesterday', ''] : [String(days), 'days ago'];
         return { n: when[0], u: when[1], ok: days < 7, short: days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days + ' days ago', days };
@@ -960,10 +960,10 @@
         } else if (setPage === 'backup') {
             let kb = 0; try { kb = Math.round((localStorage.getItem(K_EV) || '').length / 1024); } catch (e) {}
             h += sHead('Backup and data') + `<div class="card si-bk"><div class="si-ring ${bk.ok ? '' : 'warn'}"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="35" fill="none" stroke-width="5" class="rt"/><circle cx="40" cy="40" r="35" fill="none" stroke-width="5" stroke-linecap="round" class="ra" stroke-dasharray="${bk.ok ? 220 : 60} 220" transform="rotate(-90 40 40)"/>${bk.ok ? '<path d="M28 41l9 9 16-18" fill="none" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" class="rk"/>' : '<path d="M40 27v16M40 52v1" fill="none" stroke-width="5" stroke-linecap="round" class="rk"/>'}</svg></div>
-                <div class="si-hero"><span class="si-big ${bk.ok ? '' : 'warn'}">${bk.n}${bk.u ? `<small> ${bk.u}</small>` : ''}</span><span class="si-small">${bk.ok ? 'Your data is safe.' : (prefs.lastBackup ? 'A fresh backup is due.' : 'Back up once, to be safe.')} About ${kb} KB, kept on this phone.</span></div>
+                <div class="si-hero"><span class="si-big ${bk.ok ? '' : 'warn'}">${bk.n}${bk.u ? (bk.n ? `<small> ${bk.u}</small>` : bk.u) : ''}</span><span class="si-small">${bk.ok ? 'Your data is safe.' : (prefs.lastBackup ? 'A fresh backup is due.' : 'Back up once, to be safe.')} About ${kb} KB, kept on this phone.${(() => { const ai = window.R3 && R3.autoInfo(); return ai ? ' A safety copy from ' + fmtDay(ai.at) + ' is also kept here.' : ''; })()}</span></div>
                 <button class="btn-line btn-accent" data-act="backup" data-m="share">Back up now</button><button class="btn-line" data-act="backup" data-m="download">Save to Downloads</button></div>
                 <div class="card">${sw('remindOn', 'Daily reminder at 11 pm', 'A banner late in the evening, only if there is no backup in 18 hours.')}${sw('rememberPass', 'Remember backup password', 'Stored on this phone only.')}${sw('learnOn', 'Learn from my entries', 'Shows your usual amounts as quick buttons and writes plain-word insights.')}</div>
-                <div class="si-links"><button type="button" class="link-btn" data-act="restore">Restore from a file</button><button type="button" class="link-btn" data-act="backup" data-m="plain">Share unencrypted copy</button><button type="button" class="link-btn" data-act="deleted">Recently deleted (${deletedList().length})</button></div>
+                <div class="si-links"><button type="button" class="link-btn" data-act="restore">Restore from a file</button>${window.R3 && R3.autoInfo() ? '<button type="button" class="link-btn" data-act="restore-auto">Restore the safety copy (' + fmtDay(R3.autoInfo().at) + ')</button>' : ''}<button type="button" class="link-btn" data-act="backup" data-m="plain">Share unencrypted copy</button><button type="button" class="link-btn" data-act="deleted">Recently deleted (${deletedList().length})</button></div>
                 <div class="si-erase"><button type="button" class="link-btn danger" data-act="erase">Erase everything…</button><p class="hint">Always asks first. Back up before you erase.</p></div>`;
         }
         put($('s-set'), h);
@@ -1442,6 +1442,7 @@
             case 'pin-off': if (await confirmSheet({ title: 'Remove PIN?', ok: 'Remove' })) { try { localStorage.removeItem(K_PIN); } catch (e) {} render(); } break;
             case 'backup': backupSheet(el.dataset.m); break;
             case 'restore': $('file-restore').click(); break;
+            case 'restore-auto': { const a = window.R3 && R3.autoGet(); if (a) applyRestore({ events: a.events, exportedAt: a.at }); else toast('No safety copy yet'); break; }
             case 'look-save': {
                 const skip = ['pass', 'rememberPass', 'lastBackup', 'remindSnooze', 'open', 'lastLight', 'lastDark', 'habitNames'], pr = {};
                 Object.keys(prefs).forEach(k => { if (skip.indexOf(k) < 0) pr[k] = prefs[k]; });
@@ -1527,6 +1528,7 @@
             { id: 'lite', after: 6, text: "This phone may be slow. Use Lite mode? It removes blur and motion. You can switch it back any time.", opts: [["1", "Use Lite"], ["0", "Keep the glass"]], apply: v => { prefs.lite = v === '1'; persist(); applyTheme(); }, when: () => !prefs.lite && window.GResume && GResume.weakPhone() }
           ] });
         const y0 = GResume.init({ key: 'bm2_resume', screens: ['today','ins','life','mind','month','out','plan'], get: () => screen, set: s => { screen = s; } }); render(); GResume.restoreScroll(y0); companionReturns();
+        if (window.R3) R3.init({ name: 'bm2', evKey: K_EV, app: 'rustams-budget', v: 2 });
         if (window.GFeel) GFeel.saveButton({ save: () => { persist(); try { return !events.length || localStorage.getItem(K_EV) !== null; } catch (e) { return false; } }, backup: () => backupSheet('share') });
         locked.then(() => { showSplash(); setTimeout(() => { if (GC && !GC.state().action) GC.do('hello', { force: true }); }, 3600); });
         if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
