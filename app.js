@@ -51,6 +51,7 @@
         if (!storageOK) toast('Could not save: the phone storage may be full');
     }
     function add(e, ts) {
+        if (window.GFeel && GFeel.flash) setTimeout(GFeel.flash, 0);
         e.id = nextId++; e.ts = ts || Date.now();
         events.push(e); persist(); return e;
     }
@@ -434,6 +435,18 @@
 
     /* ---------- Rendering helpers ---------- */
     const cd = d => d >= 60 ? `${Math.round(d / 30)} mo` : `${d}d`;
+    /* the orb's best next step: Spend most of the day, Close day late in the evening if today is still open */
+    function orbPick() {
+        if (screen === 'set' || !D || !D.P) return null;
+        const h = new Date().getHours();
+        if (prefs.dayCloseOn && h >= 21 && D.today && !D.dayCloses.has(D.today.key)) return { icon: 'moon', label: 'Close day', act: 'dayclose' };
+        return { icon: 'wallet', label: 'Spend', act: 'orb-spend' };
+    }
+    function orbSpend() {
+        const voided = new Set(); events.forEach(e => { if (e.t === 'void') voided.add(e.target); });
+        for (let i = events.length - 1; i >= 0; i--) { const e = events[i]; if (e.t === 'exp' && e.kind === 'add' && !voided.has(e.id) && D.cats.some(c => c.id === e.cat)) { entrySheet(e.cat); return; } }
+        entrySheet((D.cats[0] || {}).id);
+    }
     function renderBanner() {
         const el = $('banner'), h = new Date().getHours(), out = [];
         if (D.pendingClose) out.push(`<div class="banner"><span>${MONTHS[D.pendingClose.m]} ended with ${mh(D.pendingClose.left)} unspent. Decide where it goes.</span><span class="b-act"><button class="on" data-act="close-month">Decide</button></span></div>`);
@@ -982,6 +995,7 @@
         document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === 's-' + screen));
         ({ today: renderToday, month: renderMonth, mind: renderMind, ins: renderIns, set: renderSet })[screen]();
         renderCompanion();
+        if (window.GOrb) GOrb.refresh();
     }
 
     /* ---------- Sheets ---------- */
@@ -1387,6 +1401,7 @@
             case 'xfer': xferSheet(el.dataset.dir); break;
             case 'sav': savSheet(el.dataset.dir || 'in'); break;
             case 'dayclose': dayCloseSheet(); break;
+            case 'orb-spend': if (!D.P) planSheet(); else orbSpend(); break;
             case 'more': { moreOpen = !moreOpen; const m = $('cat-more'); if (m) { m.classList.toggle('open', moreOpen); el.setAttribute('aria-expanded', moreOpen); } break; }
             case 'line': lineBump++; renderToday(); break;
             case 'entry': if (!D.P) planSheet(); else entrySheet(+id); break;
@@ -1528,6 +1543,7 @@
             { id: 'lite', after: 6, text: "This phone may be slow. Use Lite mode? It removes blur and motion. You can switch it back any time.", opts: [["1", "Use Lite"], ["0", "Keep the glass"]], apply: v => { prefs.lite = v === '1'; persist(); applyTheme(); }, when: () => !prefs.lite && window.GResume && GResume.weakPhone() }
           ] });
         const y0 = GResume.init({ key: 'bm2_resume', screens: ['today','ins','life','mind','month','out','plan'], get: () => screen, set: s => { screen = s; } }); render(); GResume.restoreScroll(y0); companionReturns();
+        if (window.GOrb) GOrb.init({ pick: orbPick });
         if (window.R3) R3.init({ name: 'bm2', evKey: K_EV, app: 'rustams-budget', v: 2 });
         if (window.GFeel) GFeel.saveButton({ save: () => { persist(); try { return !events.length || localStorage.getItem(K_EV) !== null; } catch (e) { return false; } }, backup: () => backupSheet('share') });
         locked.then(() => { showSplash(); setTimeout(() => { if (GC && !GC.state().action) GC.do('hello', { force: true }); }, 3600); });
