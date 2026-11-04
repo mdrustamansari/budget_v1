@@ -1,15 +1,17 @@
 /* GOrb: the one floating button. A soft, shape-shifting glass blob at the bottom right that always offers the best next step.
    It hides while you do anything else (a sheet, the keyboard, the lock, Settings, scrolling down) and returns when you scroll up.
    The app gives it a pick() that returns { icon, label, act, id } or null. The orb is a real button with data-act, so the app's own click handler does the work.
-   API: GOrb.init({ pick, hide })   GOrb.refresh() */
+   After a change the orb turns into a Save button for about 10 seconds, then returns.
+   API: GOrb.init({ pick, hide })   GOrb.refresh()   GOrb.saveMode(fn, ms) */
 (function (root) {
     'use strict';
     const IC = {
         plus: '<path d="M5 12h14"/><path d="M12 5v14"/>', check: '<path d="M20 6 9 17l-5-5"/>', play: '<path d="M6 4l14 8-14 8z"/>',
+        save: '<path d="M5 3h11l4 4v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M8 3v5h7V3"/><path d="M8 14h8"/><path d="M8 17.5h5"/>',
         moon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
         wallet: '<path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a1 1 0 0 1 1 1v3"/><path d="M3 5v14a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-3"/><path d="M21 12v4h-4a2 2 0 0 1 0-4Z"/>'
     };
-    let cfg = null, orb = null, tag = null, cur = '', tagT = null, scrolledAway = false, lastY = 0, timer = null;
+    let saveUntil = 0, saveT = null, saveFn = null, cfg = null, orb = null, tag = null, cur = '', tagT = null, scrolledAway = false, lastY = 0, timer = null;
     const svg = k => `<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k] || IC.plus}</svg>`;
     function showTag(ms) { if (!tag) return; tag.classList.add('on'); clearTimeout(tagT); tagT = setTimeout(() => tag.classList.remove('on'), ms || 2200); }
     function busy() {
@@ -25,9 +27,10 @@
     function refresh() {
         if (!cfg || !orb) return;
         let p = null; try { p = cfg.pick(); } catch (e) {}
+        if (Date.now() < saveUntil) p = { icon: saveUntil > 1e15 ? 'check' : 'save', label: saveUntil > 1e15 ? 'Saved' : 'Save', act: '' };
         if (!p) { orb.classList.add('off'); return; }
         const key = p.icon + '|' + p.label + '|' + p.act + '|' + (p.id || '');
-        orb.dataset.act = p.act; if (p.id !== undefined && p.id !== null) orb.dataset.id = p.id; else delete orb.dataset.id;
+        if (p.act) orb.dataset.act = p.act; else delete orb.dataset.act; if (p.id !== undefined && p.id !== null) orb.dataset.id = p.id; else delete orb.dataset.id;
         orb.setAttribute('aria-label', p.label);
         if (key !== cur) {
             const first = !cur; cur = key;
@@ -43,6 +46,7 @@
         orb = document.createElement('button'); orb.type = 'button'; orb.id = 'gorb'; orb.className = 'gorb off';
         tag = document.createElement('div'); tag.id = 'gorb-tag'; tag.className = 'gorb-tag'; tag.setAttribute('aria-hidden', 'true');
         document.body.appendChild(tag); document.body.appendChild(orb);
+        orb.addEventListener('click', () => { if (Date.now() >= saveUntil || !saveFn) return; try { saveFn(); } catch (e) {} clearTimeout(saveT); saveUntil = 4e15; refresh(); saveT = setTimeout(() => { saveUntil = 0; refresh(); }, 1400); });
         let lp = null;   // a long press shows the word again
         orb.addEventListener('pointerdown', () => { lp = setTimeout(() => showTag(2200), 450); }); ['pointerup', 'pointerleave', 'pointercancel'].forEach(e => orb.addEventListener(e, () => clearTimeout(lp)));
         addEventListener('scroll', () => {
@@ -52,8 +56,11 @@
         }, { passive: true });
         ['focusin', 'focusout', 'resize'].forEach(e => addEventListener(e, () => setTimeout(refresh, 80)));
         if (root.visualViewport) root.visualViewport.addEventListener('resize', () => setTimeout(refresh, 40));
+        const reg = () => { if (root.GCompanion && root.GCompanion.reserve) { root.GCompanion.reserve(() => { if (!orb || orb.classList.contains('off')) return []; const r = orb.getBoundingClientRect(); return r.width > 0 ? [r] : []; }); return true; } return false; };   // the character keeps away from the orb
+        if (!reg()) setTimeout(reg, 1500);
         timer = setInterval(refresh, 1200);   // catches sheets opening and closing
         refresh();
     }
-    root.GOrb = { init, refresh };
+    function saveMode(fn, ms) { if (!orb) return false; saveFn = fn; saveUntil = Date.now() + (ms || 10000); clearTimeout(saveT); saveT = setTimeout(() => { saveUntil = 0; refresh(); }, ms || 10000); refresh(); return true; }
+    root.GOrb = { init, refresh, saveMode };
 })(window);

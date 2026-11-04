@@ -60,5 +60,21 @@
         R3.autoNow();
     }
     R3.init = cfg => { R3.cfg = cfg; setTimeout(maybe, 4000); document.addEventListener('visibilitychange', () => { if (!document.hidden) maybe(); }); };
+
+    // ---------- "Updated, tap to refresh": a new version has been installed in the background; the page you see is still the old one
+    (function () {
+        if (!('serviceWorker' in navigator) || location.protocol.indexOf('http') !== 0) return;
+        const had = !!navigator.serviceWorker.controller; let shown = false;
+        function strip() {
+            if (shown) return; shown = true;
+            const b = document.createElement('button'); b.type = 'button'; b.className = 'upd-strip'; b.setAttribute('role', 'status');
+            b.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg><span>Updated. Tap to refresh</span>';
+            b.onclick = () => { try { location.reload(); } catch (e) {} };
+            document.body.appendChild(b); requestAnimationFrame(() => b.classList.add('on'));
+        }
+        navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) strip(); });
+        const check = () => { try { navigator.serviceWorker.getRegistration().then(r => { if (r) r.update().catch(() => {}); }); } catch (e) {} };
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); }); setInterval(check, 30 * 60e3); setTimeout(check, 8000);
+    })();
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watch); else watch();
 })(window);
