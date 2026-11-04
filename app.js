@@ -442,11 +442,42 @@
         if (prefs.dayCloseOn && h >= 21 && D.today && !D.dayCloses.has(D.today.key)) return { icon: 'moon', label: 'Close day', act: 'dayclose' };
         return { icon: 'wallet', label: 'Spend', act: 'orb-spend' };
     }
-    function orbSpend() {
+    /* Which categories you are likely to spend on now. Learned from your own entries (last 90 days):
+       how often, how much at this time of day and on this weekday, and how often you buy it in one day.
+       Once today's count has reached your usual count for a day (milk once, conveyance twice), it drops down the list. */
+    function spendRank() {
+        const now = Date.now(), nowD = new Date(now), band = h => h >= 5 && h < 12 ? 0 : h < 17 ? 1 : h < 22 ? 2 : 3, bNow = band(nowD.getHours()), wNow = nowD.getDay();
         const voided = new Set(); events.forEach(e => { if (e.t === 'void') voided.add(e.target); });
-        for (let i = events.length - 1; i >= 0; i--) { const e = events[i]; if (e.t === 'exp' && e.kind === 'add' && !voided.has(e.id) && D.cats.some(c => c.id === e.cat)) { entrySheet(e.cat); return; } }
-        entrySheet((D.cats[0] || {}).id);
+        const dayKey = ts => { const d = new Date(ts); return d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate(); }, tK = dayKey(now);
+        const st = new Map(); D.cats.forEach(c => st.set(c.id, { c, n: 0, b: 0, w: 0, days: new Map(), last: 0 }));
+        events.forEach(e => {
+            if (e.t !== 'exp' || e.kind !== 'add' || voided.has(e.id) || !st.has(e.cat) || now - e.ts > 90 * 864e5) return;
+            const o = st.get(e.cat), d = new Date(e.ts); o.n++; if (band(d.getHours()) === bNow) o.b++; if (d.getDay() === wNow) o.w++;
+            const k = dayKey(e.ts); o.days.set(k, (o.days.get(k) || 0) + 1); if (e.ts > o.last) o.last = e.ts;
+        });
+        const maxN = Math.max(1, ...[...st.values()].map(o => o.n)), list = [...st.values()].map(o => {
+            const counts = [...o.days.entries()].filter(([k]) => k !== tK).map(([, v]) => v).sort((a, b) => a - b), cap = counts.length >= 3 ? counts[Math.min(counts.length - 1, Math.floor(counts.length * 0.75))] : 99, today = o.days.get(tK) || 0;
+            let score = o.n ? (Math.log(1 + o.n) / Math.log(1 + maxN)) + 1.2 * ((o.b + 0.3 * 3) / (o.n + 3)) + 0.4 * ((o.w + 3 / 7) / (o.n + 3)) + (now - o.last < 36e5 * 30 ? 0.15 : 0) : 0;
+            if (today >= cap) score *= 0.12;
+            return { c: o.c, score, today, cap };
+        });
+        return list.sort((a, b) => b.score - a.score).map(x => x.c);
     }
+    function spendChooser() {
+        const all = spendRank(), top = all.slice(0, 3), part = h => { const x = new Date().getHours(); return x < 5 ? 'tonight' : x < 12 ? 'this morning' : x < 17 ? 'this afternoon' : x < 22 ? 'this evening' : 'tonight'; };
+        const tile = c => `<button type="button" class="spc" data-spc="${c.id}"><span class="spc-i">${esc(c.icon)}</span><span class="spc-n">${esc(c.name)}</span></button>`;
+        sheet(`<h2>What did you spend on?</h2><p>Likely for ${part()}.</p><div class="spc-grid">${top.map(tile).join('')}</div><div class="modal-actions spc-more"><button type="button" class="link-btn" data-spmore="1">More categories…</button></div>`, box => {
+            const go = id => entrySheet(+id);
+            box.querySelectorAll('[data-spc]').forEach(b => { b.onclick = () => go(b.dataset.spc); });
+            box.querySelector('[data-spmore]').onclick = () => {
+                box.innerHTML = `<h2>All categories</h2><input type="text" id="spc-q" placeholder="Search" autocomplete="off" maxlength="30" enterkeyhint="done"><div class="spc-list" id="spc-l"></div><div class="modal-actions"><button type="button" class="btn-secondary" id="spc-back">Back</button></div>`;
+                const q = box.querySelector('#spc-q'), l = box.querySelector('#spc-l');
+                const draw = () => { const t = q.value.trim().toLowerCase(), rows = all.filter(c => !t || c.name.toLowerCase().includes(t)); l.innerHTML = rows.map(c => `<button type="button" class="spc-row" data-spc="${c.id}"><span>${esc(c.icon)}</span><span>${esc(c.name)}</span></button>`).join('') || '<div class="hint">No category like that.</div>'; l.querySelectorAll('[data-spc]').forEach(b => { b.onclick = () => go(b.dataset.spc); }); };
+                q.oninput = draw; draw(); box.querySelector('#spc-back').onclick = () => spendChooser();
+            };
+        });
+    }
+    function orbSpend() { if (!D.cats.length) { entrySheet(undefined); return; } spendChooser(); }
     function renderBanner() {
         const el = $('banner'), h = new Date().getHours(), out = [];
         if (D.pendingClose) out.push(`<div class="banner"><span>${MONTHS[D.pendingClose.m]} ended with ${mh(D.pendingClose.left)} unspent. Decide where it goes.</span><span class="b-act"><button class="on" data-act="close-month">Decide</button></span></div>`);

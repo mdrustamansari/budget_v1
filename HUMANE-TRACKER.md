@@ -157,3 +157,13 @@ The same gesture or word means the same thing everywhere.
 - 2026-11-03 (Budget 3.02, release 3 of 4): (1) SHEETS ARRIVE WITH A SOFT SPRING (transform only, so the frosted glass stays on; off for reduced motion). (2) THE KEYBOARD HELPS: Enter moves to the next box and, on the last box, presses the main button; the key shows "next" or "done"; a number box selects its text when tapped, so typing replaces the old number. (3) A SAFETY COPY EVERY WEEK: the last two copies of the data are kept on the phone (r3.js) and Settings > Backup says when, with "Restore the safety copy". It guards against a bad edit, not a lost phone, so the real backup stays the one to share. (4) "Not backed up yet" no longer shows a stray red dash. Haptics and most empty states already existed (feel.js).
 
 - 2026-11-03 (Budget 3.03): ONE FLOATING BUTTON, THE GLASS ORB (orb.js). A soft, shape-shifting frosted-glass blob at the bottom right that always offers the best next step: "Spend" (opens the add sheet on the category you used last) most of the day, "Close day" after 9 pm if today is still open. It shows only an icon; a small glass tag with the word appears for about 2 seconds when the step changes (and on a long press). It hides while a sheet, the item wizard, the keyboard, the lock, the welcome screen or Settings is up, hides when you scroll down and returns when you scroll up. THE SAVE BUTTON no longer sits on the screen: it appears for about 2 seconds after something is saved.
+
+## 3.04
+- The Spend blob now opens a chooser of icon tiles: your 2–3 likeliest categories first, then "More…" with search. Ranking learns your usual hour and weekday, and steps a category down once today's count reaches your usual daily count (milk once, conveyance twice).
+- After any change the blob becomes a Save button for about 10 seconds, then returns. One tap saves; it shows a tick.
+- A small "Updated. Tap to refresh" strip appears when a new version is ready, so nothing changes under your hands.
+- The character keeps away from the blob's corner.
+
+## 3.04c
+- Spend chooser tiles rebuilt on their own style (they had borrowed the pill button style, which squashed them on the phone). Name never breaks mid-word. Checked in four themes, light and dark, and with the keyboard open.
+- Service worker now fetches fresh files on install, so a new version never runs on old copies.

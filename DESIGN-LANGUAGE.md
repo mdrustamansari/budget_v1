@@ -214,3 +214,8 @@ One voice: titles are sans; a setting offers serif for the app name and the big 
 - One floating button per app, `GOrb` (orb.js), class `gorb` (not `orb`, which the Companion uses). Frosted glass, bright rim, blue glow, border-radius morphing over 8 s; squash and bounce when its step changes.
 - Icons are the shared line set (plus, check, play, wallet, moon), the same stroke style as Edit and Delete. The word is a glass tag that shows about 2 s.
 - Hides during sheets, keyboard, lock, splash, Settings and scroll-down. It is a `data-act` button, so the app's click handler does the work.
+
+## 3.04
+- One floating element, many jobs: the blob morphs between Spend and Save (squash-and-settle). Label word appears beside it for 2 seconds.
+- Chooser: icon tiles, 2–3 best plus "More…"; choices of varying length stay underlined links.
+- Update strip: quiet pill at the top, never a pop-up.
